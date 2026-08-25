@@ -1,0 +1,6 @@
+{
+  "name": "Mercado do Compositor",
+  "description": "Plataforma SaaS para compositores divulgarem suas músicas, apresentarem prévias e emitirem liberações de gravação para artistas e intérpretes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

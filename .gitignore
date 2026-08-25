@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+coverage/
+public/audio-previews/
+supabase/.temp/
+.DS_Store
+*.log
+mercado-do-compositor-*.zip
+.env*
+!.env.example
