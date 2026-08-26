@@ -41,7 +41,7 @@ interface AppContextType {
   incrementPlayCount: (songId: string) => void;
   
   requests: InterestRequest[];
-  addInterestRequest: (req: Omit<InterestRequest, 'id' | 'createdAt' | 'status'>) => InterestRequest;
+  addInterestRequest: (req: Omit<InterestRequest, 'id' | 'createdAt' | 'status'>) => Promise<InterestRequest | null>;
   updateRequestStatus: (requestId: string, status: RequestStatus, extra?: Partial<InterestRequest>) => void;
   
   releases: ReleaseDocument[];
@@ -243,28 +243,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void incrementPlay(songId).catch(()=>undefined);
   };
 
-  const addInterestRequest = (reqData: Omit<InterestRequest, 'id' | 'createdAt' | 'status'>): InterestRequest => {
+  const addInterestRequest = async (reqData: Omit<InterestRequest, 'id' | 'createdAt' | 'status'>): Promise<InterestRequest | null> => {
+    try {
+    const requestId = await createInterest(reqData.songId, reqData);
     const newReq: InterestRequest = {
       ...reqData,
-      id: crypto.randomUUID(),
+      id: requestId,
       createdAt: new Date().toISOString().split('T')[0],
       status: 'nova'
     };
     
     setRequests(prev => [newReq, ...prev]);
     setSongs(prev => prev.map(s => s.id === reqData.songId ? { ...s, interestedCount: s.interestedCount + 1 } : s));
-    void createInterest(reqData.songId,reqData).catch(e=>setAuthError(e.message));
-
-    addSystemLog({
-      category: 'financial',
-      title: 'Nova Proposta de Artista Recebida',
-      description: `Proposta de ${reqData.buyerName} para a música "${reqData.songTitle}".`,
-      user: reqData.buyerEmail,
-      ip: '189.45.10.88',
-      status: 'info'
-    });
-    
     return newReq;
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Não foi possível enviar a solicitação.');
+      return null;
+    }
   };
 
   const updateRequestStatus = (requestId: string, status: RequestStatus, extra?: Partial<InterestRequest>) => {

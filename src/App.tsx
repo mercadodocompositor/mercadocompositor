@@ -7,6 +7,7 @@ import { PublicProfilePage } from './pages/PublicProfilePage';
 import { DashboardLayout } from './pages/dashboard/DashboardLayout';
 import { AdminLayout } from './pages/admin/AdminLayout';
 import { LegalPage } from './pages/LegalPage';
+import { InterestRequestPage } from './pages/InterestRequestPage';
 
 const ComposerRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, authLoading } = useApp();
@@ -37,6 +38,7 @@ const AppRoutes: React.FC = () => (
     <Route path="/recuperar-senha" element={<LoginPage />} />
     <Route path="/cadastro" element={<Navigate to="/autenticacao?modo=register" replace />} />
     <Route path="/compositor/:username" element={<PublicProfilePage />} />
+    <Route path="/compositor/:username/musica/:songId/interesse" element={<InterestRequestPage />} />
     <Route path="/termos" element={<LegalPage />} />
     <Route path="/privacidade" element={<LegalPage />} />
     <Route path="/dashboard/*" element={<ComposerRoute><DashboardLayout /></ComposerRoute>} />

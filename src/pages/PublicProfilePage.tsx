@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Song } from '../types';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AudioPlayer } from '../components/common/AudioPlayer';
-import { InterestModal } from '../components/common/InterestModal';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { getPublicComposer } from '../lib/database';
@@ -30,12 +28,12 @@ const instagramUrl = (value: string) => {
 };
 
 export const PublicProfilePage: React.FC = () => {
+  const navigate = useNavigate();
   const { username } = useParams<{ username: string }>();
   const [searchParams] = useSearchParams();
   const [catalog, setCatalog] = useState<Awaited<ReturnType<typeof getPublicComposer>>>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
 
-  const [selectedSongForInterest, setSelectedSongForInterest] = useState<Song | null>(null);
   const [expandedLyricsId, setExpandedLyricsId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -347,7 +345,7 @@ export const PublicProfilePage: React.FC = () => {
                             songId={song.id}
                             songTitle={song.title}
                             audioUrl={song.previewAudioUrl}
-                            onInterestClick={() => setSelectedSongForInterest(song)}
+                            onInterestClick={() => navigate(`/compositor/${requestedUsername}/musica/${song.id}/interesse`)}
                           />
 
                           {/* Lyrics Collapsible Section required by Section 9 */}
@@ -380,14 +378,6 @@ export const PublicProfilePage: React.FC = () => {
         )}
 
       </main>
-
-      {/* Interest Form Modal */}
-      {selectedSongForInterest && (
-        <InterestModal 
-          song={selectedSongForInterest}
-          onClose={() => setSelectedSongForInterest(null)}
-        />
-      )}
 
       <Footer />
 
