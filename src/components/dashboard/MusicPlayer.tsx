@@ -252,31 +252,34 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
   const handleSaveUploadedAudio = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!localAudioFile) return;
-    const storedPath = await uploadCurrentUserFile('song-originals', localAudioFile);
+    try {
+      const storedPath = await uploadCurrentUserFile('song-originals', localAudioFile);
 
-    if (assignTargetSongId === 'new') {
-      const created = addSong({
-        title: newTitle || localAudioName || 'Música sem título',
-        genre: newGenre,
-        authors: newAuthors,
-        coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
-        audioUrl: storedPath,
-        lyrics: 'Letra em fase de edição pelo compositor.',
-        status: 'draft',
-        snippetStartSeconds: 0,
-        snippetDurationSeconds: 35
-      });
-      setSelectedSongId(created.id);
-    } else {
-      updateSong(assignTargetSongId, {
-        audioUrl: storedPath
-      });
-      setSelectedSongId(assignTargetSongId);
+      if (assignTargetSongId === 'new') {
+        const created = await addSong({
+          title: newTitle || localAudioName || 'Música sem título',
+          genre: newGenre,
+          authors: newAuthors,
+          coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
+          audioUrl: storedPath,
+          lyrics: 'Letra em fase de edição pelo compositor.',
+          status: 'draft',
+          snippetStartSeconds: 0,
+          snippetDurationSeconds: 35
+        });
+        setSelectedSongId(created.id);
+      } else {
+        const updated = await updateSong(assignTargetSongId, { audioUrl: storedPath });
+        if (!updated) throw new Error('Não foi possível vincular o áudio à música.');
+        setSelectedSongId(assignTargetSongId);
+      }
+
+      setUploadSuccess(false);
+      setActiveTab('player');
+      alert('Áudio original armazenado com segurança. A música permanece em rascunho até a geração da prévia pública.');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível salvar a música. Tente novamente.');
     }
-
-    setUploadSuccess(false);
-    setActiveTab('player');
-    alert('Áudio original armazenado com segurança. A música permanece em rascunho até a geração da prévia pública.');
   };
 
   // Load a sample audio for testing

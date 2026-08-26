@@ -204,7 +204,7 @@ export const AddSongTab: React.FC = () => {
       const updated = await updateSong(existingSong.id, songData);
       if (!updated) throw new Error('Não foi possível salvar as alterações da música.');
     }
-    else addSong(songData);
+    else await addSong(songData);
 
     setIsSubmitting(false);
     setSuccessMessage(true);

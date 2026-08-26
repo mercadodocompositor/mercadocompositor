@@ -35,7 +35,7 @@ interface AppContextType {
   updateProfile: (data: Partial<ComposerProfile>) => void;
   
   songs: Song[];
-  addSong: (song: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>) => Song;
+  addSong: (song: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>) => Promise<Song>;
   updateSong: (id: string, data: Partial<Song>) => Promise<boolean>;
   deleteSong: (id: string) => Promise<boolean>;
   incrementPlayCount: (songId: string) => void;
@@ -179,7 +179,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProfile(prev => { const next={...prev,...data}; if(userId) void saveProfile(userId,next).catch(e=>setAuthError(e.message)); return next; });
   };
 
-  const addSong = (songData: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>): Song => {
+  const addSong = async (songData: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>): Promise<Song> => {
+    if (!userId) throw new Error('Sua sessão expirou. Entre novamente para cadastrar a música.');
     const newSong: Song = {
       ...songData,
       id: crypto.randomUUID(),
@@ -187,8 +188,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       interestedCount: 0,
       dateRegistered: new Date().toISOString().split('T')[0]
     };
+    try {
+      await insertSong(userId, newSong);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível cadastrar a música.';
+      setAuthError(message);
+      throw new Error(message);
+    }
+
     setSongs(prev => [newSong, ...prev]);
-    if (userId) void insertSong(userId,newSong).catch(e=>setAuthError(e.message));
 
     // Add log
     addSystemLog({
