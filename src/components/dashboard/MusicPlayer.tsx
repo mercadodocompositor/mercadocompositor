@@ -262,6 +262,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
           authors: newAuthors,
           coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
           audioUrl: storedPath,
+          originalAudioPath: storedPath,
           lyrics: 'Letra em fase de edição pelo compositor.',
           status: 'draft',
           snippetStartSeconds: 0,
@@ -269,7 +270,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
         });
         setSelectedSongId(created.id);
       } else {
-        const updated = await updateSong(assignTargetSongId, { audioUrl: storedPath });
+        const updated = await updateSong(assignTargetSongId, { audioUrl: storedPath, originalAudioPath: storedPath });
         if (!updated) throw new Error('Não foi possível vincular o áudio à música.');
         setSelectedSongId(assignTargetSongId);
       }

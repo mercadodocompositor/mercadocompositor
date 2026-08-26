@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { ValueType, SongStatus } from '../../types';
 import { APP_CONFIG } from '../../config/appConfig';
-import { uploadCurrentUserFile } from '../../lib/database';
+import { removeCurrentUserStorageFiles, uploadCurrentUserFile } from '../../lib/database';
 import { 
   Music2, 
   Upload, 
@@ -177,10 +177,18 @@ export const AddSongTab: React.FC = () => {
 
     setIsSubmitting(true);
 
+    const newUploads: Array<{ bucket: string; value: string }> = [];
     try {
-      const storedAudio = audioFile ? await uploadCurrentUserFile('song-originals',audioFile) : activeAudioUrl;
+      const storedOriginalPath = audioFile
+        ? await uploadCurrentUserFile('song-originals', audioFile)
+        : audioRemoved ? null : existingSong?.originalAudioPath || null;
+      if (audioFile && storedOriginalPath) newUploads.push({ bucket: 'song-originals', value: storedOriginalPath });
+
       const storedPreview = previewFile ? await uploadCurrentUserFile('song-previews',previewFile) : activePreviewUrl;
+      if (previewFile && storedPreview) newUploads.push({ bucket: 'song-previews', value: storedPreview });
+
       const storedCover = coverFile ? await uploadCurrentUserFile('song-covers',coverFile) : (coverUrl || defaultCoverUrl);
+      if (coverFile && storedCover) newUploads.push({ bucket: 'song-covers', value: storedCover });
       const songData = {
         title,
         genre,
@@ -195,7 +203,8 @@ export const AddSongTab: React.FC = () => {
         isAvailableForRelease,
         valueType,
         suggestedValue: valueType === 'suggested' && suggestedValue ? Number(suggestedValue) : undefined,
-        audioUrl: storedAudio,
+        audioUrl: audioRemoved ? undefined : (audioFile ? storedOriginalPath || undefined : activeAudioUrl),
+        originalAudioPath: storedOriginalPath,
         previewAudioUrl: storedPreview,
         summary: lyrics.length > 120 ? `${lyrics.slice(0, 120)}...` : lyrics
     };
@@ -211,6 +220,9 @@ export const AddSongTab: React.FC = () => {
 
     setTimeout(() => navigate('/dashboard/musicas'), 800);
     } catch (error) {
+      if (newUploads.length) {
+        try { await removeCurrentUserStorageFiles(newUploads); } catch { /* The original save error remains the actionable error. */ }
+      }
       setIsSubmitting(false);
       setFormError(error instanceof Error ? error.message : 'Não foi possível enviar os arquivos.');
     }
@@ -457,6 +469,7 @@ export const AddSongTab: React.FC = () => {
                         if (audioObjectUrl?.startsWith('blob:')) URL.revokeObjectURL(audioObjectUrl);
                         setAudioObjectUrl(null);
                         setAudioFileName(null);
+                        setAudioFile(null);
                         setAudioRemoved(true);
                       }}
                       className="text-xs text-red-400 hover:text-red-300"
@@ -487,6 +500,7 @@ export const AddSongTab: React.FC = () => {
                         if (coverUrl.startsWith('blob:')) URL.revokeObjectURL(coverUrl);
                         setCoverUrl(defaultCoverUrl);
                         setCoverFileName(null);
+                        setCoverFile(null);
                       }}
                       className="text-xs text-red-400 hover:text-red-300"
                     >

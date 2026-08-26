@@ -14,7 +14,7 @@ import {
 import { DEFAULT_PLATFORM_SETTINGS } from '../data/platformDefaults';
 import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertRelease, insertSong, insertSystemLog, loadAdminComposers, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, saveSubscription } from '../lib/database';
+import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertRelease, insertSong, insertSystemLog, loadAdminComposers, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, saveSubscription } from '../lib/database';
 
 type RegistrationResult = { success: boolean; needsEmailConfirmation: boolean };
 
@@ -216,6 +216,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSongs(current => current.map(song => song.id === id ? { ...song, ...data } : song));
     try {
       await saveSong(id, data);
+      if (previous) {
+        const replacedFiles = [
+          data.originalAudioPath !== undefined && data.originalAudioPath !== previous.originalAudioPath
+            ? { bucket: 'song-originals', value: previous.originalAudioPath } : null,
+          data.previewAudioUrl !== undefined && data.previewAudioUrl !== previous.previewAudioUrl
+            ? { bucket: 'song-previews', value: previous.previewAudioUrl } : null,
+          data.coverUrl !== undefined && data.coverUrl !== previous.coverUrl
+            ? { bucket: 'song-covers', value: previous.coverUrl } : null
+        ].filter((file): file is { bucket: string; value: string | null | undefined } => Boolean(file?.value));
+        if (replacedFiles.length) void removeCurrentUserStorageFiles(replacedFiles).catch(error => {
+          setAuthError(error instanceof Error ? `Música salva, mas não foi possível remover o arquivo antigo: ${error.message}` : 'Música salva, mas não foi possível remover o arquivo antigo.');
+        });
+      }
       return true;
     } catch (error) {
       if (previous) setSongs(current => current.map(song => song.id === id ? previous : song));
@@ -230,6 +243,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSongs(current => current.filter(song => song.id !== id));
     try {
       await removeSong(id);
+      try {
+        await removeCurrentUserStorageFiles([
+          { bucket: 'song-originals', value: target.originalAudioPath },
+          { bucket: 'song-previews', value: target.previewAudioUrl },
+          { bucket: 'song-covers', value: target.coverUrl }
+        ]);
+      } catch (cleanupError) {
+        setAuthError(cleanupError instanceof Error ? `Música excluída, mas a limpeza dos arquivos falhou: ${cleanupError.message}` : 'Música excluída, mas a limpeza dos arquivos falhou.');
+      }
       addSystemLog({
         category: 'moderation',
         title: 'Música Removida do Acervo',

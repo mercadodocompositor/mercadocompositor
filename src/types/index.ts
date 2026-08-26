@@ -12,6 +12,8 @@ export interface Song {
   lyrics: string;
   /** Original audio. Restricted to composer/admin areas. */
   audioUrl?: string;
+  /** Internal Storage path for replacing/removing the protected original. */
+  originalAudioPath?: string | null;
   /** Physically truncated public file. Never point this field at the original audio. */
   previewAudioUrl?: string;
   coverUrl: string;
