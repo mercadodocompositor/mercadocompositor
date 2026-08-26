@@ -188,3 +188,7 @@ create policy "media owner delete" on storage.objects for delete to authenticate
 create policy "private media owner read" on storage.objects for select to authenticated using(bucket_id in ('song-originals','release-documents') and ((storage.foldername(name))[1]=auth.uid()::text or public.is_admin()));
 
 -- Promova o proprietário uma vez: insert into public.user_roles(user_id,role) values('SEU-UUID','admin') on conflict do nothing;
+
+-- Depois do schema base, execute também supabase/production_hardening.sql.
+-- Esse arquivo adiciona validações de publicação, limite do catálogo,
+-- preservação de histórico e restrições de tipo/tamanho no Storage.
