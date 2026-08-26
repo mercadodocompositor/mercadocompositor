@@ -68,6 +68,7 @@ export const AddSongTab: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
 
   const activeAudioUrl = audioObjectUrl || (!audioRemoved ? existingSong?.audioUrl : undefined);
+  const hasProtectedOriginal = Boolean(audioFile || (!audioRemoved && existingSong?.originalAudioPath));
   const activePreviewUrl = previewObjectUrl || existingSong?.previewAudioUrl;
   const defaultCoverUrl = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80';
 
@@ -161,7 +162,7 @@ export const AddSongTab: React.FC = () => {
       return;
     }
 
-    if (status !== 'draft' && !activeAudioUrl) {
+    if (status !== 'draft' && !hasProtectedOriginal) {
       setFormError('Adicione um áudio antes de publicar. Você pode salvar a música como rascunho sem áudio.');
       return;
     }

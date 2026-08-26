@@ -82,8 +82,8 @@ export const AdminSongsTab: React.FC = () => {
   };
 
   const handlePublicationToggle = async (song: Song) => {
-    if (song.status !== 'published' && (!song.audioUrl || !song.previewAudioUrl || !song.lyrics.trim())) {
-      window.alert('A música precisa de áudio original, prévia pública e letra antes de ser aprovada.');
+    if (song.status !== 'published' && (!song.previewAudioUrl || !song.lyrics.trim())) {
+      window.alert('A música precisa de prévia pública e letra antes de ser aprovada. A existência do original também é validada pelo banco.');
       return;
     }
     if (song.status === 'published' && featuredSongIds.includes(song.id)) toggleFeatureSong(song.id);

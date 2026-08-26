@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { getRequestCode } from './identifiers';
 import { getSongSaveStatus, getSongToggleStatus } from './songWorkflow';
 import { getInterestRequestUrl, getSongUrlKey, slugify } from './urls';
@@ -21,4 +22,19 @@ describe('Fluxo de moderação', () => {
   it('mantém publicada uma obra já aprovada', () => expect(getSongSaveStatus('published', 'published', true, false)).toBe('published'));
   it('cancela uma análise', () => expect(getSongToggleStatus('pending_approval', true, false)).toBe('draft'));
   it('reenvia uma música rejeitada', () => expect(getSongToggleStatus('rejected', true, false)).toBe('pending_approval'));
+});
+
+describe('Proteção do áudio original', () => {
+  it('a função de catálogo público não projeta campos do original', () => {
+    const schema = readFileSync('supabase/schema.sql', 'utf8');
+    const publicFunction = schema.split('create or replace function public.get_public_composer')[1]?.split('grant execute on function public.get_public_composer')[0] || '';
+    expect(publicFunction).not.toMatch(/original_audio_path|song-originals|'audioUrl'/i);
+    expect(publicFunction).toMatch(/previewAudioUrl/);
+  });
+
+  it('o bucket de originais é explicitamente privado', () => {
+    const securitySql = readFileSync('supabase/music_security.sql', 'utf8');
+    expect(securitySql).toMatch(/set public = false[\s\S]*song-originals/i);
+    expect(securitySql).toMatch(/song originals owner read/);
+  });
 });

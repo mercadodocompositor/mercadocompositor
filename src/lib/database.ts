@@ -18,7 +18,7 @@ export type SongCatalogStats = { published: number; drafts: number; pending: num
 
 const signOriginalAudio = async (song: Song) => {
   if (!supabase || !song.originalAudioPath) return song;
-  const {data}=await supabase.storage.from('song-originals').createSignedUrl(song.originalAudioPath,3600);
+  const {data}=await supabase.storage.from('song-originals').createSignedUrl(song.originalAudioPath,120);
   return {...song,audioUrl:data?.signedUrl};
 };
 const dbSong = (s: Partial<Song>) => ({title:s.title,genre:s.genre,subgenre:s.subgenre,authors:s.authors,
@@ -49,7 +49,7 @@ export async function loadPrivateData(userId: string) {
   for (const song of mappedSongs) {
     const row=(songs.data||[]).find((item:any)=>item.id===song.id);
     if (row?.original_audio_path) {
-      const {data}=await supabase.storage.from('song-originals').createSignedUrl(row.original_audio_path,3600);
+      const {data}=await supabase.storage.from('song-originals').createSignedUrl(row.original_audio_path,120);
       song.audioUrl=data?.signedUrl;
     }
   }
@@ -130,15 +130,9 @@ export async function removeCurrentUserStorageFiles(files: Array<{ bucket: strin
 export async function loadAdminComposers():Promise<AdminComposer[]>{if(!supabase)return[];const [ps,qs,ss,songs,rels]=await Promise.all([supabase.from('profiles').select('*'),supabase.from('private_profiles').select('*'),supabase.from('subscriptions').select('*'),supabase.from('songs').select('composer_id,play_count'),supabase.from('releases').select('composer_id,agreed_value')]);const error=ps.error||qs.error||ss.error||songs.error||rels.error;if(error)throw error;return(ps.data||[]).map((p:any)=>{const q=(qs.data||[]).find((x:any)=>x.user_id===p.user_id)||{};const sub=(ss.data||[]).find((x:any)=>x.user_id===p.user_id)||{};const ownSongs=(songs.data||[]).filter((x:any)=>x.composer_id===p.user_id);const ownRels=(rels.data||[]).filter((x:any)=>x.composer_id===p.user_id);return{id:p.user_id,username:p.username,name:p.name,stageName:p.stage_name,email:q.email||'',whatsapp:q.whatsapp||'',cpf:q.cpf||'',cityState:[p.city,p.state].filter(Boolean).join(' - '),subscriptionStatus:sub.status||'pending',planName:sub.plan_name||'',monthlyValue:Number(String(sub.monthly_price||'0').replace(',','.')),registeredAt:p.created_at?.slice(0,10)||'',songCount:ownSongs.length,totalPlays:ownSongs.reduce((n:number,x:any)=>n+Number(x.play_count),0),totalReleases:ownRels.length,revenueGenerated:ownRels.reduce((n:number,x:any)=>n+Number(x.agreed_value),0),photo:p.photo_url,isVerified:p.is_verified} as AdminComposer;});}
 export async function loadAdminSongs():Promise<Song[]>{
   if(!supabase)return[];
-  const {data,error}=await supabase.from('songs').select('*').order('created_at',{ascending:false});
+  const {data,error}=await supabase.from('songs').select('id,composer_id,title,genre,subgenre,authors,date_composed,date_registered,lyrics,cover_url,registry_code,notes,status,is_available_for_release,value_type,suggested_value,play_count,interested_count,summary,preview_audio_url,is_featured,created_at,updated_at').order('created_at',{ascending:false});
   if(error)throw error;
-  const mapped=(data||[]).map(camelSong);
-  await Promise.all(mapped.map(async song=>{
-    if(!song.originalAudioPath)return;
-    const {data:signed,error:signedError}=await supabase!.storage.from('song-originals').createSignedUrl(song.originalAudioPath,3600);
-    if(!signedError)song.audioUrl=signed?.signedUrl;
-  }));
-  return mapped;
+  return(data||[]).map(camelSong).map(song=>({...song,audioUrl:song.previewAudioUrl}));
 }
 export async function loadMySongsPage(userId:string,params:SongPageQuery):Promise<{songs:Song[];total:number;stats:SongCatalogStats}>{
   if(!supabase)throw new Error('Supabase não configurado.');

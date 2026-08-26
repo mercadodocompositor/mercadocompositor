@@ -182,10 +182,13 @@ drop policy if exists "media owner insert" on storage.objects;
 drop policy if exists "media owner update" on storage.objects;
 drop policy if exists "media owner delete" on storage.objects;
 drop policy if exists "private media owner read" on storage.objects;
+drop policy if exists "song originals owner read" on storage.objects;
+drop policy if exists "release documents owner or admin read" on storage.objects;
 create policy "media owner insert" on storage.objects for insert to authenticated with check(bucket_id in ('profile-media','song-covers','song-previews','song-originals','release-documents') and (storage.foldername(name))[1]=auth.uid()::text);
 create policy "media owner update" on storage.objects for update to authenticated using((storage.foldername(name))[1]=auth.uid()::text) with check((storage.foldername(name))[1]=auth.uid()::text);
 create policy "media owner delete" on storage.objects for delete to authenticated using((storage.foldername(name))[1]=auth.uid()::text);
-create policy "private media owner read" on storage.objects for select to authenticated using(bucket_id in ('song-originals','release-documents') and ((storage.foldername(name))[1]=auth.uid()::text or public.is_admin()));
+create policy "song originals owner read" on storage.objects for select to authenticated using(bucket_id='song-originals' and (storage.foldername(name))[1]=auth.uid()::text);
+create policy "release documents owner or admin read" on storage.objects for select to authenticated using(bucket_id='release-documents' and ((storage.foldername(name))[1]=auth.uid()::text or public.is_admin()));
 
 -- Promova o proprietário uma vez: insert into public.user_roles(user_id,role) values('SEU-UUID','admin') on conflict do nothing;
 
@@ -195,3 +198,4 @@ create policy "private media owner read" on storage.objects for select to authen
 -- Para ativar a fila de moderação, execute depois supabase/approval_workflow.sql.
 -- Para ativar uploads validados no servidor, execute supabase/media_validation.sql.
 -- Para ativar a paginação server-side, execute supabase/pagination.sql.
+-- Para reforçar o isolamento do áudio original, execute por último supabase/music_security.sql.

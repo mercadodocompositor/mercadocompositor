@@ -135,7 +135,7 @@ export const MySongsTab: React.FC = () => {
   };
 
   const toggleStatus = async (song: Song) => {
-    if (song.status !== 'published' && song.status !== 'pending_approval' && (!song.title.trim() || !song.lyrics.trim() || !song.audioUrl || !song.previewAudioUrl)) {
+    if (song.status !== 'published' && song.status !== 'pending_approval' && (!song.title.trim() || !song.lyrics.trim() || (!song.audioUrl && !song.originalAudioPath) || !song.previewAudioUrl)) {
       showNotice('Complete título, letra, áudio original e prévia pública antes de publicar.', 'error');
       return;
     }
@@ -377,8 +377,8 @@ export const MySongsTab: React.FC = () => {
                     <span className="text-emerald-400">{song.interestedCount} interessados</span>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
-                    <span className={`px-2 py-1 rounded-lg text-[11px] ${song.audioUrl ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
-                      {song.audioUrl ? 'Original protegido' : 'Sem original'}
+                    <span className={`px-2 py-1 rounded-lg text-[11px] ${song.audioUrl || song.originalAudioPath ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
+                      {song.audioUrl || song.originalAudioPath ? 'Original protegido' : 'Sem original'}
                     </span>
                     <span className={`px-2 py-1 rounded-lg text-[11px] ${song.previewAudioUrl ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
                       {song.previewAudioUrl ? 'Prévia pública pronta' : 'Sem prévia pública'}
