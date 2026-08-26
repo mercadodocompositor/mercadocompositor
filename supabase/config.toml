@@ -4,9 +4,11 @@ additional_redirect_urls = [
   "http://localhost:3000/autenticacao",
   "http://localhost:3000/autenticacao?confirmado=1",
   "http://localhost:3000/autenticacao?modo=new-password",
+  "http://localhost:3000/autenticacao?oauth=google",
   "https://mercadodocompositor.com.br/autenticacao",
   "https://mercadodocompositor.com.br/autenticacao?confirmado=1",
-  "https://mercadodocompositor.com.br/autenticacao?modo=new-password"
+  "https://mercadodocompositor.com.br/autenticacao?modo=new-password",
+  "https://mercadodocompositor.com.br/autenticacao?oauth=google"
 ]
 
 [auth.email]

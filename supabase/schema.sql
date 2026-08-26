@@ -120,10 +120,10 @@ create policy "preferences owner" on public.user_preferences for all using(auth.
 create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path='' as $$
 declare p jsonb:=coalesce(new.raw_user_meta_data->'profile','{}'::jsonb); base_username text;
 begin
-  base_username:=coalesce(nullif(p->>'username',''),'compositor-'||substr(new.id::text,1,8));
+  base_username:=coalesce(nullif(p->>'username',''),nullif(new.raw_user_meta_data->>'preferred_username',''),'compositor-'||substr(new.id::text,1,8));
   if exists(select 1 from public.profiles where username=base_username) then base_username:=base_username||'-'||substr(new.id::text,1,6); end if;
   insert into public.profiles(user_id,username,name,stage_name,city,state,bio,experience_years,genres,instagram,youtube,website,photo_url,cover_photo_url)
-  values(new.id,base_username,coalesce(p->>'name',''),coalesce(p->>'stageName',p->>'name',''),coalesce(p->>'city',''),coalesce(p->>'state',''),coalesce(p->>'bio',''),coalesce(p->>'experienceYears',''),coalesce(array(select jsonb_array_elements_text(coalesce(p->'genres','[]'::jsonb))),'{}'),coalesce(p->>'instagram',''),coalesce(p->>'youtube',''),coalesce(p->>'website',''),coalesce(p->>'photo',''),coalesce(p->>'coverPhoto',''));
+  values(new.id,base_username,coalesce(nullif(p->>'name',''),new.raw_user_meta_data->>'full_name',new.raw_user_meta_data->>'name',''),coalesce(nullif(p->>'stageName',''),nullif(p->>'name',''),new.raw_user_meta_data->>'full_name',new.raw_user_meta_data->>'name',''),coalesce(p->>'city',''),coalesce(p->>'state',''),coalesce(p->>'bio',''),coalesce(p->>'experienceYears',''),coalesce(array(select jsonb_array_elements_text(coalesce(p->'genres','[]'::jsonb))),'{}'),coalesce(p->>'instagram',''),coalesce(p->>'youtube',''),coalesce(p->>'website',''),coalesce(nullif(p->>'photo',''),new.raw_user_meta_data->>'avatar_url',new.raw_user_meta_data->>'picture',''),coalesce(p->>'coverPhoto',''));
   insert into public.private_profiles(user_id,email,whatsapp,cpf) values(new.id,new.email,coalesce(p->>'whatsapp',''),coalesce(p->>'cpf',''));
   insert into public.subscriptions(user_id) values(new.id);
   insert into public.user_roles(user_id,role) values(new.id,'composer');

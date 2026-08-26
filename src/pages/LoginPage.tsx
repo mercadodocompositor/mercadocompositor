@@ -27,7 +27,7 @@ const authMessage = (message?: string | null) => {
 const slugify = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 export const LoginPage: React.FC = () => {
-  const { login, register, resetPassword, resendConfirmation, updatePassword, adminLogin, authError, isAuthenticated, authLoading } = useApp();
+  const { login, loginWithGoogle, register, resetPassword, resendConfirmation, updatePassword, adminLogin, authError, isAuthenticated, authLoading } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -127,6 +127,19 @@ export const LoginPage: React.FC = () => {
     setNotice(sent?{type:'success',text:'Se a conta estiver aguardando confirmação, um novo link será enviado.'}:{type:'error',text:'Não foi possível reenviar agora. Aguarde alguns minutos.'});
   };
 
+  const googleLogin = async () => {
+    if (mode === 'register' && !acceptTerms) {
+      setNotice({ type: 'error', text: 'Você precisa aceitar os Termos de Uso e a Política de Privacidade.' });
+      return;
+    }
+    setLoading(true); setNotice(null);
+    const started = await loginWithGoogle();
+    if (!started) {
+      setLoading(false);
+      setNotice({ type: 'error', text: 'Não foi possível iniciar o acesso com Google.' });
+    }
+  };
+
   if (authLoading) return <div className="min-h-screen bg-[#060B18] flex items-center justify-center"><LoaderCircle className="w-7 h-7 animate-spin text-amber-400" /></div>;
 
   return <div className="min-h-screen bg-[#060B18] text-white grid lg:grid-cols-2">
@@ -146,6 +159,8 @@ export const LoginPage: React.FC = () => {
 
         {(mode === 'login' || mode === 'register') && <div className="grid grid-cols-2 p-1 bg-slate-900 border border-slate-800 rounded-2xl"><button onClick={() => changeMode('login')} className={`py-2.5 rounded-xl text-xs font-bold ${mode === 'login' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>Entrar</button><button onClick={() => changeMode('register')} className={`py-2.5 rounded-xl text-xs font-bold ${mode === 'register' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>Criar conta</button></div>}
 
+        {(mode === 'login' || mode === 'register') && <><button type="button" onClick={googleLogin} disabled={loading} className="w-full py-3 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-60 text-slate-900 font-semibold text-sm flex items-center justify-center gap-3"><GoogleIcon />Continuar com Google</button><div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-600"><span className="h-px flex-1 bg-slate-800" /><span>ou use seu e-mail</span><span className="h-px flex-1 bg-slate-800" /></div></>}
+
         <form onSubmit={submit} className="space-y-4">
           {mode === 'register' && <><Field icon={<User />} label="Nome completo" value={fullName} onChange={setFullName} autoComplete="name" /><Field icon={<Mic2 />} label="Nome artístico (opcional)" value={stageName} onChange={setStageName} autoComplete="nickname" /><Field icon={<User />} label="WhatsApp (opcional)" value={whatsapp} onChange={setWhatsapp} autoComplete="tel" /></>}
           {mode !== 'new-password' && <Field icon={<Mail />} label="E-mail" value={email} onChange={setEmail} type="email" autoComplete="email" />}
@@ -163,3 +178,4 @@ export const LoginPage: React.FC = () => {
 
 const Field = ({icon,label,value,onChange,type='text',autoComplete}:{icon:React.ReactElement;label:string;value:string;onChange:(v:string)=>void;type?:string;autoComplete:string}) => <label className="block text-xs font-semibold text-slate-300">{label}<div className="relative mt-1.5">{React.cloneElement(icon,{className:'w-4 h-4 absolute left-3.5 top-3.5 text-slate-500'} as any)}<input required={label.includes('Nome completo')||type==='email'} type={type} value={value} onChange={e=>onChange(e.target.value)} autoComplete={autoComplete} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3.5 py-3 text-sm text-white focus:outline-none focus:border-amber-500" /></div></label>;
 const PasswordField = ({label,value,onChange,visible,setVisible,autoComplete}:{label:string;value:string;onChange:(v:string)=>void;visible:boolean;setVisible:(v:boolean)=>void;autoComplete:string}) => <label className="block text-xs font-semibold text-slate-300">{label}<div className="relative mt-1.5"><Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-500" /><input required minLength={8} type={visible?'text':'password'} value={value} onChange={e=>onChange(e.target.value)} autoComplete={autoComplete} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-11 py-3 text-sm text-white focus:outline-none focus:border-amber-500" /><button type="button" onClick={()=>setVisible(!visible)} aria-label={visible?'Ocultar senha':'Mostrar senha'} className="absolute right-3 top-3 text-slate-500">{visible?<EyeOff className="w-5 h-5"/>:<Eye className="w-5 h-5"/>}</button></div></label>;
+const GoogleIcon = () => <svg aria-hidden="true" viewBox="0 0 24 24" className="w-5 h-5"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.06H12v3.9h5.38a4.6 4.6 0 0 1-2 3.01v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.39Z"/><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.38l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.39 13.91A6.02 6.02 0 0 1 6.08 12c0-.66.11-1.3.31-1.91V7.47H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.53l3.35-2.62Z"/><path fill="#EA4335" d="M12 5.96c1.47 0 2.79.51 3.83 1.5l2.87-2.88A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.47l3.35 2.62C7.18 7.72 9.39 5.96 12 5.96Z"/></svg>;

@@ -55,6 +55,7 @@ interface AppContextType {
   authLoading: boolean;
   authError: string | null;
   login: (email?: string, password?: string) => Promise<boolean>;
+  loginWithGoogle: () => Promise<boolean>;
   register: (email: string, password: string, profile: Partial<ComposerProfile>) => Promise<RegistrationResult>;
   resetPassword: (email: string) => Promise<boolean>;
   resendConfirmation: (email: string) => Promise<boolean>;
@@ -314,6 +315,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return !error;
   };
 
+  const loginWithGoogle = async () => {
+    setAuthError(null);
+    if (!supabase) {
+      setAuthError('Supabase não configurado. Verifique as variáveis de ambiente.');
+      return false;
+    }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${APP_URL}/autenticacao?oauth=google`,
+        scopes: 'openid email profile'
+      }
+    });
+    if (error) setAuthError(error.message);
+    return !error;
+  };
+
   const register = async (email: string, password: string, profileData: Partial<ComposerProfile>) => {
     setAuthError(null);
     if (!supabase) {
@@ -502,6 +520,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authLoading,
       authError,
       login,
+      loginWithGoogle,
       register,
       resetPassword,
       resendConfirmation,
