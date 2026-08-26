@@ -36,8 +36,8 @@ interface AppContextType {
   
   songs: Song[];
   addSong: (song: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>) => Song;
-  updateSong: (id: string, data: Partial<Song>) => void;
-  deleteSong: (id: string) => void;
+  updateSong: (id: string, data: Partial<Song>) => Promise<boolean>;
+  deleteSong: (id: string) => Promise<boolean>;
   incrementPlayCount: (songId: string) => void;
   
   requests: InterestRequest[];
@@ -203,16 +203,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newSong;
   };
 
-  const updateSong = (id: string, data: Partial<Song>) => {
-    setSongs(prev => prev.map(song => song.id === id ? { ...song, ...data } : song));
-    void saveSong(id,data).catch(e=>setAuthError(e.message));
+  const updateSong = async (id: string, data: Partial<Song>) => {
+    const previous = songs.find(song => song.id === id);
+    setSongs(current => current.map(song => song.id === id ? { ...song, ...data } : song));
+    try {
+      await saveSong(id, data);
+      return true;
+    } catch (error) {
+      if (previous) setSongs(current => current.map(song => song.id === id ? previous : song));
+      setAuthError(error instanceof Error ? error.message : 'Falha ao atualizar a música.');
+      return false;
+    }
   };
 
-  const deleteSong = (id: string) => {
+  const deleteSong = async (id: string) => {
     const target = songs.find(s => s.id === id);
-    setSongs(prev => prev.filter(song => song.id !== id));
-    void removeSong(id).catch(e=>setAuthError(e.message));
-    if (target) {
+    if (!target) return false;
+    setSongs(current => current.filter(song => song.id !== id));
+    try {
+      await removeSong(id);
       addSystemLog({
         category: 'moderation',
         title: 'Música Removida do Acervo',
@@ -221,6 +230,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ip: '177.89.21.4',
         status: 'warning'
       });
+      return true;
+    } catch (error) {
+      setSongs(current => current.some(song => song.id === id) ? current : [target, ...current]);
+      setAuthError(error instanceof Error ? error.message : 'Falha ao excluir a música.');
+      return false;
     }
   };
 

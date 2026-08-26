@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Song } from '../../types';
@@ -17,12 +17,17 @@ import {
   Globe, 
   PlusCircle,
   Radio,
-  X
+  X,
+  LoaderCircle,
+  AlertTriangle
 } from 'lucide-react';
+import { APP_URL } from '../../config/appConfig';
+
+type Notice = { type: 'success' | 'error'; message: string } | null;
 
 export const MySongsTab: React.FC = () => {
   const navigate = useNavigate();
-  const { profile, songs, requests, releases, deleteSong, updateSong } = useApp();
+  const { profile, songs, requests, releases, subscription, deleteSong, updateSong } = useApp();
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,10 +36,12 @@ export const MySongsTab: React.FC = () => {
   const [sortBy, setSortBy] = useState<'recent' | 'plays' | 'interest' | 'title'>('recent');
   const [copiedSongId, setCopiedSongId] = useState<string | null>(null);
   const [showPlayer, setShowPlayer] = useState<boolean>(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
+  const [pendingSongId, setPendingSongId] = useState<string | null>(null);
+  const [songToDelete, setSongToDelete] = useState<Song | null>(null);
 
   // Available genres from current songs
-  const genresList = Array.from(new Set(songs.map(s => s.genre)));
+  const genresList = useMemo(() => Array.from(new Set<string>(songs.map(song => song.genre))).sort((a, b) => a.localeCompare(b, 'pt-BR')), [songs]);
 
   // Filter logic
   const normalize = (value: string) => value
@@ -42,7 +49,7 @@ export const MySongsTab: React.FC = () => {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-  const filteredSongs = songs.filter(song => {
+  const filteredSongs = useMemo(() => songs.filter(song => {
     const normalizedSearch = normalize(searchTerm);
     const matchesSearch = [song.title, song.authors, song.genre, song.subgenre || '', song.registryCode || '']
       .some(value => normalize(value).includes(normalizedSearch));
@@ -54,7 +61,14 @@ export const MySongsTab: React.FC = () => {
     if (sortBy === 'interest') return b.interestedCount - a.interestedCount;
     if (sortBy === 'title') return a.title.localeCompare(b.title, 'pt-BR');
     return b.dateRegistered.localeCompare(a.dateRegistered);
-  });
+  }), [genreFilter, searchTerm, songs, sortBy, statusFilter]);
+
+  const catalogStats = useMemo(() => ({
+    published: songs.filter(song => song.status === 'published').length,
+    drafts: songs.filter(song => song.status === 'draft').length,
+    plays: songs.reduce((total, song) => total + song.playCount, 0),
+    interests: songs.reduce((total, song) => total + song.interestedCount, 0)
+  }), [songs]);
 
   const hasActiveFilters = Boolean(searchTerm) || genreFilter !== 'all' || statusFilter !== 'all';
 
@@ -64,44 +78,56 @@ export const MySongsTab: React.FC = () => {
     setStatusFilter('all');
   };
 
-  const showNotice = (message: string) => {
-    setNotice(message);
+  const showNotice = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotice({ message, type });
     window.setTimeout(() => setNotice(null), 3000);
   };
 
   const handleShareSong = async (song: Song) => {
-    const link = `${window.location.origin}/compositor/${profile.username}?musica=${song.id}`;
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopiedSongId(song.id);
-      showNotice(`Link de “${song.title}” copiado.`);
-      setTimeout(() => setCopiedSongId(null), 3000);
-    } catch {
-      showNotice('Não foi possível copiar o link. Tente novamente.');
-    }
-  };
-
-  const handleDeleteSong = (songId: string, songTitle: string) => {
-    const hasHistory = requests.some(request => request.songId === songId) ||
-      releases.some(release => release.songId === songId);
-    if (hasHistory) {
-      showNotice(`“${songTitle}” possui solicitações ou liberações e não pode ser excluída.`);
+    if (song.status !== 'published') {
+      showNotice('Publique a música antes de compartilhar o link público.', 'error');
       return;
     }
-    if (window.confirm(`Tem certeza que deseja excluir a música "${songTitle}" do seu catálogo?`)) {
-      deleteSong(songId);
-      showNotice(`“${songTitle}” foi excluída.`);
+    const link = `${APP_URL}/compositor/${profile.username}?musica=${song.id}`;
+    try {
+      if (navigator.share) await navigator.share({ title: song.title, text: `Ouça ${song.title}`, url: link });
+      else await navigator.clipboard.writeText(link);
+      setCopiedSongId(song.id);
+      showNotice(navigator.share ? `Link de “${song.title}” compartilhado.` : `Link de “${song.title}” copiado.`);
+      setTimeout(() => setCopiedSongId(null), 3000);
+    } catch {
+      showNotice('Não foi possível compartilhar o link. Tente novamente.', 'error');
     }
   };
 
-  const toggleStatus = (song: Song) => {
+  const requestDeleteSong = (song: Song) => {
+    const hasHistory = requests.some(request => request.songId === song.id) || releases.some(release => release.songId === song.id);
+    if (hasHistory) {
+      showNotice(`“${song.title}” possui solicitações ou liberações e não pode ser excluída. Mova-a para rascunho.`, 'error');
+      return;
+    }
+    setSongToDelete(song);
+  };
+
+  const confirmDeleteSong = async () => {
+    if (!songToDelete) return;
+    const song = songToDelete;
+    setPendingSongId(song.id);
+    const deleted = await deleteSong(song.id);
+    setPendingSongId(null); setSongToDelete(null);
+    showNotice(deleted ? `“${song.title}” foi excluída.` : `Não foi possível excluir “${song.title}”.`, deleted ? 'success' : 'error');
+  };
+
+  const toggleStatus = async (song: Song) => {
     if (song.status === 'draft' && (!song.title.trim() || !song.lyrics.trim() || !song.audioUrl)) {
-      showNotice('Complete título, letra e áudio antes de publicar.');
+      showNotice('Complete título, letra e áudio antes de publicar.', 'error');
       return;
     }
     const newStatus = song.status === 'published' ? 'draft' : 'published';
-    updateSong(song.id, { status: newStatus });
-    showNotice(newStatus === 'published' ? `“${song.title}” foi publicada.` : `“${song.title}” foi movida para rascunho.`);
+    setPendingSongId(song.id);
+    const updated = await updateSong(song.id, { status: newStatus });
+    setPendingSongId(null);
+    showNotice(updated ? (newStatus === 'published' ? `“${song.title}” foi publicada.` : `“${song.title}” foi movida para rascunho.`) : `Não foi possível atualizar “${song.title}”.`, updated ? 'success' : 'error');
   };
 
   const formatDate = (date: string) => {
@@ -149,9 +175,25 @@ export const MySongsTab: React.FC = () => {
         </div>
       </div>
 
+      {subscription.status !== 'active' && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+          <div><strong className="block">Catálogo público indisponível</strong><span className="text-xs text-amber-200/80">Sua assinatura está {subscription.status === 'pending' ? 'pendente' : 'inativa'}. Você pode organizar rascunhos, mas as músicas só aparecem publicamente com uma assinatura ativa.</span></div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          ['Publicadas', catalogStats.published.toLocaleString('pt-BR')],
+          ['Rascunhos', catalogStats.drafts.toLocaleString('pt-BR')],
+          ['Reproduções', catalogStats.plays.toLocaleString('pt-BR')],
+          ['Interessados', catalogStats.interests.toLocaleString('pt-BR')]
+        ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3"><span className="block text-[11px] uppercase tracking-wider text-slate-500">{label}</span><strong className="mt-1 block text-xl text-white">{value}</strong></div>)}
+      </div>
+
       {notice && (
-        <div role="status" className="bg-slate-900 border border-amber-500/30 text-slate-200 rounded-2xl px-4 py-3 text-sm flex items-center justify-between gap-3">
-          <span>{notice}</span>
+        <div role={notice.type === 'error' ? 'alert' : 'status'} className={`rounded-2xl border px-4 py-3 text-sm flex items-center justify-between gap-3 ${notice.type === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'}`}>
+          <span>{notice.message}</span>
           <button type="button" onClick={() => setNotice(null)} aria-label="Fechar aviso" className="text-slate-400 hover:text-white">
             <X className="w-4 h-4" />
           </button>
@@ -344,9 +386,10 @@ export const MySongsTab: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => navigate(`/compositor/${profile.username}`)}
+                    onClick={() => navigate(`/compositor/${profile.username}?musica=${song.id}`)}
+                    disabled={song.status !== 'published'}
                     aria-label={`Visualizar ${song.title} no perfil público`}
-                    className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition"
+                    className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40"
                     title="Visualizar no perfil público"
                   >
                     <Eye className="w-4 h-4" />
@@ -355,8 +398,9 @@ export const MySongsTab: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleShareSong(song)}
+                    disabled={pendingSongId === song.id || song.status !== 'published'}
                     aria-label={`Compartilhar ${song.title}`}
-                    className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition"
+                    className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40"
                     title="Compartilhar link da música"
                   >
                     {copiedSongId === song.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
@@ -364,21 +408,23 @@ export const MySongsTab: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => toggleStatus(song)}
+                    onClick={() => void toggleStatus(song)}
+                    disabled={pendingSongId === song.id}
                     aria-label={song.status === 'published' ? `Mover ${song.title} para rascunho` : `Publicar ${song.title}`}
-                    className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition"
+                    className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition disabled:cursor-wait disabled:opacity-50"
                     title={song.status === 'published' ? 'Mudar para rascunho' : 'Publicar no perfil'}
                   >
-                    {song.status === 'published' ? <Globe className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-slate-500" />}
+                    {pendingSongId === song.id ? <LoaderCircle className="w-4 h-4 animate-spin" /> : song.status === 'published' ? <Globe className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-slate-500" />}
                   </button>
                 </div>
 
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => handleDeleteSong(song.id, song.title)}
+                    onClick={() => requestDeleteSong(song)}
+                    disabled={pendingSongId === song.id}
                     aria-label={`Excluir ${song.title}`}
-                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition"
+                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition disabled:cursor-wait disabled:opacity-50"
                     title="Excluir música"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -438,9 +484,10 @@ export const MySongsTab: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => navigate(`/compositor/${profile.username}`)}
+                        onClick={() => navigate(`/compositor/${profile.username}?musica=${song.id}`)}
+                        disabled={song.status !== 'published'}
                         aria-label={`Visualizar ${song.title} no perfil público`}
-                        className="p-1.5 text-slate-400 hover:text-white"
+                        className="p-1.5 text-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                         title="Ver no perfil"
                       >
                         <Eye className="w-4 h-4" />
@@ -448,26 +495,29 @@ export const MySongsTab: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleShareSong(song)}
+                        disabled={pendingSongId === song.id || song.status !== 'published'}
                         aria-label={`Compartilhar ${song.title}`}
-                        className="p-1.5 text-slate-400 hover:text-white"
+                        className="p-1.5 text-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                         title="Compartilhar"
                       >
                         <Share2 className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => toggleStatus(song)}
+                        onClick={() => void toggleStatus(song)}
+                        disabled={pendingSongId === song.id}
                         aria-label={song.status === 'published' ? `Mover ${song.title} para rascunho` : `Publicar ${song.title}`}
-                        className="p-1.5 text-slate-400 hover:text-amber-400"
+                        className="p-1.5 text-slate-400 hover:text-amber-400 disabled:cursor-wait disabled:opacity-50"
                         title={song.status === 'published' ? 'Mover para rascunho' : 'Publicar'}
                       >
-                        {song.status === 'published' ? <Globe className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4" />}
+                        {pendingSongId === song.id ? <LoaderCircle className="w-4 h-4 animate-spin" /> : song.status === 'published' ? <Globe className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4" />}
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteSong(song.id, song.title)}
+                        onClick={() => requestDeleteSong(song)}
+                        disabled={pendingSongId === song.id}
                         aria-label={`Excluir ${song.title}`}
-                        className="p-1.5 text-slate-400 hover:text-red-400"
+                        className="p-1.5 text-slate-400 hover:text-red-400 disabled:cursor-wait disabled:opacity-50"
                         title="Excluir"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -477,6 +527,15 @@ export const MySongsTab: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {songToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-song-title">
+          <div className="w-full max-w-md rounded-3xl border border-red-500/30 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-start gap-3"><div className="rounded-xl bg-red-500/10 p-2 text-red-400"><AlertTriangle className="h-5 w-5" /></div><div><h2 id="delete-song-title" className="font-bold text-white">Excluir música definitivamente?</h2><p className="mt-2 text-sm leading-relaxed text-slate-400">“{songToDelete.title}” será removida do catálogo. Essa ação não pode ser desfeita.</p></div></div>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setSongToDelete(null)} disabled={pendingSongId === songToDelete.id} className="rounded-xl border border-slate-700 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50">Cancelar</button><button type="button" onClick={() => void confirmDeleteSong()} disabled={pendingSongId === songToDelete.id} className="flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-400 disabled:cursor-wait disabled:opacity-60">{pendingSongId === songToDelete.id && <LoaderCircle className="h-4 w-4 animate-spin" />}Excluir música</button></div>
           </div>
         </div>
       )}
