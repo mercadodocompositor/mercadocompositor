@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Song, SongStatus } from '../../types';
@@ -19,7 +19,9 @@ import {
   Radio,
   X,
   LoaderCircle,
-  AlertTriangle
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { APP_URL } from '../../config/appConfig';
 
@@ -38,7 +40,7 @@ const songStatusClass: Record<SongStatus, string> = {
 
 export const MySongsTab: React.FC = () => {
   const navigate = useNavigate();
-  const { profile, songs, requests, releases, subscription, deleteSong, updateSong, platformSettings, isAdminAuthenticated } = useApp();
+  const { profile, songs, requests, releases, subscription, deleteSong, updateSong, queryMySongs, platformSettings, isAdminAuthenticated } = useApp();
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,37 +52,36 @@ export const MySongsTab: React.FC = () => {
   const [notice, setNotice] = useState<Notice>(null);
   const [pendingSongId, setPendingSongId] = useState<string | null>(null);
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSongs, setPageSongs] = useState<Song[]>(songs.slice(0, 12));
+  const [totalSongs, setTotalSongs] = useState(0);
+  const [isPageLoading, setIsPageLoading] = useState(true);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [catalogStats, setCatalogStats] = useState({ published: 0, drafts: 0, pending: 0, rejected: 0, plays: 0, interests: 0, genres: [] as string[] });
+  const pageSize = 12;
 
   // Available genres from current songs
-  const genresList = useMemo(() => Array.from(new Set<string>(songs.map(song => song.genre))).sort((a, b) => a.localeCompare(b, 'pt-BR')), [songs]);
+  const genresList = useMemo(() => [...catalogStats.genres].sort((a, b) => a.localeCompare(b, 'pt-BR')), [catalogStats.genres]);
+  const filteredSongs = pageSongs;
+  const totalPages = Math.max(1, Math.ceil(totalSongs / pageSize));
+  const catalogTotal = catalogStats.published + catalogStats.drafts + catalogStats.pending + catalogStats.rejected;
 
-  // Filter logic
-  const normalize = (value: string) => value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-  const filteredSongs = useMemo(() => songs.filter(song => {
-    const normalizedSearch = normalize(searchTerm);
-    const matchesSearch = [song.title, song.authors, song.genre, song.subgenre || '', song.registryCode || '']
-      .some(value => normalize(value).includes(normalizedSearch));
-    const matchesGenre = genreFilter === 'all' || song.genre === genreFilter;
-    const matchesStatus = statusFilter === 'all' || song.status === statusFilter;
-    return matchesSearch && matchesGenre && matchesStatus;
-  }).sort((a, b) => {
-    if (sortBy === 'plays') return b.playCount - a.playCount;
-    if (sortBy === 'interest') return b.interestedCount - a.interestedCount;
-    if (sortBy === 'title') return a.title.localeCompare(b.title, 'pt-BR');
-    return b.dateRegistered.localeCompare(a.dateRegistered);
-  }), [genreFilter, searchTerm, songs, sortBy, statusFilter]);
-
-  const catalogStats = useMemo(() => ({
-    published: songs.filter(song => song.status === 'published').length,
-    drafts: songs.filter(song => song.status === 'draft').length,
-    pending: songs.filter(song => song.status === 'pending_approval').length,
-    plays: songs.reduce((total, song) => total + song.playCount, 0),
-    interests: songs.reduce((total, song) => total + song.interestedCount, 0)
-  }), [songs]);
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setIsPageLoading(true);
+      queryMySongs({ page, pageSize, search: searchTerm, genre: genreFilter, status: statusFilter, sort: sortBy })
+        .then(result => {
+          if (!active) return;
+          setPageSongs(result.songs); setTotalSongs(result.total); setCatalogStats(result.stats);
+          const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+          if (page > lastPage) setPage(lastPage);
+        })
+        .catch(() => active && setNotice({ type: 'error', message: 'Não foi possível carregar esta página do catálogo.' }))
+        .finally(() => active && setIsPageLoading(false));
+    }, searchTerm ? 300 : 0);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [genreFilter, page, queryMySongs, refreshVersion, searchTerm, sortBy, statusFilter]);
 
   const hasActiveFilters = Boolean(searchTerm) || genreFilter !== 'all' || statusFilter !== 'all';
 
@@ -88,6 +89,7 @@ export const MySongsTab: React.FC = () => {
     setSearchTerm('');
     setGenreFilter('all');
     setStatusFilter('all');
+    setPage(1);
   };
 
   const showNotice = (message: string, type: 'success' | 'error' = 'success') => {
@@ -127,6 +129,7 @@ export const MySongsTab: React.FC = () => {
     setPendingSongId(song.id);
     const deleted = await deleteSong(song.id);
     setPendingSongId(null); setSongToDelete(null);
+    if (deleted) setRefreshVersion(value => value + 1);
     showNotice(deleted ? `“${song.title}” foi excluída.` : `Não foi possível excluir “${song.title}”.`, deleted ? 'success' : 'error');
   };
 
@@ -141,6 +144,7 @@ export const MySongsTab: React.FC = () => {
     setPendingSongId(song.id);
     const updated = await updateSong(song.id, { status: newStatus });
     setPendingSongId(null);
+    if (updated) setRefreshVersion(value => value + 1);
     const successMessage = newStatus === 'published' ? `“${song.title}” foi publicada.`
       : newStatus === 'pending_approval' ? `“${song.title}” foi enviada para aprovação.`
       : `“${song.title}” foi movida para rascunho.`;
@@ -233,7 +237,7 @@ export const MySongsTab: React.FC = () => {
             aria-label="Buscar músicas"
             type="text"
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
             placeholder="Buscar por título ou autor..."
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
           />
@@ -245,7 +249,7 @@ export const MySongsTab: React.FC = () => {
           <select
             aria-label="Filtrar por gênero"
             value={genreFilter}
-            onChange={e => setGenreFilter(e.target.value)}
+            onChange={e => { setGenreFilter(e.target.value); setPage(1); }}
             className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="all">Todos os Gêneros</option>
@@ -257,7 +261,7 @@ export const MySongsTab: React.FC = () => {
           <select
             aria-label="Filtrar por status"
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
             className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="all">Todos os Status</option>
@@ -270,7 +274,7 @@ export const MySongsTab: React.FC = () => {
           <select
             aria-label="Ordenar músicas"
             value={sortBy}
-            onChange={e => setSortBy(e.target.value as typeof sortBy)}
+            onChange={e => { setSortBy(e.target.value as typeof sortBy); setPage(1); }}
             className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="recent">Mais recentes</option>
@@ -313,23 +317,25 @@ export const MySongsTab: React.FC = () => {
       </div>
 
       {/* Songs Display */}
-      {filteredSongs.length === 0 ? (
+      {isPageLoading ? (
+        <div className="flex min-h-64 items-center justify-center rounded-3xl border border-slate-800 bg-slate-900"><LoaderCircle className="h-7 w-7 animate-spin text-amber-400" /></div>
+      ) : filteredSongs.length === 0 ? (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-12 text-center space-y-4">
           <Music2 className="w-12 h-12 text-slate-600 mx-auto" />
           <h3 className="text-lg font-bold text-white">
-            {songs.length === 0 ? 'Seu catálogo ainda está vazio' : 'Nenhuma música encontrada'}
+            {catalogTotal === 0 ? 'Seu catálogo ainda está vazio' : 'Nenhuma música encontrada'}
           </h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            {songs.length === 0
+            {catalogTotal === 0
               ? 'Cadastre sua primeira composição para começar a montar o perfil público.'
               : 'Tente alterar os termos de busca ou limpar os filtros aplicados.'}
           </p>
           <button
             type="button"
-            onClick={() => songs.length === 0 ? navigate('/dashboard/musicas/nova') : clearFilters()}
+            onClick={() => catalogTotal === 0 ? navigate('/dashboard/musicas/nova') : clearFilters()}
             className="px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs"
           >
-            {songs.length === 0 ? 'Cadastrar primeira música' : 'Limpar filtros'}
+            {catalogTotal === 0 ? 'Cadastrar primeira música' : 'Limpar filtros'}
           </button>
         </div>
       ) : viewMode === 'grid' ? (
@@ -546,6 +552,19 @@ export const MySongsTab: React.FC = () => {
             </table>
           </div>
         </div>
+      )}
+
+      {!isPageLoading && totalSongs > 0 && (
+        <nav aria-label="Paginação do catálogo" className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 sm:flex-row">
+          <p className="text-xs text-slate-400">
+            Exibindo <strong className="text-white">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalSongs)}</strong> de <strong className="text-white">{totalSongs}</strong> músicas
+          </p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page === 1} className="flex items-center gap-1 rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Anterior</button>
+            <span className="min-w-24 text-center text-xs text-slate-400">Página <strong className="text-white">{page}</strong> de <strong className="text-white">{totalPages}</strong></span>
+            <button type="button" onClick={() => setPage(value => Math.min(totalPages, value + 1))} disabled={page >= totalPages} className="flex items-center gap-1 rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">Próxima<ChevronRight className="h-4 w-4" /></button>
+          </div>
+        </nav>
       )}
 
       {songToDelete && (

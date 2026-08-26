@@ -9,6 +9,18 @@ const camelSong = (r: any): Song => ({
   suggestedValue:r.suggested_value == null ? undefined : Number(r.suggested_value),
   playCount:Number(r.play_count),interestedCount:Number(r.interested_count),summary:r.summary
 });
+
+export type SongPageQuery = {
+  page: number; pageSize: number; search?: string; genre?: string;
+  status?: string; sort?: 'recent' | 'plays' | 'interest' | 'title';
+};
+export type SongCatalogStats = { published: number; drafts: number; pending: number; rejected: number; plays: number; interests: number; genres: string[] };
+
+const signOriginalAudio = async (song: Song) => {
+  if (!supabase || !song.originalAudioPath) return song;
+  const {data}=await supabase.storage.from('song-originals').createSignedUrl(song.originalAudioPath,3600);
+  return {...song,audioUrl:data?.signedUrl};
+};
 const dbSong = (s: Partial<Song>) => ({title:s.title,genre:s.genre,subgenre:s.subgenre,authors:s.authors,
   date_composed:s.dateComposed,lyrics:s.lyrics,cover_url:s.coverUrl,registry_code:s.registryCode,notes:s.notes,
   status:s.status,is_available_for_release:s.isAvailableForRelease,value_type:s.valueType,
@@ -21,7 +33,7 @@ export async function loadPrivateData(userId: string) {
   const [pub,priv,songs,requests,releases,subscription,role] = await Promise.all([
     supabase.from('profiles').select('*').eq('user_id',userId).single(),
     supabase.from('private_profiles').select('*').eq('user_id',userId).single(),
-    supabase.from('songs').select('*').eq('composer_id',userId).order('created_at',{ascending:false}),
+    supabase.from('songs').select('*').eq('composer_id',userId).order('created_at',{ascending:false}).range(0,23),
     supabase.from('interest_requests').select('*,songs(title,cover_url)').eq('composer_id',userId).order('created_at',{ascending:false}),
     supabase.from('releases').select('*').eq('composer_id',userId).order('created_at',{ascending:false}),
     supabase.from('subscriptions').select('*').eq('user_id',userId).single(),
@@ -127,6 +139,27 @@ export async function loadAdminSongs():Promise<Song[]>{
     if(!signedError)song.audioUrl=signed?.signedUrl;
   }));
   return mapped;
+}
+export async function loadMySongsPage(userId:string,params:SongPageQuery):Promise<{songs:Song[];total:number;stats:SongCatalogStats}>{
+  if(!supabase)throw new Error('Supabase não configurado.');
+  const page=Math.max(1,params.page);const pageSize=Math.max(1,Math.min(params.pageSize,48));
+  let query=supabase.from('songs').select('*',{count:'exact'}).eq('composer_id',userId);
+  const search=(params.search||'').trim().replace(/[^\p{L}\p{N}\s-]/gu,' ').replace(/\s+/g,' ');
+  if(search)query=query.or(`title.ilike.%${search}%,authors.ilike.%${search}%,genre.ilike.%${search}%,subgenre.ilike.%${search}%,registry_code.ilike.%${search}%`);
+  if(params.genre&&params.genre!=='all')query=query.eq('genre',params.genre);
+  if(params.status&&params.status!=='all')query=query.eq('status',params.status);
+  if(params.sort==='plays')query=query.order('play_count',{ascending:false}).order('created_at',{ascending:false});
+  else if(params.sort==='interest')query=query.order('interested_count',{ascending:false}).order('created_at',{ascending:false});
+  else if(params.sort==='title')query=query.order('title',{ascending:true}).order('created_at',{ascending:false});
+  else query=query.order('created_at',{ascending:false});
+  const from=(page-1)*pageSize;
+  const [{data,error,count},{data:statsData,error:statsError}]=await Promise.all([
+    query.range(from,from+pageSize-1),supabase.rpc('get_my_song_stats')
+  ]);
+  if(error||statsError)throw(error||statsError);
+  const songs=await Promise.all((data||[]).map(camelSong).map(signOriginalAudio));
+  const raw=statsData||{};
+  return{songs,total:count||0,stats:{published:Number(raw.published||0),drafts:Number(raw.drafts||0),pending:Number(raw.pending||0),rejected:Number(raw.rejected||0),plays:Number(raw.plays||0),interests:Number(raw.interests||0),genres:Array.isArray(raw.genres)?raw.genres:[]}};
 }
 export async function adminSetSubscription(userId:string,status:SubscriptionStatus){if(!supabase)return;const{error}=await supabase.from('subscriptions').update({status,updated_at:new Date().toISOString()}).eq('user_id',userId);if(error)throw error;}
 export async function adminSetVerified(userId:string,value:boolean){if(!supabase)return;const{error}=await supabase.from('profiles').update({is_verified:value,updated_at:new Date().toISOString()}).eq('user_id',userId);if(error)throw error;}

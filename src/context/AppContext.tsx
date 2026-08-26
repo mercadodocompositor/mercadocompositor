@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { 
   Song, 
   InterestRequest, 
@@ -15,7 +15,7 @@ import {
 import { DEFAULT_PLATFORM_SETTINGS } from '../data/platformDefaults';
 import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertRelease, insertSong, insertSystemLog, loadAdminComposers, loadAdminSongs, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, saveSubscription } from '../lib/database';
+import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertRelease, insertSong, insertSystemLog, loadAdminComposers, loadAdminSongs, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, saveSubscription, type SongCatalogStats, type SongPageQuery } from '../lib/database';
 
 type RegistrationResult = { success: boolean; needsEmailConfirmation: boolean };
 
@@ -39,6 +39,7 @@ interface AppContextType {
   addSong: (song: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>) => Promise<Song>;
   updateSong: (id: string, data: Partial<Song>) => Promise<boolean>;
   deleteSong: (id: string) => Promise<boolean>;
+  queryMySongs: (params: SongPageQuery) => Promise<{ songs: Song[]; total: number; stats: SongCatalogStats }>;
   incrementPlayCount: (songId: string) => void;
   
   requests: InterestRequest[];
@@ -273,6 +274,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
   };
+
+  const queryMySongs = useCallback(async (params: SongPageQuery) => {
+    if (!userId) throw new Error('Sua sessão expirou. Entre novamente.');
+    const result = await loadMySongsPage(userId, params);
+    setSongs(current => {
+      const byId = new Map(current.map(song => [song.id, song]));
+      result.songs.forEach(song => byId.set(song.id, song));
+      return [...byId.values()];
+    });
+    return result;
+  }, [userId]);
 
   const incrementPlayCount = (songId: string) => {
     setSongs(prev => prev.map(s => s.id === songId ? { ...s, playCount: s.playCount + 1 } : s));
@@ -575,6 +587,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addSong,
       updateSong,
       deleteSong,
+      queryMySongs,
       incrementPlayCount,
       requests,
       addInterestRequest,
