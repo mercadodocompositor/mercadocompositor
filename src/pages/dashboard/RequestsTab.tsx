@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { InterestRequest, RequestStatus, ReleaseDocument } from '../../types';
 import { LiberacaoDocumentModal } from '../../components/common/LiberacaoDocumentModal';
+import { getRequestCode } from '../../lib/identifiers';
 import { 
   MessageSquare, 
   Search, 
@@ -69,7 +70,8 @@ export const RequestsTab: React.FC = () => {
       req.songTitle,
       req.buyerCityState,
       req.buyerEmail,
-      req.cpfCnpj
+      req.cpfCnpj,
+      getRequestCode(req.id)
     ].some(value => normalize(value).includes(query));
     return matchesTab && matchesSearch;
   }).sort((a, b) => sortOrder === 'recent'
@@ -307,6 +309,7 @@ export const RequestsTab: React.FC = () => {
                         <span className="text-xs text-amber-300 font-medium">({req.buyerStageName})</span>
                       )}
                       <span className="text-[11px] text-slate-500">• {req.buyerCityState}</span>
+                      <span className="text-[11px] font-mono text-slate-500">Código: {getRequestCode(req.id)}</span>
                     </div>
 
                     <p className="text-xs text-slate-300">
@@ -366,7 +369,7 @@ export const RequestsTab: React.FC = () => {
 
             <div>
               <span className="text-[11px] text-amber-400 uppercase tracking-wider font-bold">
-                Detalhes da Solicitação #{selectedRequest.id}
+                Código da solicitação: {getRequestCode(selectedRequest.id)}
               </span>
               <h3 id="request-dialog-title" className="text-2xl font-bold text-white mt-1">
                 {selectedRequest.buyerName}{selectedRequest.buyerStageName ? ` (${selectedRequest.buyerStageName})` : ''}

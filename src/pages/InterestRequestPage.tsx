@@ -7,6 +7,7 @@ import { useApp } from '../context/AppContext';
 import { getPublicComposer } from '../lib/database';
 import type { Song } from '../types';
 import { getInterestRequestUrl, getSongUrlKey } from '../lib/urls';
+import { getRequestCode } from '../lib/identifiers';
 
 type FormData = {
   buyerName: string; buyerStageName: string; cpfCnpj: string; buyerEmail: string;
@@ -28,7 +29,7 @@ export const InterestRequestPage: React.FC = () => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [protocol, setProtocol] = useState<string | null>(null);
+  const [requestCode, setRequestCode] = useState<string | null>(null);
   const [website, setWebsite] = useState('');
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export const InterestRequestPage: React.FC = () => {
     });
     setIsSubmitting(false);
     if (!request) { setError('Não foi possível registrar a solicitação. Aguarde um momento e tente novamente.'); return; }
-    setProtocol(request.id.split('-')[0].toUpperCase());
+    setRequestCode(getRequestCode(request.id));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -90,7 +91,7 @@ export const InterestRequestPage: React.FC = () => {
   return <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col"><Navbar /><main className="flex-1 px-4 py-10 sm:py-14"><div className="mx-auto max-w-6xl">
     <Link to={backUrl} className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white"><ArrowLeft className="h-4 w-4" />Voltar para a música</Link>
 
-    {protocol ? <section className="mx-auto mt-10 max-w-2xl rounded-3xl border border-emerald-500/30 bg-slate-900 p-8 text-center shadow-2xl"><CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" /><p className="mt-5 text-xs font-bold uppercase tracking-[.2em] text-emerald-400">Solicitação registrada</p><h1 className="mt-2 text-3xl font-bold text-white">Seu interesse foi enviado</h1><p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-slate-400">O compositor recebeu os dados da proposta e poderá entrar em contato pelos canais informados.</p><div className="mx-auto mt-6 max-w-xs rounded-2xl border border-slate-700 bg-slate-950 p-4"><span className="block text-[11px] uppercase tracking-wider text-slate-500">Protocolo</span><strong className="mt-1 block font-mono text-xl text-amber-400">{protocol}</strong></div><Link to={backUrl} className="mt-7 inline-flex rounded-xl bg-amber-500 px-6 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400">Voltar ao catálogo</Link></section> :
+    {requestCode ? <section className="mx-auto mt-10 max-w-2xl rounded-3xl border border-emerald-500/30 bg-slate-900 p-8 text-center shadow-2xl"><CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" /><p className="mt-5 text-xs font-bold uppercase tracking-[.2em] text-emerald-400">Solicitação registrada</p><h1 className="mt-2 text-3xl font-bold text-white">Seu interesse foi enviado</h1><p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-slate-400">O compositor recebeu os dados da proposta e poderá entrar em contato pelos canais informados.</p><div className="mx-auto mt-6 max-w-xs rounded-2xl border border-slate-700 bg-slate-950 p-4"><span className="block text-[11px] uppercase tracking-wider text-slate-500">Código da solicitação</span><strong className="mt-1 block font-mono text-xl text-amber-400">{requestCode}</strong></div><p className="mt-3 text-xs text-slate-500">Guarde este código para identificar sua solicitação.</p><Link to={backUrl} className="mt-7 inline-flex rounded-xl bg-amber-500 px-6 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400">Voltar ao catálogo</Link></section> :
     <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
       <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-2xl sm:p-8"><p className="text-xs font-bold uppercase tracking-[.18em] text-amber-400">Solicitação de liberação de gravação</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-white">Tenho interesse em gravar esta obra</h1><p className="mt-2 text-sm leading-relaxed text-slate-400">Informe seus dados e os detalhes do projeto. O envio não gera cobrança nem autorização automática.</p>
         {error && <div role="alert" className="mt-5 flex gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"><AlertCircle className="h-5 w-5 shrink-0" />{error}</div>}
