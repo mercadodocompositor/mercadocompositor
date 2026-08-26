@@ -24,6 +24,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { APP_URL } from '../../config/appConfig';
+import { getSongToggleStatus } from '../../lib/songWorkflow';
 
 type Notice = { type: 'success' | 'error'; message: string } | null;
 
@@ -138,9 +139,7 @@ export const MySongsTab: React.FC = () => {
       showNotice('Complete título, letra, áudio original e prévia pública antes de publicar.', 'error');
       return;
     }
-    const newStatus: SongStatus = song.status === 'published' || song.status === 'pending_approval'
-      ? 'draft'
-      : platformSettings.requireApprovalForNewSongs && !isAdminAuthenticated ? 'pending_approval' : 'published';
+    const newStatus = getSongToggleStatus(song.status, platformSettings.requireApprovalForNewSongs, isAdminAuthenticated);
     setPendingSongId(song.id);
     const updated = await updateSong(song.id, { status: newStatus });
     setPendingSongId(null);

@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { ValueType, SongStatus } from '../../types';
 import { APP_CONFIG } from '../../config/appConfig';
 import { removeCurrentUserStorageFiles, uploadCurrentUserFile } from '../../lib/database';
+import { getSongSaveStatus } from '../../lib/songWorkflow';
 import { 
   Music2, 
   Upload, 
@@ -190,11 +191,7 @@ export const AddSongTab: React.FC = () => {
 
       const storedCover = coverFile ? await uploadCurrentUserFile('song-covers',coverFile) : (coverUrl || defaultCoverUrl);
       if (coverFile && storedCover) newUploads.push({ bucket: 'song-covers', value: storedCover });
-      const effectiveStatus: SongStatus = status === 'draft'
-        ? 'draft'
-        : existingSong?.status === 'published'
-          ? 'published'
-          : platformSettings.requireApprovalForNewSongs && !isAdminAuthenticated ? 'pending_approval' : 'published';
+      const effectiveStatus = getSongSaveStatus(status, existingSong?.status, platformSettings.requireApprovalForNewSongs, isAdminAuthenticated);
       const songData = {
         title,
         genre,
