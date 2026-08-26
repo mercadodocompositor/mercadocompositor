@@ -119,8 +119,8 @@ export const MySongsTab: React.FC = () => {
   };
 
   const toggleStatus = async (song: Song) => {
-    if (song.status === 'draft' && (!song.title.trim() || !song.lyrics.trim() || !song.audioUrl)) {
-      showNotice('Complete título, letra e áudio antes de publicar.', 'error');
+    if (song.status === 'draft' && (!song.title.trim() || !song.lyrics.trim() || !song.audioUrl || !song.previewAudioUrl)) {
+      showNotice('Complete título, letra, áudio original e prévia pública antes de publicar.', 'error');
       return;
     }
     const newStatus = song.status === 'published' ? 'draft' : 'published';
@@ -357,7 +357,10 @@ export const MySongsTab: React.FC = () => {
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <span className={`px-2 py-1 rounded-lg text-[11px] ${song.audioUrl ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
-                      {song.audioUrl ? 'Áudio disponível' : 'Sem áudio'}
+                      {song.audioUrl ? 'Original protegido' : 'Sem original'}
+                    </span>
+                    <span className={`px-2 py-1 rounded-lg text-[11px] ${song.previewAudioUrl ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
+                      {song.previewAudioUrl ? 'Prévia pública pronta' : 'Sem prévia pública'}
                     </span>
                     <span className={`px-2 py-1 rounded-lg text-[11px] ${song.isAvailableForRelease ? 'bg-blue-500/10 text-blue-300' : 'bg-slate-800 text-slate-400'}`}>
                       {song.isAvailableForRelease ? 'Aceita propostas' : 'Indisponível para liberação'}

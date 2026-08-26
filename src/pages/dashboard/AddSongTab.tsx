@@ -20,6 +20,15 @@ import {
   X
 } from 'lucide-react';
 
+const getAudioDuration = (file: File) => new Promise<number>((resolve, reject) => {
+  const url = URL.createObjectURL(file);
+  const audio = new Audio();
+  audio.preload = 'metadata';
+  audio.onloadedmetadata = () => { const duration = audio.duration; URL.revokeObjectURL(url); resolve(duration); };
+  audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível ler a duração da prévia.')); };
+  audio.src = url;
+});
+
 export const AddSongTab: React.FC = () => {
   const navigate = useNavigate();
   const { songId } = useParams();
@@ -45,6 +54,9 @@ export const AddSongTab: React.FC = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
   const [audioRemoved, setAudioRemoved] = useState(false);
+  const [previewFileName, setPreviewFileName] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [coverFileName, setCoverFileName] = useState<string | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverUrl, setCoverUrl] = useState(existingSong?.coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80');
@@ -54,6 +66,7 @@ export const AddSongTab: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
 
   const activeAudioUrl = audioObjectUrl || (!audioRemoved ? existingSong?.audioUrl : undefined);
+  const activePreviewUrl = previewObjectUrl || existingSong?.previewAudioUrl;
   const defaultCoverUrl = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80';
 
   const processAudioFile = (file: File) => {
@@ -83,6 +96,25 @@ export const AddSongTab: React.FC = () => {
     setFormError(null);
   };
 
+  const processPreviewFile = async (file: File) => {
+    const validExtension = /\.(mp3|m4a|aac|ogg)$/i.test(file.name);
+    if ((!file.type.startsWith('audio/') && !validExtension) || file.size > 10 * 1024 * 1024) {
+      setFormError('Selecione uma prévia MP3, M4A, AAC ou OGG com no máximo 10 MB.');
+      return;
+    }
+    try {
+      const duration = await getAudioDuration(file);
+      if (!Number.isFinite(duration) || duration > 35.5) {
+        setFormError('A prévia pública deve ter no máximo 35 segundos.');
+        return;
+      }
+      if (previewObjectUrl?.startsWith('blob:')) URL.revokeObjectURL(previewObjectUrl);
+      setPreviewFileName(file.name); setPreviewFile(file); setPreviewObjectUrl(URL.createObjectURL(file)); setFormError(null);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Não foi possível validar a prévia.');
+    }
+  };
+
   const handleSimulateAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processAudioFile(e.target.files[0]);
@@ -95,11 +127,17 @@ export const AddSongTab: React.FC = () => {
     }
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>, kind: 'audio' | 'cover') => {
+  const handlePreviewUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) void processPreviewFile(file);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>, kind: 'audio' | 'preview' | 'cover') => {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (!file) return;
     if (kind === 'audio') processAudioFile(file);
+    else if (kind === 'preview') void processPreviewFile(file);
     else processCoverFile(file);
   };
 
@@ -126,6 +164,11 @@ export const AddSongTab: React.FC = () => {
       return;
     }
 
+    if (status === 'published' && !activePreviewUrl) {
+      setFormError('Adicione uma prévia pública de até 35 segundos antes de publicar.');
+      return;
+    }
+
     const currentPlan = APP_CONFIG.plans.find(plan => plan.name === subscription.planName) || APP_CONFIG.plans[0];
     if (!isEditing && currentPlan.maxSongs && songs.length >= currentPlan.maxSongs) {
       setFormError(`O ${currentPlan.name} permite até ${currentPlan.maxSongs} músicas. Altere seu plano para ampliar o catálogo.`);
@@ -136,6 +179,7 @@ export const AddSongTab: React.FC = () => {
 
     try {
       const storedAudio = audioFile ? await uploadCurrentUserFile('song-originals',audioFile) : activeAudioUrl;
+      const storedPreview = previewFile ? await uploadCurrentUserFile('song-previews',previewFile) : activePreviewUrl;
       const storedCover = coverFile ? await uploadCurrentUserFile('song-covers',coverFile) : (coverUrl || defaultCoverUrl);
       const songData = {
         title,
@@ -152,10 +196,14 @@ export const AddSongTab: React.FC = () => {
         valueType,
         suggestedValue: valueType === 'suggested' && suggestedValue ? Number(suggestedValue) : undefined,
         audioUrl: storedAudio,
+        previewAudioUrl: storedPreview,
         summary: lyrics.length > 120 ? `${lyrics.slice(0, 120)}...` : lyrics
     };
 
-    if (existingSong) updateSong(existingSong.id, songData);
+    if (existingSong) {
+      const updated = await updateSong(existingSong.id, songData);
+      if (!updated) throw new Error('Não foi possível salvar as alterações da música.');
+    }
     else addSong(songData);
 
     setIsSubmitting(false);
@@ -324,8 +372,8 @@ export const AddSongTab: React.FC = () => {
             />
           </div>
 
-          {/* Drag and Drop File Upload Simulations required by Section 7 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Uploads permanentes para Storage */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             
             {/* Audio Upload */}
             <div
@@ -349,6 +397,26 @@ export const AddSongTab: React.FC = () => {
               <p className="text-[11px] text-slate-500">
                 MP3, WAV, M4A, AAC ou OGG, até 25 MB.
               </p>
+            </div>
+
+            {/* Public Preview Upload */}
+            <div
+              onDragOver={event => event.preventDefault()}
+              onDrop={event => handleDrop(event, 'preview')}
+              className="bg-slate-950 border-2 border-dashed border-slate-800 hover:border-emerald-500/50 rounded-2xl p-6 text-center space-y-2 transition relative"
+            >
+              <input
+                type="file"
+                accept="audio/mpeg,audio/mp4,audio/aac,audio/ogg,.mp3,.m4a,.aac,.ogg"
+                aria-label="Selecionar prévia pública de áudio"
+                onChange={handlePreviewUpload}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
+                <Disc className="w-6 h-6" />
+              </div>
+              <h4 className="font-bold text-white text-xs">{previewFileName || 'Selecione a prévia pública'}</h4>
+              <p className="text-[11px] text-slate-500">Trecho de até 35 segundos e 10 MB. Será ouvido no perfil público.</p>
             </div>
 
             {/* Cover Upload */}
@@ -377,8 +445,8 @@ export const AddSongTab: React.FC = () => {
 
           </div>
 
-          {(activeAudioUrl || coverUrl) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {(activeAudioUrl || activePreviewUrl || coverUrl) && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-slate-300">Prévia do áudio</span>
@@ -405,6 +473,11 @@ export const AddSongTab: React.FC = () => {
               </div>
 
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-300">Prévia pública (máx. 35s)</span>{previewObjectUrl && <button type="button" onClick={() => { URL.revokeObjectURL(previewObjectUrl); setPreviewObjectUrl(null); setPreviewFile(null); setPreviewFileName(null); }} className="text-xs text-red-400 hover:text-red-300">Remover</button>}</div>
+                {activePreviewUrl ? <audio controls src={activePreviewUrl} className="w-full h-10" aria-label="Prévia pública selecionada" /> : <p className="text-xs text-slate-500">Nenhuma prévia pública selecionada.</p>}
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-slate-300">Prévia da capa</span>
                   {coverUrl !== defaultCoverUrl && (
@@ -426,10 +499,10 @@ export const AddSongTab: React.FC = () => {
             </div>
           )}
 
-          {(audioObjectUrl?.startsWith('blob:') || coverUrl.startsWith('blob:')) && (
+          {(audioObjectUrl?.startsWith('blob:') || previewObjectUrl?.startsWith('blob:') || coverUrl.startsWith('blob:')) && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Os arquivos selecionados são temporários e deixarão de funcionar após recarregar a página. O armazenamento permanente será ativado com o backend.</span>
+              <span>Os arquivos selecionados serão enviados ao armazenamento permanente quando você salvar a música.</span>
             </div>
           )}
 
