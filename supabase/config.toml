@@ -2,7 +2,11 @@
 site_url = "https://mercadodocompositor.com.br/"
 additional_redirect_urls = [
   "http://localhost:3000/autenticacao",
-  "https://mercadodocompositor.com.br/autenticacao"
+  "http://localhost:3000/autenticacao?confirmado=1",
+  "http://localhost:3000/autenticacao?modo=new-password",
+  "https://mercadodocompositor.com.br/autenticacao",
+  "https://mercadodocompositor.com.br/autenticacao?confirmado=1",
+  "https://mercadodocompositor.com.br/autenticacao?modo=new-password"
 ]
 
 [auth.email]
@@ -14,6 +18,9 @@ otp_length = 8
 [auth.mfa.totp]
 enroll_enabled = true
 verify_enabled = true
+
+[auth.rate_limit]
+email_sent = 30
 
 [functions.send-auth-email]
 verify_jwt = false
