@@ -68,7 +68,25 @@ export async function saveSubscription(s:Subscription){if(!supabase)return;const
 export async function insertRelease(userId:string,r:ReleaseDocument){if(!supabase)return;const {error}=await supabase.from('releases').insert({id:r.id,request_id:r.requestId,composer_id:userId,song_id:r.songId,song_title:r.songTitle,authors:r.authors,composer_name:r.composerName,composer_cpf:r.composerCpf,composer_city_state:r.composerCityState,buyer_name:r.buyerName,buyer_document:r.buyerDocument,buyer_city_state:r.buyerCityState,agreed_value:r.agreedValue,authorized_purpose:r.authorizedPurpose,release_type:r.releaseType,issue_date:r.issueDate,additional_conditions:r.additionalConditions,digital_signature:r.digitalSignature,document_code:r.documentCode});if(error)throw error;}
 export async function getPublicComposer(username:string){if(!supabase)return null;const {data,error}=await supabase.rpc('get_public_composer',{p_username:username});if(error)throw error;return data as {profile:ComposerProfile;songs:Song[];subscriptionStatus:Subscription['status']}|null;}
 export async function getFeaturedComposers(){if(!supabase)return[];const{data,error}=await supabase.rpc('get_featured_composers',{p_limit:6});if(error)throw error;return(data||[]) as FeaturedComposer[];}
-export async function uploadFile(bucket:string,userId:string,file:File){if(!supabase)throw new Error('Supabase não configurado.');const ext=file.name.split('.').pop()?.toLowerCase()||'bin';const path=`${userId}/${crypto.randomUUID()}.${ext}`;const {error}=await supabase.storage.from(bucket).upload(path,file,{contentType:file.type,upsert:false});if(error)throw error;if(bucket==='song-originals'||bucket==='release-documents')return path;return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;}
+export async function uploadFile(bucket:string,userId:string,file:File){
+  if(!supabase)throw new Error('Supabase não configurado.');
+  const ext=file.name.split('.').pop()?.toLowerCase()||'bin';
+  const path=`${userId}/${crypto.randomUUID()}.${ext}`;
+  const {error:uploadError}=await supabase.storage.from('media-quarantine').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+  if(uploadError)throw uploadError;
+  const {data,error}=await supabase.functions.invoke('validate-media-upload',{body:{path,targetBucket:bucket}});
+  if(error){
+    await supabase.storage.from('media-quarantine').remove([path]);
+    let message='Não foi possível validar o arquivo.';
+    try {
+      const response=(error as {context?:Response}).context;
+      if(response){const details=await response.clone().json();message=details?.message||message;}
+    } catch { /* Mantém a mensagem segura para o usuário. */ }
+    throw new Error(message);
+  }
+  if(!data?.value)throw new Error('A validação do arquivo não retornou um caminho seguro.');
+  return data.value as string;
+}
 export async function uploadCurrentUserFile(bucket:string,file:File){if(!supabase)throw new Error('Supabase não configurado.');const {data}=await supabase.auth.getUser();if(!data.user)throw new Error('Sessão expirada. Entre novamente.');return uploadFile(bucket,data.user.id,file);}
 
 const storagePathFromValue = (bucket: string, value?: string | null) => {

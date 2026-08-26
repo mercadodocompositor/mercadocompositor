@@ -193,3 +193,4 @@ create policy "private media owner read" on storage.objects for select to authen
 -- Esse arquivo adiciona validações de publicação, limite do catálogo,
 -- preservação de histórico e restrições de tipo/tamanho no Storage.
 -- Para ativar a fila de moderação, execute depois supabase/approval_workflow.sql.
+-- Para ativar uploads validados no servidor, execute supabase/media_validation.sql.
