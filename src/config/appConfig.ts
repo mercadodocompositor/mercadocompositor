@@ -1,6 +1,7 @@
 const configuredAppUrl = import.meta.env.VITE_APP_URL?.trim().replace(/\/$/, '');
 
 export const APP_URL = configuredAppUrl || window.location.origin;
+export const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_GOOGLE_AUTH_ENABLED === 'true';
 
 export const APP_CONFIG = {
   name: "Mercado do Compositor",

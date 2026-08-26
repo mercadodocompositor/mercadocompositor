@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, LoaderCircle, Lock, Mail, Mic2, ShieldCheck, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { GOOGLE_AUTH_ENABLED } from '../config/appConfig';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'new-password' | 'admin';
 type Notice = { type: 'success' | 'error'; text: string } | null;
@@ -159,7 +160,7 @@ export const LoginPage: React.FC = () => {
 
         {(mode === 'login' || mode === 'register') && <div className="grid grid-cols-2 p-1 bg-slate-900 border border-slate-800 rounded-2xl"><button onClick={() => changeMode('login')} className={`py-2.5 rounded-xl text-xs font-bold ${mode === 'login' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>Entrar</button><button onClick={() => changeMode('register')} className={`py-2.5 rounded-xl text-xs font-bold ${mode === 'register' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>Criar conta</button></div>}
 
-        {(mode === 'login' || mode === 'register') && <><button type="button" onClick={googleLogin} disabled={loading} className="w-full py-3 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-60 text-slate-900 font-semibold text-sm flex items-center justify-center gap-3"><GoogleIcon />Continuar com Google</button><div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-600"><span className="h-px flex-1 bg-slate-800" /><span>ou use seu e-mail</span><span className="h-px flex-1 bg-slate-800" /></div></>}
+        {GOOGLE_AUTH_ENABLED && (mode === 'login' || mode === 'register') && <><button type="button" onClick={googleLogin} disabled={loading} className="w-full py-3 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-60 text-slate-900 font-semibold text-sm flex items-center justify-center gap-3"><GoogleIcon />Continuar com Google</button><div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-600"><span className="h-px flex-1 bg-slate-800" /><span>ou use seu e-mail</span><span className="h-px flex-1 bg-slate-800" /></div></>}
 
         <form onSubmit={submit} className="space-y-4">
           {mode === 'register' && <><Field icon={<User />} label="Nome completo" value={fullName} onChange={setFullName} autoComplete="name" /><Field icon={<Mic2 />} label="Nome artístico (opcional)" value={stageName} onChange={setStageName} autoComplete="nickname" /><Field icon={<User />} label="WhatsApp (opcional)" value={whatsapp} onChange={setWhatsapp} autoComplete="tel" /></>}
