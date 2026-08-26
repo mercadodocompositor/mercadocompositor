@@ -187,11 +187,12 @@ export const OverviewTab: React.FC = () => {
                     <td className="px-6 py-4 text-xs">{song.genre}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        song.status === 'published'
-                          ? 'bg-emerald-100 text-emerald-700' 
+                        song.status === 'published' ? 'bg-emerald-100 text-emerald-700'
+                          : song.status === 'pending_approval' ? 'bg-amber-100 text-amber-700'
+                          : song.status === 'rejected' ? 'bg-red-100 text-red-700'
                           : 'bg-slate-100 text-slate-600'
                       }`}>
-                        {song.status === 'published' ? 'Publicada' : 'Rascunho'}
+                        {song.status === 'published' ? 'Publicada' : song.status === 'pending_approval' ? 'Em análise' : song.status === 'rejected' ? 'Rejeitada' : 'Rascunho'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-xs font-semibold text-slate-700">{song.playCount} plays</td>

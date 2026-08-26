@@ -7,6 +7,7 @@ import {
   Subscription, 
   SubscriptionStatus, 
   RequestStatus,
+  SongStatus,
   AdminComposer,
   PlatformSettings,
   SystemLog
@@ -14,7 +15,7 @@ import {
 import { DEFAULT_PLATFORM_SETTINGS } from '../data/platformDefaults';
 import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertRelease, insertSong, insertSystemLog, loadAdminComposers, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, saveSubscription } from '../lib/database';
+import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertRelease, insertSong, insertSystemLog, loadAdminComposers, loadAdminSongs, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, saveSubscription } from '../lib/database';
 
 type RegistrationResult = { success: boolean; needsEmailConfirmation: boolean };
 
@@ -68,6 +69,8 @@ interface AppContextType {
   adminLogout: () => void;
   
   adminComposers: AdminComposer[];
+  adminSongs: Song[];
+  moderateSong: (songId: string, status: Extract<SongStatus, 'published' | 'rejected' | 'draft'>) => Promise<boolean>;
   updateAdminComposerStatus: (composerId: string, status: SubscriptionStatus) => void;
   toggleComposerVerified: (composerId: string) => void;
   deleteAdminComposer: (composerId: string) => void;
@@ -131,13 +134,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       try {
-        const data = await loadPrivateData(sessionUserId);
+        const [data, settings] = await Promise.all([loadPrivateData(sessionUserId), loadPlatformSettings()]);
         setProfile(data.profile); setSongs(data.songs); setRequests(data.requests);
         setReleases(data.releases); setSubscription(data.subscription);
+        setPlatformSettings(settings);
         setIsAdminAuthenticated(data.isAdmin);
         if(data.isAdmin) {
-          const [composers,settings,logs]=await Promise.all([loadAdminComposers(),loadPlatformSettings(),loadSystemLogs()]);
-          setAdminComposers(composers);setPlatformSettings(settings);setSystemLogs(logs);
+          const [composers,allSongs,logs]=await Promise.all([loadAdminComposers(),loadAdminSongs(),loadSystemLogs()]);
+          setAdminComposers(composers);setAdminSongs(allSongs);setSystemLogs(logs);
         }
       } catch (error) { setAuthError(error instanceof Error ? error.message : 'Falha ao carregar os dados.'); }
       setAuthLoading(false);
@@ -161,6 +165,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [adminComposers, setAdminComposers] = useState<AdminComposer[]>(() => {
     return [];
   });
+
+  const [adminSongs, setAdminSongs] = useState<Song[]>([]);
 
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>(() => {
     return DEFAULT_PLATFORM_SETTINGS;
@@ -538,6 +544,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void adminFeatureSong(songId,nextValue).catch(e=>setAuthError(e.message));
   };
 
+  const moderateSong = async (songId: string, status: Extract<SongStatus, 'published' | 'rejected' | 'draft'>) => {
+    const previous = adminSongs.find(song => song.id === songId);
+    if (!previous) return false;
+    setAdminSongs(current => current.map(song => song.id === songId ? { ...song, status } : song));
+    try {
+      await saveSong(songId, { status });
+      setSongs(current => current.map(song => song.id === songId ? { ...song, status } : song));
+      addSystemLog({
+        category: 'moderation',
+        title: status === 'published' ? 'Música aprovada' : status === 'rejected' ? 'Música rejeitada' : 'Música retirada do catálogo',
+        description: `A composição "${previous.title}" teve o status alterado para ${status}.`,
+        user: profile.email || 'Administrador',
+        ip: '',
+        status: status === 'published' ? 'success' : 'warning'
+      });
+      return true;
+    } catch (error) {
+      setAdminSongs(current => current.map(song => song.id === songId ? previous : song));
+      setAuthError(error instanceof Error ? error.message : 'Não foi possível moderar a música.');
+      return false;
+    }
+  };
+
   return (
     <AppContext.Provider value={{
       profile,
@@ -571,6 +600,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       adminLogin,
       adminLogout,
       adminComposers,
+      adminSongs,
+      moderateSong,
       updateAdminComposerStatus,
       toggleComposerVerified,
       deleteAdminComposer,

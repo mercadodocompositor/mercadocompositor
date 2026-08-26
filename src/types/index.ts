@@ -1,8 +1,9 @@
-export type SongStatus = 'draft' | 'published';
+export type SongStatus = 'draft' | 'pending_approval' | 'published' | 'rejected';
 export type ValueType = 'suggested' | 'consultation';
 
 export interface Song {
   id: string;
+  composerId?: string;
   title: string;
   genre: string;
   subgenre?: string;

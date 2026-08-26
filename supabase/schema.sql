@@ -27,7 +27,7 @@ create table if not exists public.songs (
   title text not null, genre text not null, subgenre text, authors text not null,
   date_composed date not null, date_registered date not null default current_date, lyrics text not null,
   cover_url text not null default '', registry_code text, notes text,
-  status text not null default 'draft' check(status in ('draft','published')),
+  status text not null default 'draft' check(status in ('draft','pending_approval','published','rejected')),
   is_available_for_release boolean not null default true,
   value_type text not null default 'consultation' check(value_type in ('suggested','consultation')),
   suggested_value numeric(12,2), play_count bigint not null default 0, interested_count bigint not null default 0,
@@ -192,3 +192,4 @@ create policy "private media owner read" on storage.objects for select to authen
 -- Depois do schema base, execute também supabase/production_hardening.sql.
 -- Esse arquivo adiciona validações de publicação, limite do catálogo,
 -- preservação de histórico e restrições de tipo/tamanho no Storage.
+-- Para ativar a fila de moderação, execute depois supabase/approval_workflow.sql.

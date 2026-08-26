@@ -32,7 +32,7 @@ const getAudioDuration = (file: File) => new Promise<number>((resolve, reject) =
 export const AddSongTab: React.FC = () => {
   const navigate = useNavigate();
   const { songId } = useParams();
-  const { profile, songs, subscription, addSong, updateSong } = useApp();
+  const { profile, songs, subscription, addSong, updateSong, platformSettings, isAdminAuthenticated } = useApp();
   const existingSong = songId ? songs.find(song => song.id === songId) : undefined;
   const isEditing = Boolean(songId);
 
@@ -62,6 +62,7 @@ export const AddSongTab: React.FC = () => {
   const [coverUrl, setCoverUrl] = useState(existingSong?.coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80');
 
   const [successMessage, setSuccessMessage] = useState(false);
+  const [savedStatus, setSavedStatus] = useState<SongStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -159,12 +160,12 @@ export const AddSongTab: React.FC = () => {
       return;
     }
 
-    if (status === 'published' && !activeAudioUrl) {
+    if (status !== 'draft' && !activeAudioUrl) {
       setFormError('Adicione um áudio antes de publicar. Você pode salvar a música como rascunho sem áudio.');
       return;
     }
 
-    if (status === 'published' && !activePreviewUrl) {
+    if (status !== 'draft' && !activePreviewUrl) {
       setFormError('Adicione uma prévia pública de até 35 segundos antes de publicar.');
       return;
     }
@@ -189,6 +190,11 @@ export const AddSongTab: React.FC = () => {
 
       const storedCover = coverFile ? await uploadCurrentUserFile('song-covers',coverFile) : (coverUrl || defaultCoverUrl);
       if (coverFile && storedCover) newUploads.push({ bucket: 'song-covers', value: storedCover });
+      const effectiveStatus: SongStatus = status === 'draft'
+        ? 'draft'
+        : existingSong?.status === 'published'
+          ? 'published'
+          : platformSettings.requireApprovalForNewSongs && !isAdminAuthenticated ? 'pending_approval' : 'published';
       const songData = {
         title,
         genre,
@@ -199,7 +205,7 @@ export const AddSongTab: React.FC = () => {
         coverUrl: storedCover,
         registryCode,
         notes,
-        status,
+        status: effectiveStatus,
         isAvailableForRelease,
         valueType,
         suggestedValue: valueType === 'suggested' && suggestedValue ? Number(suggestedValue) : undefined,
@@ -216,6 +222,7 @@ export const AddSongTab: React.FC = () => {
     else await addSong(songData);
 
     setIsSubmitting(false);
+    setSavedStatus(effectiveStatus);
     setSuccessMessage(true);
 
     setTimeout(() => navigate('/dashboard/musicas'), 800);
@@ -270,7 +277,7 @@ export const AddSongTab: React.FC = () => {
         {successMessage && (
           <div role="status" className="p-4 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl text-emerald-300 text-sm font-bold flex items-center gap-3 animate-fadeIn">
             <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
-            <span>{isEditing ? 'Música atualizada' : 'Música cadastrada'} com sucesso. Redirecionando para o seu catálogo...</span>
+            <span>{savedStatus === 'pending_approval' ? 'Música enviada para aprovação. Ela será publicada após a análise do administrador.' : `${isEditing ? 'Música atualizada' : 'Música cadastrada'} com sucesso. Redirecionando para o seu catálogo...`}</span>
           </div>
         )}
 
@@ -588,11 +595,11 @@ export const AddSongTab: React.FC = () => {
                   <input
                     type="radio"
                     name="status"
-                    checked={status === 'published'}
+                    checked={status !== 'draft'}
                     onChange={() => setStatus('published')}
                     className="text-amber-500 focus:ring-amber-500"
                   />
-                  <span className="text-white font-medium">Publicada no Perfil</span>
+                  <span className="text-white font-medium">{platformSettings.requireApprovalForNewSongs && !isAdminAuthenticated ? 'Enviar para aprovação' : 'Publicar no perfil'}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">

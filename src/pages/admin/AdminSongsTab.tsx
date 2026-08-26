@@ -20,9 +20,8 @@ import {
 
 export const AdminSongsTab: React.FC = () => {
   const { 
-    songs, 
-    updateSong, 
-    deleteSong, 
+    adminSongs: songs,
+    moderateSong,
     featuredSongIds, 
     toggleFeatureSong, 
     adminComposers,
@@ -34,6 +33,7 @@ export const AdminSongsTab: React.FC = () => {
   const [genreFilter, setGenreFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [pendingSongId, setPendingSongId] = useState<string | null>(null);
 
   // Audio Playback state
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
@@ -81,13 +81,21 @@ export const AdminSongsTab: React.FC = () => {
     toggleFeatureSong(song.id);
   };
 
-  const handlePublicationToggle = (song: Song) => {
-    if (song.status === 'draft' && (!song.audioUrl || !song.lyrics.trim())) {
-      window.alert('A música precisa de áudio e letra antes de ser publicada.');
+  const handlePublicationToggle = async (song: Song) => {
+    if (song.status !== 'published' && (!song.audioUrl || !song.previewAudioUrl || !song.lyrics.trim())) {
+      window.alert('A música precisa de áudio original, prévia pública e letra antes de ser aprovada.');
       return;
     }
     if (song.status === 'published' && featuredSongIds.includes(song.id)) toggleFeatureSong(song.id);
-    updateSong(song.id, { status: song.status === 'published' ? 'draft' : 'published' });
+    setPendingSongId(song.id);
+    await moderateSong(song.id, song.status === 'published' ? 'draft' : 'published');
+    setPendingSongId(null);
+  };
+
+  const handleReject = async (song: Song) => {
+    setPendingSongId(song.id);
+    await moderateSong(song.id, 'rejected');
+    setPendingSongId(null);
   };
 
   const handleDelete = (song: Song) => {
@@ -96,7 +104,7 @@ export const AdminSongsTab: React.FC = () => {
       window.alert('Esta música possui solicitações ou liberações e não pode ser excluída.');
       return;
     }
-    if (window.confirm(`Deseja remover a composição "${song.title}" do catálogo?`)) deleteSong(song.id);
+    if (window.confirm(`Deseja rejeitar a composição "${song.title}" e removê-la do catálogo público?`)) void handleReject(song);
   };
 
   const filteredSongs = songs.filter(song => {
@@ -164,6 +172,8 @@ export const AdminSongsTab: React.FC = () => {
           >
             <option value="all">Todos os Status</option>
             <option value="published">Publicadas</option>
+            <option value="pending_approval">Aguardando aprovação</option>
+            <option value="rejected">Rejeitadas</option>
             <option value="draft">Rascunhos</option>
           </select>
         </div>
@@ -214,15 +224,7 @@ export const AdminSongsTab: React.FC = () => {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-white text-sm truncate">{song.title}</span>
-                            {song.status === 'published' ? (
-                              <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20">
-                                Pública
-                              </span>
-                            ) : (
-                              <span className="bg-slate-800 text-slate-400 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                                Rascunho
-                              </span>
-                            )}
+                            <SongStatusBadge status={song.status} />
                           </div>
                           <p className="text-[11px] text-slate-400 truncate mt-0.5">{song.summary || song.notes || "Composição com guia acústica disponível."}</p>
                           {song.registryCode && (
@@ -301,21 +303,33 @@ export const AdminSongsTab: React.FC = () => {
                         </button>
 
                         <button
-                          onClick={() => handlePublicationToggle(song)}
+                          onClick={() => void handlePublicationToggle(song)}
+                          disabled={pendingSongId === song.id}
                           className={`p-2 rounded-lg border transition ${
                             song.status === 'published'
                               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
                               : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
                           }`}
-                          title={song.status === 'published' ? "Ocultar do catálogo público" : "Publicar no catálogo"}
+                          title={song.status === 'published' ? "Retirar do catálogo público" : "Aprovar e publicar"}
                         >
-                          <Globe className="w-3.5 h-3.5" />
+                          {song.status === 'published' ? <Globe className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                         </button>
+
+                        {song.status === 'pending_approval' && (
+                          <button
+                            onClick={() => void handleReject(song)}
+                            disabled={pendingSongId === song.id}
+                            className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 transition disabled:opacity-50"
+                            title="Rejeitar e devolver ao compositor"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
                         <button
                           onClick={() => handleDelete(song)}
                           className="p-2 rounded-lg bg-slate-800 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700 transition"
-                          title="Remover música"
+                          title="Rejeitar e remover do catálogo público"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -386,4 +400,14 @@ export const AdminSongsTab: React.FC = () => {
       )}
     </div>
   );
+};
+
+const SongStatusBadge = ({ status }: { status: SongStatus }) => {
+  const meta: Record<SongStatus, { label: string; className: string }> = {
+    draft: { label: 'Rascunho', className: 'bg-slate-800 text-slate-400 border-slate-700' },
+    pending_approval: { label: 'Aguardando aprovação', className: 'bg-amber-500/10 text-amber-300 border-amber-500/30' },
+    published: { label: 'Pública', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+    rejected: { label: 'Rejeitada', className: 'bg-red-500/10 text-red-300 border-red-500/30' }
+  };
+  return <span className={`${meta[status].className} border text-[10px] font-bold px-1.5 py-0.5 rounded`}>{meta[status].label}</span>;
 };

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { Song } from '../../types';
+import { Song, SongStatus } from '../../types';
 import { MusicPlayer } from '../../components/dashboard/MusicPlayer';
 import { 
   Music2, 
@@ -25,9 +25,20 @@ import { APP_URL } from '../../config/appConfig';
 
 type Notice = { type: 'success' | 'error'; message: string } | null;
 
+const songStatusLabel: Record<SongStatus, string> = {
+  draft: 'Rascunho', pending_approval: 'Em análise', published: 'Publicada', rejected: 'Rejeitada'
+};
+
+const songStatusClass: Record<SongStatus, string> = {
+  draft: 'bg-slate-800 text-slate-400 border-slate-700',
+  pending_approval: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+  published: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+  rejected: 'bg-red-500/20 text-red-300 border-red-500/40'
+};
+
 export const MySongsTab: React.FC = () => {
   const navigate = useNavigate();
-  const { profile, songs, requests, releases, subscription, deleteSong, updateSong } = useApp();
+  const { profile, songs, requests, releases, subscription, deleteSong, updateSong, platformSettings, isAdminAuthenticated } = useApp();
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
@@ -66,6 +77,7 @@ export const MySongsTab: React.FC = () => {
   const catalogStats = useMemo(() => ({
     published: songs.filter(song => song.status === 'published').length,
     drafts: songs.filter(song => song.status === 'draft').length,
+    pending: songs.filter(song => song.status === 'pending_approval').length,
     plays: songs.reduce((total, song) => total + song.playCount, 0),
     interests: songs.reduce((total, song) => total + song.interestedCount, 0)
   }), [songs]);
@@ -119,15 +131,20 @@ export const MySongsTab: React.FC = () => {
   };
 
   const toggleStatus = async (song: Song) => {
-    if (song.status === 'draft' && (!song.title.trim() || !song.lyrics.trim() || !song.audioUrl || !song.previewAudioUrl)) {
+    if (song.status !== 'published' && song.status !== 'pending_approval' && (!song.title.trim() || !song.lyrics.trim() || !song.audioUrl || !song.previewAudioUrl)) {
       showNotice('Complete título, letra, áudio original e prévia pública antes de publicar.', 'error');
       return;
     }
-    const newStatus = song.status === 'published' ? 'draft' : 'published';
+    const newStatus: SongStatus = song.status === 'published' || song.status === 'pending_approval'
+      ? 'draft'
+      : platformSettings.requireApprovalForNewSongs && !isAdminAuthenticated ? 'pending_approval' : 'published';
     setPendingSongId(song.id);
     const updated = await updateSong(song.id, { status: newStatus });
     setPendingSongId(null);
-    showNotice(updated ? (newStatus === 'published' ? `“${song.title}” foi publicada.` : `“${song.title}” foi movida para rascunho.`) : `Não foi possível atualizar “${song.title}”.`, updated ? 'success' : 'error');
+    const successMessage = newStatus === 'published' ? `“${song.title}” foi publicada.`
+      : newStatus === 'pending_approval' ? `“${song.title}” foi enviada para aprovação.`
+      : `“${song.title}” foi movida para rascunho.`;
+    showNotice(updated ? successMessage : `Não foi possível atualizar “${song.title}”.`, updated ? 'success' : 'error');
   };
 
   const formatDate = (date: string) => {
@@ -186,6 +203,7 @@ export const MySongsTab: React.FC = () => {
         {[
           ['Publicadas', catalogStats.published.toLocaleString('pt-BR')],
           ['Rascunhos', catalogStats.drafts.toLocaleString('pt-BR')],
+          ['Em análise', catalogStats.pending.toLocaleString('pt-BR')],
           ['Reproduções', catalogStats.plays.toLocaleString('pt-BR')],
           ['Interessados', catalogStats.interests.toLocaleString('pt-BR')]
         ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3"><span className="block text-[11px] uppercase tracking-wider text-slate-500">{label}</span><strong className="mt-1 block text-xl text-white">{value}</strong></div>)}
@@ -244,6 +262,8 @@ export const MySongsTab: React.FC = () => {
           >
             <option value="all">Todos os Status</option>
             <option value="published">Publicada</option>
+            <option value="pending_approval">Em análise</option>
+            <option value="rejected">Rejeitada</option>
             <option value="draft">Rascunho</option>
           </select>
 
@@ -327,12 +347,8 @@ export const MySongsTab: React.FC = () => {
                   <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
                   
-                  <span className={`absolute top-3 right-3 text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border shadow-md ${
-                    song.status === 'published' 
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}>
-                    {song.status === 'published' ? 'Publicada' : 'Rascunho'}
+                  <span className={`absolute top-3 right-3 text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border shadow-md ${songStatusClass[song.status]}`}>
+                    {songStatusLabel[song.status]}
                   </span>
 
                   <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
@@ -413,9 +429,9 @@ export const MySongsTab: React.FC = () => {
                     type="button"
                     onClick={() => void toggleStatus(song)}
                     disabled={pendingSongId === song.id}
-                    aria-label={song.status === 'published' ? `Mover ${song.title} para rascunho` : `Publicar ${song.title}`}
+                    aria-label={song.status === 'published' || song.status === 'pending_approval' ? `Mover ${song.title} para rascunho` : `Enviar ${song.title} para publicação`}
                     className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition disabled:cursor-wait disabled:opacity-50"
-                    title={song.status === 'published' ? 'Mudar para rascunho' : 'Publicar no perfil'}
+                    title={song.status === 'pending_approval' ? 'Cancelar análise' : song.status === 'published' ? 'Mudar para rascunho' : 'Enviar para publicação'}
                   >
                     {pendingSongId === song.id ? <LoaderCircle className="w-4 h-4 animate-spin" /> : song.status === 'published' ? <Globe className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-slate-500" />}
                   </button>
@@ -469,10 +485,8 @@ export const MySongsTab: React.FC = () => {
                     <td className="p-4 font-mono">{song.playCount}</td>
                     <td className="p-4 font-mono text-emerald-400">{song.interestedCount}</td>
                     <td className="p-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        song.status === 'published' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
-                      }`}>
-                        {song.status === 'published' ? 'Publicada' : 'Rascunho'}
+                      <span className={`border px-2 py-0.5 rounded text-[10px] font-bold uppercase ${songStatusClass[song.status]}`}>
+                        {songStatusLabel[song.status]}
                       </span>
                     </td>
                     <td className="p-4 text-right space-x-1">
@@ -509,9 +523,9 @@ export const MySongsTab: React.FC = () => {
                         type="button"
                         onClick={() => void toggleStatus(song)}
                         disabled={pendingSongId === song.id}
-                        aria-label={song.status === 'published' ? `Mover ${song.title} para rascunho` : `Publicar ${song.title}`}
+                        aria-label={song.status === 'published' || song.status === 'pending_approval' ? `Mover ${song.title} para rascunho` : `Enviar ${song.title} para publicação`}
                         className="p-1.5 text-slate-400 hover:text-amber-400 disabled:cursor-wait disabled:opacity-50"
-                        title={song.status === 'published' ? 'Mover para rascunho' : 'Publicar'}
+                        title={song.status === 'pending_approval' ? 'Cancelar análise' : song.status === 'published' ? 'Mover para rascunho' : 'Enviar para publicação'}
                       >
                         {pendingSongId === song.id ? <LoaderCircle className="w-4 h-4 animate-spin" /> : song.status === 'published' ? <Globe className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4" />}
                       </button>

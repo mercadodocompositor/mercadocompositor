@@ -2,7 +2,7 @@ import type { AdminComposer, ComposerProfile, FeaturedComposer, InterestRequest,
 import { supabase } from './supabase';
 
 const camelSong = (r: any): Song => ({
-  id:r.id,title:r.title,genre:r.genre,subgenre:r.subgenre,authors:r.authors,dateComposed:r.date_composed,
+  id:r.id,composerId:r.composer_id,title:r.title,genre:r.genre,subgenre:r.subgenre,authors:r.authors,dateComposed:r.date_composed,
   dateRegistered:r.date_registered,lyrics:r.lyrics,originalAudioPath:r.original_audio_path,previewAudioUrl:r.preview_audio_url,
   coverUrl:r.cover_url,registryCode:r.registry_code,notes:r.notes,status:r.status,
   isAvailableForRelease:r.is_available_for_release,valueType:r.value_type,
@@ -98,6 +98,18 @@ export async function removeCurrentUserStorageFiles(files: Array<{ bucket: strin
   }
 }
 export async function loadAdminComposers():Promise<AdminComposer[]>{if(!supabase)return[];const [ps,qs,ss,songs,rels]=await Promise.all([supabase.from('profiles').select('*'),supabase.from('private_profiles').select('*'),supabase.from('subscriptions').select('*'),supabase.from('songs').select('composer_id,play_count'),supabase.from('releases').select('composer_id,agreed_value')]);const error=ps.error||qs.error||ss.error||songs.error||rels.error;if(error)throw error;return(ps.data||[]).map((p:any)=>{const q=(qs.data||[]).find((x:any)=>x.user_id===p.user_id)||{};const sub=(ss.data||[]).find((x:any)=>x.user_id===p.user_id)||{};const ownSongs=(songs.data||[]).filter((x:any)=>x.composer_id===p.user_id);const ownRels=(rels.data||[]).filter((x:any)=>x.composer_id===p.user_id);return{id:p.user_id,username:p.username,name:p.name,stageName:p.stage_name,email:q.email||'',whatsapp:q.whatsapp||'',cpf:q.cpf||'',cityState:[p.city,p.state].filter(Boolean).join(' - '),subscriptionStatus:sub.status||'pending',planName:sub.plan_name||'',monthlyValue:Number(String(sub.monthly_price||'0').replace(',','.')),registeredAt:p.created_at?.slice(0,10)||'',songCount:ownSongs.length,totalPlays:ownSongs.reduce((n:number,x:any)=>n+Number(x.play_count),0),totalReleases:ownRels.length,revenueGenerated:ownRels.reduce((n:number,x:any)=>n+Number(x.agreed_value),0),photo:p.photo_url,isVerified:p.is_verified} as AdminComposer;});}
+export async function loadAdminSongs():Promise<Song[]>{
+  if(!supabase)return[];
+  const {data,error}=await supabase.from('songs').select('*').order('created_at',{ascending:false});
+  if(error)throw error;
+  const mapped=(data||[]).map(camelSong);
+  await Promise.all(mapped.map(async song=>{
+    if(!song.originalAudioPath)return;
+    const {data:signed,error:signedError}=await supabase!.storage.from('song-originals').createSignedUrl(song.originalAudioPath,3600);
+    if(!signedError)song.audioUrl=signed?.signedUrl;
+  }));
+  return mapped;
+}
 export async function adminSetSubscription(userId:string,status:SubscriptionStatus){if(!supabase)return;const{error}=await supabase.from('subscriptions').update({status,updated_at:new Date().toISOString()}).eq('user_id',userId);if(error)throw error;}
 export async function adminSetVerified(userId:string,value:boolean){if(!supabase)return;const{error}=await supabase.from('profiles').update({is_verified:value,updated_at:new Date().toISOString()}).eq('user_id',userId);if(error)throw error;}
 export async function loadPlatformSettings():Promise<PlatformSettings>{if(!supabase)throw new Error('Supabase não configurado.');const{data,error}=await supabase.from('platform_settings').select('*').eq('id',true).single();if(error)throw error;return{platformName:data.platform_name,tagline:data.tagline,planMonthlyPrice:Number(data.plan_monthly_price),planMaxSongs:data.plan_max_songs,platformFeePercentage:Number(data.platform_fee_percentage),supportWhatsapp:data.support_whatsapp,supportEmail:data.support_email,pixKey:data.pix_key,maintenanceMode:data.maintenance_mode,systemAnnouncement:data.system_announcement,requireApprovalForNewSongs:data.require_approval_for_new_songs,termsVersion:data.terms_version};}
