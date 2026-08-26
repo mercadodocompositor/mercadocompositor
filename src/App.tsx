@@ -38,7 +38,7 @@ const AppRoutes: React.FC = () => (
     <Route path="/recuperar-senha" element={<LoginPage />} />
     <Route path="/cadastro" element={<Navigate to="/autenticacao?modo=register" replace />} />
     <Route path="/compositor/:username" element={<PublicProfilePage />} />
-    <Route path="/compositor/:username/musica/:songId/interesse" element={<InterestRequestPage />} />
+    <Route path="/compositor/:username/musica/:songRef/interesse" element={<InterestRequestPage />} />
     <Route path="/termos" element={<LegalPage />} />
     <Route path="/privacidade" element={<LegalPage />} />
     <Route path="/dashboard/*" element={<ComposerRoute><DashboardLayout /></ComposerRoute>} />

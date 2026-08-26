@@ -4,6 +4,7 @@ import { AudioPlayer } from '../components/common/AudioPlayer';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { getPublicComposer } from '../lib/database';
+import { getInterestRequestUrl } from '../lib/urls';
 import { 
   Music,
   MapPin, 
@@ -345,7 +346,7 @@ export const PublicProfilePage: React.FC = () => {
                             songId={song.id}
                             songTitle={song.title}
                             audioUrl={song.previewAudioUrl}
-                            onInterestClick={() => navigate(`/compositor/${requestedUsername}/musica/${song.id}/interesse`)}
+                            onInterestClick={() => navigate(getInterestRequestUrl(requestedUsername, song))}
                           />
 
                           {/* Lyrics Collapsible Section required by Section 9 */}

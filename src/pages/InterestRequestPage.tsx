@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, CheckCircle2, LoaderCircle, LockKeyhole, Music, Send } from 'lucide-react';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { useApp } from '../context/AppContext';
 import { getPublicComposer } from '../lib/database';
 import type { Song } from '../types';
+import { getInterestRequestUrl, getSongUrlKey } from '../lib/urls';
 
 type FormData = {
   buyerName: string; buyerStageName: string; cpfCnpj: string; buyerEmail: string;
@@ -18,7 +19,8 @@ const initialForm: FormData = {
 };
 
 export const InterestRequestPage: React.FC = () => {
-  const { username, songId } = useParams<{ username: string; songId: string }>();
+  const { username, songRef } = useParams<{ username: string; songRef: string }>();
+  const navigate = useNavigate();
   const { addInterestRequest } = useApp();
   const [song, setSong] = useState<Song | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,17 +33,24 @@ export const InterestRequestPage: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    if (!username || !songId) { setLoading(false); return; }
+    if (!username || !songRef) { setLoading(false); return; }
     getPublicComposer(username.toLowerCase())
       .then(catalog => {
         if (!active) return;
-        const found = catalog?.songs?.find(item => item.id === songId && item.status === 'published' && item.isAvailableForRelease);
+        const found = catalog?.songs?.find(item =>
+          (item.id === songRef || getSongUrlKey(item) === songRef.toLowerCase())
+          && item.status === 'published'
+          && item.isAvailableForRelease
+        );
         setSong(found || null);
+        if (found && songRef !== getSongUrlKey(found)) {
+          navigate(getInterestRequestUrl(username.toLowerCase(), found), { replace: true });
+        }
       })
       .catch(() => active && setSong(null))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [songId, username]);
+  }, [navigate, songRef, username]);
 
   const set = (field: keyof FormData, value: string) => setForm(current => ({ ...current, [field]: value }));
 
@@ -72,7 +81,7 @@ export const InterestRequestPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const backUrl = `/compositor/${username}${songId ? `?musica=${songId}` : ''}`;
+  const backUrl = `/compositor/${username}${song ? `?musica=${song.id}` : ''}`;
 
   if (loading) return <div className="min-h-screen bg-slate-950 text-amber-400 flex items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin" /></div>;
 
