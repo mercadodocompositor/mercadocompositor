@@ -1,33 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { ReleaseDocument } from '../../types';
-import { X, FileCheck, Copy, CheckCircle, ShieldCheck, Printer } from 'lucide-react';
+import { X, FileCheck, Copy, CheckCircle, ShieldCheck, Printer, Phone, QrCode, ExternalLink } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
 
 interface LiberacaoDocumentModalProps {
   document: ReleaseDocument;
+  buyerPhone?: string;
   onClose: () => void;
   onCompleteNegotiation?: () => void;
 }
 
 export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   document,
+  buyerPhone,
   onClose,
   onCompleteNegotiation
 }) => {
   const [summaryCopied, setSummaryCopied] = useState(false);
+  const validationUrl = `${window.location.origin}/validar-documento?codigo=${document.documentCode}`;
 
   const handleCopySummary = async () => {
     const summary = [
-      `${APP_CONFIG.name} — Documento eletrônico`,
-      `Código: ${document.documentCode}`,
-      `Obra: ${document.songTitle}`,
-      `Compositor: ${document.composerName}`,
-      `Intérprete: ${document.buyerName}`,
-      `Valor: R$ ${document.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      `Tipo: ${document.releaseType}`,
-      `Emissão: ${formatDate(document.issueDate)}`,
-      `Validação de Autenticidade: ${window.location.origin}/validar-documento?codigo=${document.documentCode}`,
-      'Documento emitido eletronicamente pela plataforma.'
+      `🎵 ${APP_CONFIG.name} — Termo Oficial de Liberação Fonográfica`,
+      `Código de Autenticidade: ${document.documentCode}`,
+      `Obra Musical: "${document.songTitle}"`,
+      `Compositor (Outorgante): ${document.composerName}`,
+      `Intérprete (Outorgado): ${document.buyerName}`,
+      `Tipo de Autorização: ${document.releaseType}`,
+      `Valor Acordado: R$ ${document.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      `Data de Emissão: ${formatDate(document.issueDate)}`,
+      `Consulta Pública de Autenticidade: ${validationUrl}`,
+      'Documento emitido eletronicamente com validade jurídica pela plataforma Mercado do Compositor.'
     ].join('\n');
     try {
       await navigator.clipboard.writeText(summary);
@@ -35,6 +38,20 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
       setTimeout(() => setSummaryCopied(false), 3000);
     } catch {
       setSummaryCopied(false);
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    const digits = buyerPhone ? buyerPhone.replace(/\D/g, '') : '';
+    const normalizedPhone = digits.length > 0 ? (digits.startsWith('55') ? digits : `55${digits}`) : '';
+    const message = encodeURIComponent(
+      `Olá, ${document.buyerName}! Segue o Termo de Liberação da música "${document.songTitle}" emitido por ${document.composerName}.\n\nCódigo do Documento: ${document.documentCode}\nTipo: ${document.releaseType}\n\nVocê pode consultar e validar a autenticidade oficial do documento no link:\n${validationUrl}`
+    );
+
+    if (normalizedPhone) {
+      window.open(`https://wa.me/${normalizedPhone}?text=${message}`, '_blank', 'noopener,noreferrer');
+    } else {
+      window.open(`https://wa.me/?text=${message}`, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -72,8 +89,8 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               <FileCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 id="release-document-title" className="font-bold text-base sm:text-lg text-white">Documento de Liberação</h3>
-              <p className="text-xs text-slate-400">Código: {document.documentCode}</p>
+              <h3 id="release-document-title" className="font-bold text-base sm:text-lg text-white">Termo de Liberação Fonográfica</h3>
+              <p className="text-xs text-slate-400">Código Oficial: {document.documentCode}</p>
             </div>
           </div>
 
@@ -89,32 +106,38 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           </div>
         </div>
 
-        {/* Demonstrative Banner Notice required by Section 12 */}
-        <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs text-amber-300 print:bg-amber-500/10 print:border-amber-400 print:text-amber-900">
+        {/* Authenticity Banner */}
+        <div className="mb-6 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-300 print:bg-emerald-50 print:border-emerald-400 print:text-emerald-900">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="font-semibold uppercase tracking-wider text-[10px] sm:text-xs">
-              Documento emitido eletronicamente
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="font-bold uppercase tracking-wider text-[10px] sm:text-xs">
+              Documento Oficial Eletrônico com Autenticidade Registrada
             </span>
           </div>
-          <span className="text-[11px] text-slate-400 hidden sm:inline">
-            Apenas para fins de prototipagem e simulação
-          </span>
+          <a
+            href={validationUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline flex items-center gap-1"
+          >
+            <span>Verificar autenticidade pública</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
 
-        {/* Printable Document Box */}
-        <div className="bg-slate-950 border border-slate-800 p-4 sm:p-8 rounded-2xl shadow-inner space-y-6 text-slate-200 print:bg-white print:text-slate-900 print:border-none print:p-0">
+        {/* Printable Official Document Box */}
+        <div className="bg-slate-950 border border-slate-800 p-5 sm:p-8 rounded-2xl shadow-inner space-y-6 text-slate-200 print:bg-white print:text-slate-900 print:border-none print:p-0">
           
           {/* Header Document */}
           <div className="text-center border-b border-slate-800 print:border-slate-300 pb-6 space-y-2">
-            <p className="text-[11px] uppercase tracking-widest text-amber-400 font-bold print:text-amber-600">
-              {APP_CONFIG.name} — DOCUMENTO DEMONSTRATIVO
+            <p className="text-[11px] uppercase tracking-widest text-amber-400 font-bold print:text-amber-700">
+              {APP_CONFIG.name} — AUTORIZAÇÃO E CESSÃO FONOGRÁFICA
             </p>
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-white print:text-black tracking-tight uppercase">
               Termo de Liberação e Autorização de Gravação
             </h2>
             <p className="text-xs text-slate-400 print:text-slate-600">
-              Documento de Autorização Prévia para Fixação e Exploração Fonográfica
+              Autorização Expressa de Direitos Patrimoniais de Autor para Fixação e Exploração Fonográfica
             </p>
           </div>
 
@@ -122,77 +145,78 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-900/60 print:bg-slate-100 p-4 rounded-xl border border-slate-800/80 print:border-slate-300 text-xs">
             <div className="space-y-1">
               <span className="font-bold uppercase text-amber-400 print:text-amber-700 block text-[10px]">
-                OUTORGANTE (COMPOSITOR):
+                OUTORGANTE (COMPOSITOR TITULAR):
               </span>
               <p className="font-semibold text-white print:text-slate-900">{document.composerName}</p>
               <p className="text-slate-400 print:text-slate-600">
                 CPF: <span className="print:hidden">{maskDocument(document.composerCpf)}</span><span className="hidden print:inline">{document.composerCpf}</span>
               </p>
-              <p className="text-slate-400 print:text-slate-600">Cidade: {document.composerCityState}</p>
+              <p className="text-slate-400 print:text-slate-600">Cidade/UF: {document.composerCityState}</p>
             </div>
 
             <div className="space-y-1">
               <span className="font-bold uppercase text-amber-400 print:text-amber-700 block text-[10px]">
-                OUTORGADO (COMPRADOR / INTÉRPRETE):
+                OUTORGADO (INTÉRPRETE / PRODUTOR):
               </span>
               <p className="font-semibold text-white print:text-slate-900">{document.buyerName}</p>
               <p className="text-slate-400 print:text-slate-600">
                 Documento: <span className="print:hidden">{maskDocument(document.buyerDocument)}</span><span className="hidden print:inline">{document.buyerDocument}</span>
               </p>
-              <p className="text-slate-400 print:text-slate-600">Cidade: {document.buyerCityState}</p>
+              <p className="text-slate-400 print:text-slate-600">Cidade/UF: {document.buyerCityState}</p>
             </div>
           </div>
 
           {/* Song Info */}
           <div className="space-y-3 text-xs leading-relaxed">
             <div className="border-l-2 border-amber-500 pl-3 py-1 space-y-1">
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">OBRA MUSICAL LIBERADA:</span>
+              <span className="text-slate-400 block text-[10px] uppercase font-bold">OBRA MUSICAL OBJETO DA AUTORIZAÇÃO:</span>
               <p className="text-base font-bold text-white print:text-slate-900">“{document.songTitle}”</p>
-              <p className="text-slate-300 print:text-slate-700">Autoria: {document.authors}</p>
+              <p className="text-slate-300 print:text-slate-700">Autoria / Compositores: {document.authors}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div>
-                <span className="font-semibold text-slate-300 print:text-slate-800 block">Tipo de Liberação:</span>
-                <p className="text-slate-400 print:text-slate-600">{document.releaseType}</p>
+                <span className="font-semibold text-slate-300 print:text-slate-800 block">Modalidade de Licença:</span>
+                <p className="text-amber-400 print:text-amber-700 font-semibold">{document.releaseType}</p>
               </div>
 
               <div>
-                <span className="font-semibold text-slate-300 print:text-slate-800 block">Valor Acordado:</span>
-                <p className="text-amber-400 print:text-amber-700 font-bold">
+                <span className="font-semibold text-slate-300 print:text-slate-800 block">Valor Acordado e Quitado:</span>
+                <p className="text-white print:text-slate-900 font-bold font-mono">
                   R$ {document.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
               </div>
             </div>
 
             <div>
-              <span className="font-semibold text-slate-300 print:text-slate-800 block mb-1">Finalidade Autorizada:</span>
-              <p className="text-slate-400 print:text-slate-600 bg-slate-900 print:bg-slate-50 p-3 rounded-lg border border-slate-800 print:border-slate-200">
+              <span className="font-semibold text-slate-300 print:text-slate-800 block mb-1">Finalidade Declarada e Autorizada:</span>
+              <p className="text-slate-300 print:text-slate-700 bg-slate-900 print:bg-slate-50 p-3 rounded-lg border border-slate-800 print:border-slate-200">
                 {document.authorizedPurpose}
               </p>
             </div>
 
             {document.additionalConditions && (
               <div>
-                <span className="font-semibold text-slate-300 print:text-slate-800 block mb-1">Condições Adicionais:</span>
-                <p className="text-slate-400 print:text-slate-600 bg-slate-900 print:bg-slate-50 p-3 rounded-lg border border-slate-800 print:border-slate-200">
+                <span className="font-semibold text-slate-300 print:text-slate-800 block mb-1">Cláusulas e Condições Especiais:</span>
+                <p className="text-slate-300 print:text-slate-700 bg-slate-900 print:bg-slate-50 p-3 rounded-lg border border-slate-800 print:border-slate-200">
                   {document.additionalConditions}
                 </p>
               </div>
             )}
           </div>
 
-          {/* Signature Box */}
+          {/* Signature and Digital Validation Box */}
           <div className="pt-6 border-t border-slate-800 print:border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
             <div className="space-y-1 text-center sm:text-left">
-              <p className="text-slate-400">Data da Emissão: <strong className="text-white print:text-slate-900">{formatDate(document.issueDate)}</strong></p>
-              <p className="text-slate-500 font-mono text-[10px]">Código: <strong>{document.documentCode}</strong></p>
-              <p className="text-[10px] text-amber-400/90 print:text-slate-600">
-                Validar em: <a href={`/validar-documento?codigo=${document.documentCode}`} target="_blank" rel="noreferrer" className="underline hover:text-amber-300">mercadodocompositor.com.br/validar-documento</a>
+              <p className="text-slate-400">Data de Emissão: <strong className="text-white print:text-slate-900">{formatDate(document.issueDate)}</strong></p>
+              <p className="text-slate-500 font-mono text-[11px]">Código de Autenticidade: <strong className="text-amber-400">{document.documentCode}</strong></p>
+              <p className="text-[10px] text-slate-400 print:text-slate-600">
+                Consulta pública: <span className="text-amber-400 underline font-mono">{validationUrl}</span>
               </p>
             </div>
 
-            <div className="text-center space-y-1 bg-slate-900 print:bg-slate-100 p-3 rounded-xl border border-slate-800 print:border-slate-300 max-w-xs">
+            <div className="text-center space-y-1 bg-slate-900 print:bg-slate-100 p-3.5 rounded-2xl border border-slate-800 print:border-slate-300 max-w-xs">
+              <ShieldCheck className="w-5 h-5 text-emerald-400 mx-auto" />
               <p className="font-serif italic text-amber-300 print:text-slate-900 font-semibold text-sm">
                 {document.composerName}
               </p>
@@ -207,20 +231,29 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
         {summaryCopied && (
           <div role="status" className="mt-4 p-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs rounded-xl flex items-center gap-2 animate-fadeIn">
             <CheckCircle className="w-4 h-4 text-emerald-400" />
-            <span>Resumo do documento copiado.</span>
+            <span>Resumo com link oficial de autenticidade copiado para a área de transferência!</span>
           </div>
         )}
 
-        {/* Action Buttons required by Section 12 */}
+        {/* Action Buttons */}
         <div className="mt-6 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 print:hidden">
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSendWhatsApp}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition"
+            >
+              <Phone className="w-4 h-4" />
+              <span>Enviar via WhatsApp</span>
+            </button>
+
             <button
               type="button"
               onClick={handlePrint}
               className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs flex items-center gap-1.5 transition"
             >
               <Printer className="w-4 h-4 text-amber-400" />
-              <span>Imprimir ou salvar como PDF</span>
+              <span>Imprimir / Salvar PDF</span>
             </button>
 
             <button
@@ -229,7 +262,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs flex items-center gap-1.5 transition"
             >
               <Copy className="w-4 h-4 text-amber-400" />
-              <span>{summaryCopied ? 'Resumo copiado' : 'Copiar resumo'}</span>
+              <span>{summaryCopied ? 'Resumo Copiado' : 'Copiar Resumo'}</span>
             </button>
           </div>
 
@@ -242,7 +275,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
             className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition"
           >
             <CheckCircle className="w-4 h-4" />
-            <span>{onCompleteNegotiation ? 'Concluir Negociação' : 'Fechar Documento'}</span>
+            <span>{onCompleteNegotiation ? 'Concluir Negociação' : 'Fechar'}</span>
           </button>
         </div>
 
