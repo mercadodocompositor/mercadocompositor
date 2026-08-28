@@ -62,8 +62,8 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   }, [onClose]);
 
   return (
-    <div className="release-print-root fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto print:p-0 print:static print:bg-white">
-      <div role="dialog" aria-modal="true" aria-labelledby="release-document-title" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl relative my-8 text-slate-100 print:border-none print:shadow-none print:bg-white print:text-slate-900 print:my-0 print:max-w-none">
+    <div className="release-print-root fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:p-0 print:static print:bg-white">
+      <div role="dialog" aria-modal="true" aria-labelledby="release-document-title" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-4 sm:p-8 shadow-2xl relative my-6 text-slate-100 print:border-none print:shadow-none print:bg-white print:text-slate-900 print:my-0 print:max-w-none">
         
         {/* Header Actions (Hidden when printing) */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6 print:hidden">
@@ -72,8 +72,8 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               <FileCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 id="release-document-title" className="font-bold text-lg text-white">Documento de Liberação</h3>
-              <p className="text-xs text-slate-400">Código do documento: {document.documentCode}</p>
+              <h3 id="release-document-title" className="font-bold text-base sm:text-lg text-white">Documento de Liberação</h3>
+              <p className="text-xs text-slate-400">Código: {document.documentCode}</p>
             </div>
           </div>
 
@@ -90,10 +90,10 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
         </div>
 
         {/* Demonstrative Banner Notice required by Section 12 */}
-        <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs text-amber-300 print:bg-amber-50 print:border-amber-400 print:text-amber-900">
+        <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs text-amber-300 print:bg-amber-500/10 print:border-amber-400 print:text-amber-900">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="font-semibold uppercase tracking-wider">
+            <span className="font-semibold uppercase tracking-wider text-[10px] sm:text-xs">
               Documento emitido eletronicamente
             </span>
           </div>
@@ -103,7 +103,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
         </div>
 
         {/* Printable Document Box */}
-        <div className="bg-slate-950 border border-slate-800 p-8 rounded-2xl shadow-inner space-y-6 text-slate-200 print:bg-white print:text-slate-900 print:border-none print:p-0">
+        <div className="bg-slate-950 border border-slate-800 p-4 sm:p-8 rounded-2xl shadow-inner space-y-6 text-slate-200 print:bg-white print:text-slate-900 print:border-none print:p-0">
           
           {/* Header Document */}
           <div className="text-center border-b border-slate-800 print:border-slate-300 pb-6 space-y-2">

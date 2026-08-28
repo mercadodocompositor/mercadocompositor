@@ -422,32 +422,32 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
           <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 relative overflow-hidden space-y-5">
             
             {/* Top Song Info Header */}
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
               <div className="flex items-center gap-4">
                 <img
                   src={currentSong?.coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80'}
                   alt={currentSong?.title || 'Guia'}
-                  className="w-16 h-16 rounded-2xl object-cover border border-amber-500/30 shadow-md"
+                  className="w-16 h-16 rounded-2xl object-cover border border-amber-500/30 shadow-md shrink-0"
                 />
-                <div>
+                <div className="min-w-0 flex-1">
                   <span className="text-[10px] text-amber-400 font-bold uppercase tracking-widest bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
                     {currentSong?.genre || 'Sertanejo'}
                   </span>
-                  <h3 className="font-serif italic font-bold text-2xl text-white mt-1 leading-tight">
+                  <h3 className="font-serif italic font-bold text-xl sm:text-2xl text-white mt-1 leading-tight truncate">
                     {currentSong?.title || localAudioName || 'Música Demonstrativa'}
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-400 truncate">
                     Composição por: <strong className="text-slate-200">{currentSong?.authors || profile.stageName}</strong>
                   </p>
                 </div>
               </div>
 
-              <div className="text-right">
+              <div className="text-left sm:text-right flex sm:flex-col items-center sm:items-end justify-between">
                 <span className="bg-slate-950 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm">
                   <ShieldAlert className="w-3.5 h-3.5" />
                   <span>Prévia de 60s</span>
                 </span>
-                <p className="text-[10px] text-slate-500 mt-1">Proteção de propriedade intelectual</p>
+                <p className="text-[10px] text-slate-500 mt-1 hidden sm:block">Proteção de propriedade intelectual</p>
               </div>
             </div>
 

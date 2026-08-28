@@ -72,20 +72,32 @@ export const Navbar: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="hidden md:flex items-center gap-4">
-          <Link
-            to="/login"
-            className="px-4 py-2 rounded-full text-slate-300 hover:text-white text-xs font-semibold hover:bg-slate-900/60 transition"
-          >
-            <span>Entrar</span>
-          </Link>
+          {isAuthenticated ? (
+            <Link
+              to="/dashboard"
+              className="px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition transform hover:-translate-y-0.5"
+            >
+              <span>Acessar Painel</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          ) : (
+            <>
+              <Link
+                to="/login"
+                className="px-4 py-2 rounded-full text-slate-300 hover:text-white text-xs font-semibold hover:bg-slate-900/60 transition"
+              >
+                <span>Entrar</span>
+              </Link>
 
-          <Link
-            to="/login?modo=register"
-            className="px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition transform hover:-translate-y-0.5"
-          >
-            <span>Cadastre-se Grátis</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+              <Link
+                to="/login?modo=register"
+                className="px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition transform hover:-translate-y-0.5"
+              >
+                <span>Cadastre-se Grátis</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -129,20 +141,33 @@ export const Navbar: React.FC = () => {
           </button>
 
           <div className="pt-4 border-t border-slate-800 flex flex-col gap-3">
-            <Link
-              to="/login"
-              onClick={() => setMobileMenuOpen(false)}
-              className="w-full text-center py-2.5 rounded-xl bg-slate-900 text-slate-200 font-semibold text-xs border border-slate-800 hover:border-amber-500/40"
-            >
-              Já tenho uma conta (Entrar)
-            </Link>
-            <Link
-              to="/login?modo=register"
-              onClick={() => setMobileMenuOpen(false)}
-              className="w-full text-center py-3 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20"
-            >
-              Criar Conta Gratuita
-            </Link>
+            {isAuthenticated ? (
+              <Link
+                to="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full text-center py-3 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+              >
+                <span>Acessar Meu Painel</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center py-2.5 rounded-xl bg-slate-900 text-slate-200 font-semibold text-xs border border-slate-800 hover:border-amber-500/40"
+                >
+                  Já tenho uma conta (Entrar)
+                </Link>
+                <Link
+                  to="/login?modo=register"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center py-3 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20"
+                >
+                  Criar Conta Gratuita
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}

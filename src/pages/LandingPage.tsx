@@ -74,7 +74,7 @@ export const LandingPage: React.FC = () => {
                 </div>
 
                 {/* Micro trust indicators */}
-                <div className="pt-6 border-t border-slate-800/80 grid grid-cols-3 gap-4 text-slate-400 text-xs text-center lg:text-left">
+                <div className="pt-6 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-400 text-xs text-center lg:text-left">
                   <div className="flex items-center gap-2 justify-center lg:justify-start">
                     <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>Áudio protegido (60s)</span>

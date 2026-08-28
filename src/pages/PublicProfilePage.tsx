@@ -321,7 +321,7 @@ export const PublicProfilePage: React.FC = () => {
                               </div>
                             </div>
 
-                            <div className="text-right sm:text-right flex sm:flex-col items-center sm:items-end justify-between">
+                            <div className="text-left sm:text-right flex sm:flex-col items-start sm:items-end justify-between bg-slate-950 sm:bg-transparent p-2.5 sm:p-0 rounded-xl sm:rounded-none border sm:border-none border-slate-800/80">
                               <span className="text-xs text-slate-400 block">Autorização:</span>
                               <span className="text-sm font-bold text-amber-400">
                                 {song.valueType === 'suggested' && song.suggestedValue 
