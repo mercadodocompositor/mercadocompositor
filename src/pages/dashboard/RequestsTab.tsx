@@ -797,8 +797,8 @@ export const RequestsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Status Tabs with Colored Badges */}
-      <div role="tablist" aria-label="Filtrar solicitações por status" className="bg-slate-900 border border-slate-800 p-2 rounded-2xl flex items-center gap-1.5 overflow-x-auto">
+      {/* Status Tabs with Colored Badges (Wrapped - No Horizontal Scroll) */}
+      <div role="tablist" aria-label="Filtrar solicitações por status" className="bg-slate-900 border border-slate-800 p-2.5 rounded-2xl flex flex-wrap items-center gap-2">
         {[
           { id: 'todas', label: 'Todas', badgeClass: 'bg-slate-800 text-slate-300' },
           { id: 'nova', label: 'Novas', badgeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
@@ -817,10 +817,10 @@ export const RequestsTab: React.FC = () => {
               aria-selected={isActive}
               key={tab.id}
               onClick={() => setActiveTab(tab.id as RequestStatus | 'todas')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
                 isActive 
-                  ? 'bg-amber-500 text-slate-950 shadow-md' 
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/30 font-bold' 
+                  : 'bg-slate-950/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80'
               }`}
             >
               <span>{tab.label}</span>
