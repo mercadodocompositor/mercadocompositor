@@ -112,7 +112,7 @@ export const AdminLayout: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs text-slate-300">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-semibold text-[11px]">Ambiente Demonstrativo Local</span>
+              <span className="font-semibold text-[11px]">Painel Master Administrativo</span>
             </div>
 
             <button

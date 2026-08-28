@@ -272,7 +272,7 @@ export const OverviewTab: React.FC = () => {
             <div className="mt-6 pt-4 border-t border-slate-800/80 flex justify-between items-center">
               <div>
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Duração Prévia</p>
-                <p className="text-xs text-white font-mono">0:35 / 3:42</p>
+                <p className="text-xs text-white font-mono">1:00 / 3:42</p>
               </div>
               <div className="w-8 h-8 rounded-full border border-amber-500/50 flex items-center justify-center text-amber-400">
                 <div className="w-2 h-2 bg-amber-500 transform rotate-45 ml-0.5" />

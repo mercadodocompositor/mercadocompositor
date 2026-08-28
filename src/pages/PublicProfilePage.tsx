@@ -122,9 +122,6 @@ export const PublicProfilePage: React.FC = () => {
             <p className="text-slate-400 text-sm max-w-md mx-auto">
               A assinatura deste perfil de compositor encontra-se suspensa ou pendente de regularização. As músicas públicas ficam ocultas para novos ouvintes até a regularização da conta.
             </p>
-            <p className="text-xs text-amber-400 bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 max-w-sm mx-auto">
-              Dica de teste: Utilize o botão "Assinatura: Suspensa" na barra superior para alternar e testar novamente!
-            </p>
           </div>
         ) : (
           <>
@@ -262,7 +259,7 @@ export const PublicProfilePage: React.FC = () => {
                       <span>Proteção do Áudio Original</span>
                     </div>
                     <p className="leading-relaxed text-[11px]">
-                      Todas as prévias de áudio neste perfil são limitadas a 35 segundos. Os fonogramas completos e acapellas ficam retidos na área do compositor para garantia da obra.
+                      Todas as prévias de áudio neste perfil são limitadas a 60 segundos. Os fonogramas completos e acapellas ficam retidos na área do compositor para garantia da obra.
                     </p>
                   </div>
 
@@ -341,7 +338,7 @@ export const PublicProfilePage: React.FC = () => {
                             </p>
                           )}
 
-                          {/* 35-Second Audio Player */}
+                          {/* 60-Second Audio Player */}
                           <AudioPlayer 
                             songId={song.id}
                             songTitle={song.title}

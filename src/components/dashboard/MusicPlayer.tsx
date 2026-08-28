@@ -51,12 +51,12 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
   // New song form when uploading a fresh track
   const [newTitle, setNewTitle] = useState('');
   const [newGenre, setNewGenre] = useState('Sertanejo');
-  const [newAuthors, setNewAuthors] = useState(profile?.stageName || 'Rafael Monteiro');
+  const [newAuthors, setNewAuthors] = useState(profile?.stageName || profile?.name || 'Compositor');
 
   // Player state
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(35); // 35s max preview limit
+  const [duration, setDuration] = useState<number>(60); // 60s max preview limit
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [volume, setVolume] = useState<number>(0.8);
   const [hasEnded, setHasEnded] = useState<boolean>(false);
@@ -89,27 +89,27 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
     }
   }, [selectedSongId, localAudioUrl]);
 
-  // Audio time listener & 35-second snippet enforcement
+  // Audio time listener & 60-second snippet enforcement
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
     const handleLoadedMetadata = () => {
-      // Limit preview duration strictly to 35s or song's real duration if smaller
+      // Limit preview duration strictly to 60s or song's real duration if smaller
       const realDur = audio.duration;
       if (!isNaN(realDur) && realDur > 0) {
-        setDuration(Math.min(35, Math.floor(realDur)));
+        setDuration(Math.min(60, Math.floor(realDur)));
       } else {
-        setDuration(35);
+        setDuration(60);
       }
     };
 
     const handleTimeUpdate = () => {
       const time = audio.currentTime;
-      if (time >= 35) {
+      if (time >= 60) {
         audio.pause();
-        audio.currentTime = 35;
-        setCurrentTime(35);
+        audio.currentTime = 60;
+        setCurrentTime(60);
         setIsPlaying(false);
         setHasEnded(true);
       } else {
@@ -120,7 +120,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
     const handleEnded = () => {
       setIsPlaying(false);
       setHasEnded(true);
-      setCurrentTime(35);
+      setCurrentTime(60);
     };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -139,11 +139,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
     if (isPlaying && !audioRef.current?.src) {
       timerRef.current = window.setInterval(() => {
         setCurrentTime(prev => {
-          if (prev >= 35) {
+          if (prev >= 60) {
             if (timerRef.current) clearInterval(timerRef.current);
             setIsPlaying(false);
             setHasEnded(true);
-            return 35;
+            return 60;
           }
           return prev + 1;
         });
@@ -180,15 +180,15 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
     }
   };
 
-  // Seek handler (within max 35s limit)
+  // Seek handler (within max 60s limit)
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value);
-    const clampedTime = Math.min(35, newTime);
+    const clampedTime = Math.min(60, newTime);
     setCurrentTime(clampedTime);
     if (audioRef.current) {
       audioRef.current.currentTime = clampedTime;
     }
-    if (clampedTime < 35 && hasEnded) {
+    if (clampedTime < 60 && hasEnded) {
       setHasEnded(false);
     }
   };
@@ -266,7 +266,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
           lyrics: 'Letra em fase de edição pelo compositor.',
           status: 'draft',
           snippetStartSeconds: 0,
-          snippetDurationSeconds: 35
+          snippetDurationSeconds: 60
         });
         setSelectedSongId(created.id);
       } else {
@@ -318,7 +318,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressPercent = Math.min((currentTime / 35) * 100, 100);
+  const progressPercent = Math.min((currentTime / 60) * 100, 100);
 
   return (
     <div className="bg-[#0A1128] text-white border border-amber-500/20 rounded-3xl p-6 shadow-2xl space-y-6">
@@ -345,7 +345,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
                 Studio & Player de Áudio
               </h2>
               <p className="text-xs text-slate-400">
-                Upload de guias locais e reprodutor com prévia protegida de 35 segundos
+                Upload de guias locais e reprodutor com prévia protegida de 60 segundos
               </p>
             </div>
           </div>
@@ -385,7 +385,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
         </div>
       </div>
 
-      {/* TAB 1: PLAYER MODE (AUDITION 35s SNIPPET) */}
+      {/* TAB 1: PLAYER MODE (AUDITION 60s SNIPPET) */}
       {activeTab === 'player' && (
         <div className="space-y-6">
           
@@ -445,7 +445,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
               <div className="text-right">
                 <span className="bg-slate-950 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm">
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  <span>Prévia de 35s</span>
+                  <span>Prévia de 60s</span>
                 </span>
                 <p className="text-[10px] text-slate-500 mt-1">Proteção de propriedade intelectual</p>
               </div>
@@ -487,7 +487,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
                   aria-label="Posição da reprodução"
                   type="range"
                   min="0"
-                  max="35"
+                  max="60"
                   step="0.1"
                   value={currentTime}
                   onChange={handleSeek}
@@ -497,7 +497,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
 
                 <div className="flex justify-between items-center text-xs font-mono text-slate-400">
                   <span className="text-amber-400 font-bold">{formatTime(currentTime)}</span>
-                  <span className="text-slate-500">00:35 (Limite da Prévia)</span>
+                  <span className="text-slate-500">01:00 (Limite da Prévia)</span>
                 </div>
               </div>
             </div>
@@ -565,7 +565,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
                 <Lock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-bold text-amber-300">
-                    Prévia de 35 segundos concluída!
+                    Prévia de 60 segundos concluída!
                   </p>
                   <p className="text-slate-300 text-xs leading-relaxed">
                     A guia completa em áudio e a letra na íntegra ficam disponíveis mediante a emissão do termo de liberação pelo compositor.

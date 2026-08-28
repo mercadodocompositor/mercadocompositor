@@ -7,7 +7,7 @@ interface AudioPlayerProps {
   songTitle: string;
   audioUrl?: string;
   onInterestClick?: () => void;
-  maxDurationSeconds?: number; // Default 35 seconds as requested
+  maxDurationSeconds?: number; // Default 60 seconds as requested
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -15,7 +15,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   songTitle,
   audioUrl,
   onInterestClick,
-  maxDurationSeconds = 35
+  maxDurationSeconds = 60
 }) => {
   const { incrementPlayCount } = useApp();
   const [isPlaying, setIsPlaying] = useState(false);
@@ -127,7 +127,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <span className="truncate max-w-[200px] text-slate-200">{songTitle}</span>
         </div>
           <span className="bg-slate-800 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">
-          {hasAudioSource ? 'Prévia limitada (35s)' : 'Prévia indisponível'}
+          {hasAudioSource ? 'Prévia limitada (60s)' : 'Prévia indisponível'}
         </span>
       </div>
 
@@ -219,7 +219,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold text-amber-300">
-              Prévia encerrada (limite de 35 segundos atingido).
+              Prévia encerrada (limite de 60 segundos atingido).
             </p>
             <p className="text-slate-300 leading-relaxed text-[11px]">
               Entre em contato com o compositor para solicitar a liberação desta obra e ouvir a guia completa.

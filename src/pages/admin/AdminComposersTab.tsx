@@ -73,42 +73,8 @@ export const AdminComposersTab: React.FC = () => {
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newForm.name || !newForm.email || !newForm.whatsapp || !newForm.cpf || !newForm.cityState) return;
-    const username = (newForm.username || newForm.name).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    if (adminComposers.some(composer => composer.email.toLowerCase() === newForm.email.toLowerCase() || composer.username === username)) return;
-
-    addAdminComposer({
-      name: newForm.name,
-      stageName: newForm.stageName || newForm.name,
-      username,
-      email: newForm.email,
-      whatsapp: newForm.whatsapp,
-      cpf: newForm.cpf,
-      cityState: newForm.cityState,
-      planName: newForm.planName,
-      monthlyValue: Number(newForm.monthlyValue),
-      subscriptionStatus: newForm.subscriptionStatus,
-      photo: newForm.photo,
-      isVerified: newForm.isVerified,
-      notes: newForm.notes
-    });
-
+    alert('Para garantir a segurança de credenciais, orientamos que o compositor conclua o registro pelo link oficial de cadastro (ex.: /cadastro), onde ele mesmo define a senha e confirma seu e-mail.');
     setIsAddModalOpen(false);
-    setNewForm({
-      name: '',
-      stageName: '',
-      email: '',
-      whatsapp: '',
-      cpf: '',
-      cityState: '',
-      username: '',
-      planName: 'Plano Bronze',
-      monthlyValue: 24.90,
-      subscriptionStatus: 'active',
-      photo: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
-      isVerified: false,
-      notes: ''
-    });
   };
 
   return (
@@ -467,6 +433,11 @@ export const AdminComposersTab: React.FC = () => {
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-300 leading-relaxed flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>Para segurança de senha e confirmação de identidade, as contas de compositores são geradas pelo fluxo seguro do Supabase Auth no link de cadastro oficial.</span>
             </div>
 
             <form onSubmit={handleAddSubmit} className="space-y-4 text-xs">

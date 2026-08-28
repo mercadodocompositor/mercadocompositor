@@ -107,8 +107,8 @@ export const AddSongTab: React.FC = () => {
     }
     try {
       const duration = await getAudioDuration(file);
-      if (!Number.isFinite(duration) || duration > 35.5) {
-        setFormError('A prévia pública deve ter no máximo 35 segundos.');
+      if (!Number.isFinite(duration) || duration > 60.5) {
+        setFormError('A prévia pública deve ter no máximo 60 segundos.');
         return;
       }
       if (previewObjectUrl?.startsWith('blob:')) URL.revokeObjectURL(previewObjectUrl);
@@ -168,7 +168,7 @@ export const AddSongTab: React.FC = () => {
     }
 
     if (status !== 'draft' && !activePreviewUrl) {
-      setFormError('Adicione uma prévia pública de até 35 segundos antes de publicar.');
+      setFormError('Adicione uma prévia pública de até 60 segundos antes de publicar.');
       return;
     }
 
@@ -433,7 +433,7 @@ export const AddSongTab: React.FC = () => {
                 <Disc className="w-6 h-6" />
               </div>
               <h4 className="font-bold text-white text-xs">{previewFileName || 'Selecione a prévia pública'}</h4>
-              <p className="text-[11px] text-slate-500">Trecho de até 35 segundos e 10 MB. Será ouvido no perfil público.</p>
+              <p className="text-[11px] text-slate-500">Trecho de até 60 segundos e 10 MB. Será ouvido no perfil público.</p>
             </div>
 
             {/* Cover Upload */}
@@ -491,7 +491,7 @@ export const AddSongTab: React.FC = () => {
               </div>
 
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-300">Prévia pública (máx. 35s)</span>{previewObjectUrl && <button type="button" onClick={() => { URL.revokeObjectURL(previewObjectUrl); setPreviewObjectUrl(null); setPreviewFile(null); setPreviewFileName(null); }} className="text-xs text-red-400 hover:text-red-300">Remover</button>}</div>
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-300">Prévia pública (máx. 60s)</span>{previewObjectUrl && <button type="button" onClick={() => { URL.revokeObjectURL(previewObjectUrl); setPreviewObjectUrl(null); setPreviewFile(null); setPreviewFileName(null); }} className="text-xs text-red-400 hover:text-red-300">Remover</button>}</div>
                 {activePreviewUrl ? <audio controls src={activePreviewUrl} className="w-full h-10" aria-label="Prévia pública selecionada" /> : <p className="text-xs text-slate-500">Nenhuma prévia pública selecionada.</p>}
               </div>
 

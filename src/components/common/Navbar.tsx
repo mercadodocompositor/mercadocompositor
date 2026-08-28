@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { APP_CONFIG } from '../../config/appConfig';
 import { useApp } from '../../context/AppContext';
-import { Music2, Menu, X, ArrowRight, UserCheck, Disc } from 'lucide-react';
+import { Menu, X, ArrowRight } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
-  const { isAuthenticated, login } = useApp();
+  const { isAuthenticated } = useApp();
 
   const handleNavClick = (id: string) => {
     setMobileMenuOpen(false);

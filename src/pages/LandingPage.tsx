@@ -77,7 +77,7 @@ export const LandingPage: React.FC = () => {
                 <div className="pt-6 border-t border-slate-800/80 grid grid-cols-3 gap-4 text-slate-400 text-xs text-center lg:text-left">
                   <div className="flex items-center gap-2 justify-center lg:justify-start">
                     <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Áudio protegido (35s)</span>
+                    <span>Áudio protegido (60s)</span>
                   </div>
                   <div className="flex items-center gap-2 justify-center lg:justify-start">
                     <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -134,7 +134,7 @@ export const LandingPage: React.FC = () => {
                 </div>
                 <h3 className="text-lg font-serif font-bold text-[#0A1128]">Cadastre suas composições</h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Insira as letras completas e os áudios. A plataforma gera automaticamente a prévia limitada de 35 segundos.
+                  Insira as letras completas e os áudios. A plataforma gera automaticamente a prévia limitada de 60 segundos.
                 </p>
               </div>
 
@@ -188,7 +188,7 @@ export const LandingPage: React.FC = () => {
                 { title: "Perfil profissional", desc: "Sua página própria e elegante para enviar o link direto pelo WhatsApp.", icon: UserPlus },
                 { title: "Catálogo organizado", desc: "Acesse rapidamente letras, autores, registros e arquivos em qualquer lugar.", icon: Disc },
                 { title: "Proteção do áudio completo", desc: "Ninguém baixa seu áudio original; apenas a guia privada fica guardada.", icon: Lock },
-                { title: "Prévia limitada das músicas", desc: "A reprodução trava automaticamente aos 35 segundos para proteger sua autoria.", icon: Headphones },
+                { title: "Prévia limitada das músicas", desc: "A reprodução trava automaticamente aos 60 segundos para proteger sua autoria.", icon: Headphones },
                 { title: "Contato direto com interessados", desc: "Sem intermediários abusivos ou retenções indesejadas na negociação.", icon: MessageSquare },
                 { title: "Gestão das solicitações", desc: "Acompanhe propostas recebidas, valores negociados e status de pagamento.", icon: CheckCircle2 },
                 { title: "Emissão de liberações", desc: "Gere termos de autorização de gravação profissionais e estruturados.", icon: FileCheck },

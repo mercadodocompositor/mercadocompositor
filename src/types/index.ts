@@ -27,6 +27,7 @@ export interface Song {
   playCount: number;
   interestedCount: number;
   summary?: string;
+  isFeatured?: boolean;
 }
 
 export type RequestStatus = 

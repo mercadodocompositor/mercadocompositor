@@ -142,7 +142,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsAdminAuthenticated(data.isAdmin);
         if(data.isAdmin) {
           const [composers,allSongs,logs]=await Promise.all([loadAdminComposers(),loadAdminSongs(),loadSystemLogs()]);
-          setAdminComposers(composers);setAdminSongs(allSongs);setSystemLogs(logs);
+          setAdminComposers(composers);
+          setAdminSongs(allSongs);
+          setFeaturedSongIds(allSongs.filter(s => s.isFeatured).map(s => s.id));
+          setSystemLogs(logs);
         }
       } catch (error) { setAuthError(error instanceof Error ? error.message : 'Falha ao carregar os dados.'); }
       setAuthLoading(false);
@@ -553,16 +556,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? prev.filter(id => id !== songId) 
         : [...prev, songId]
     );
+    setAdminSongs(prev => prev.map(s => s.id === songId ? { ...s, isFeatured: nextValue } : s));
+    setSongs(prev => prev.map(s => s.id === songId ? { ...s, isFeatured: nextValue } : s));
     void adminFeatureSong(songId,nextValue).catch(e=>setAuthError(e.message));
   };
 
   const moderateSong = async (songId: string, status: Extract<SongStatus, 'published' | 'rejected' | 'draft'>) => {
     const previous = adminSongs.find(song => song.id === songId);
     if (!previous) return false;
-    setAdminSongs(current => current.map(song => song.id === songId ? { ...song, status } : song));
+    const shouldUnfeature = status !== 'published';
+    if (shouldUnfeature) {
+      setFeaturedSongIds(prev => prev.filter(id => id !== songId));
+    }
+    setAdminSongs(current => current.map(song => song.id === songId ? { ...song, status, isFeatured: shouldUnfeature ? false : song.isFeatured } : song));
     try {
       await saveSong(songId, { status });
-      setSongs(current => current.map(song => song.id === songId ? { ...song, status } : song));
+      if (shouldUnfeature && previous.isFeatured) {
+        void adminFeatureSong(songId, false).catch(() => undefined);
+      }
+      setSongs(current => current.map(song => song.id === songId ? { ...song, status, isFeatured: shouldUnfeature ? false : song.isFeatured } : song));
       addSystemLog({
         category: 'moderation',
         title: status === 'published' ? 'Música aprovada' : status === 'rejected' ? 'Música rejeitada' : 'Música retirada do catálogo',

@@ -54,7 +54,7 @@ export const AdminSongsTab: React.FC = () => {
       if (song.audioUrl) {
         const audio = new Audio(song.audioUrl);
         const stopAtPreviewLimit = () => {
-          if (audio.currentTime >= 35) {
+          if (audio.currentTime >= 60) {
             audio.pause();
             audio.currentTime = 0;
             setPlayingSongId(null);
@@ -129,7 +129,7 @@ export const AdminSongsTab: React.FC = () => {
             <span>Acervo Geral & Moderação de Obras</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Audite composições cadastradas, controle destaques na página inicial e verifique prévias sonoras com restrição de 35 segundos.
+            Audite composições cadastradas, controle destaques na página inicial e verifique prévias sonoras com restrição de 60 segundos.
           </p>
         </div>
 
@@ -216,7 +216,7 @@ export const AdminSongsTab: React.FC = () => {
                                 ? 'bg-amber-500 text-slate-950' 
                                 : 'bg-black/60 opacity-0 group-hover:opacity-100 text-white'
                             }`}
-                            title={isPlaying ? "Pausar Prévia" : "Ouvir Prévia (35s)"}
+                            title={isPlaying ? "Pausar Prévia" : "Ouvir Prévia (60s)"}
                           >
                             {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
                           </button>

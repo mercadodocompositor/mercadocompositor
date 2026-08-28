@@ -7,7 +7,7 @@ type TargetBucket = 'profile-media' | 'song-covers' | 'song-previews' | 'song-or
 const rules: Record<TargetBucket, { maxBytes: number; kinds: string[]; maxDuration?: number }> = {
   'profile-media': { maxBytes: 5 * 1024 * 1024, kinds: ['jpg', 'png', 'webp'] },
   'song-covers': { maxBytes: 5 * 1024 * 1024, kinds: ['jpg', 'png', 'webp'] },
-  'song-previews': { maxBytes: 10 * 1024 * 1024, kinds: ['mp3', 'm4a', 'aac', 'ogg'], maxDuration: 35.5 },
+  'song-previews': { maxBytes: 10 * 1024 * 1024, kinds: ['mp3', 'm4a', 'aac', 'ogg'], maxDuration: 60.5 },
   'song-originals': { maxBytes: 25 * 1024 * 1024, kinds: ['mp3', 'wav', 'm4a', 'aac', 'ogg'] },
   'release-documents': { maxBytes: 10 * 1024 * 1024, kinds: ['pdf'] },
 }
@@ -80,7 +80,7 @@ Deno.serve(async request => {
     const messages: Record<string, string> = {
       invalid_file_size: 'O arquivo excede o tamanho permitido.',
       invalid_file_content: 'O conteúdo real do arquivo não corresponde a um formato permitido.',
-      invalid_preview_duration: 'A prévia deve ter duração máxima de 35 segundos.',
+      invalid_preview_duration: 'A prévia deve ter duração máxima de 60 segundos.',
       validated_upload_failed: 'Não foi possível concluir o armazenamento do arquivo validado.',
     }
     console.error('Media validation error', code)

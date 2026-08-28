@@ -7,7 +7,8 @@ const camelSong = (r: any): Song => ({
   coverUrl:r.cover_url,registryCode:r.registry_code,notes:r.notes,status:r.status,
   isAvailableForRelease:r.is_available_for_release,valueType:r.value_type,
   suggestedValue:r.suggested_value == null ? undefined : Number(r.suggested_value),
-  playCount:Number(r.play_count),interestedCount:Number(r.interested_count),summary:r.summary
+  playCount:Number(r.play_count),interestedCount:Number(r.interested_count),summary:r.summary,
+  isFeatured:Boolean(r.is_featured)
 });
 
 export type SongPageQuery = {
