@@ -15,7 +15,11 @@ import {
   FileText, 
   Tag, 
   X,
-  Volume2
+  Volume2,
+  Download,
+  Check,
+  Clock,
+  AlertCircle
 } from 'lucide-react';
 
 export const AdminSongsTab: React.FC = () => {
@@ -24,9 +28,7 @@ export const AdminSongsTab: React.FC = () => {
     moderateSong,
     featuredSongIds, 
     toggleFeatureSong, 
-    adminComposers,
-    requests,
-    releases
+    adminComposers
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,8 +53,9 @@ export const AdminSongsTab: React.FC = () => {
       if (audioElement) {
         audioElement.pause();
       }
-      if (song.audioUrl) {
-        const audio = new Audio(song.audioUrl);
+      const activeUrl = song.previewAudioUrl || song.audioUrl;
+      if (activeUrl) {
+        const audio = new Audio(activeUrl);
         const stopAtPreviewLimit = () => {
           if (audio.currentTime >= 60) {
             audio.pause();
@@ -83,7 +86,7 @@ export const AdminSongsTab: React.FC = () => {
 
   const handlePublicationToggle = async (song: Song) => {
     if (song.status !== 'published' && (!song.previewAudioUrl || !song.lyrics.trim())) {
-      window.alert('A música precisa de prévia pública e letra antes de ser aprovada. A existência do original também é validada pelo banco.');
+      window.alert('A música precisa de prévia pública e letra antes de ser aprovada.');
       return;
     }
     if (song.status === 'published' && featuredSongIds.includes(song.id)) toggleFeatureSong(song.id);
@@ -98,20 +101,12 @@ export const AdminSongsTab: React.FC = () => {
     setPendingSongId(null);
   };
 
-  const handleDelete = (song: Song) => {
-    const hasHistory = requests.some(request => request.songId === song.id) || releases.some(release => release.songId === song.id);
-    if (hasHistory) {
-      window.alert('Esta música possui solicitações ou liberações e não pode ser excluída.');
-      return;
-    }
-    if (window.confirm(`Deseja rejeitar a composição "${song.title}" e removê-la do catálogo público?`)) void handleReject(song);
-  };
-
+  // Filter songs
   const filteredSongs = songs.filter(song => {
     const matchesSearch = 
       song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.authors.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (song.registryCode && song.registryCode.toLowerCase().includes(searchTerm.toLowerCase()));
+      song.genre.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesGenre = genreFilter === 'all' || song.genre === genreFilter;
     const matchesStatus = statusFilter === 'all' || song.status === statusFilter;
@@ -119,25 +114,66 @@ export const AdminSongsTab: React.FC = () => {
     return matchesSearch && matchesGenre && matchesStatus;
   });
 
+  // Export CSV
+  const handleExportCsv = () => {
+    if (filteredSongs.length === 0) return;
+
+    const headers = [
+      'ID',
+      'Titulo',
+      'Genero',
+      'Autores',
+      'Data_Cadastro',
+      'Status',
+      'Audições',
+      'Valor_Sugerido_BRL',
+      'Em_Destaque'
+    ];
+
+    const rows = filteredSongs.map(s => [
+      `"${s.id}"`,
+      `"${s.title.replace(/"/g, '""')}"`,
+      `"${s.genre}"`,
+      `"${s.authors.replace(/"/g, '""')}"`,
+      s.dateRegistered,
+      s.status,
+      s.playCount,
+      s.suggestedValue ? s.suggestedValue.toFixed(2) : 'Sob Consulta',
+      featuredSongIds.includes(s.id) ? 'Sim' : 'Nao'
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `relatorio_acervo_musicas_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fadeIn pb-12">
+      
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             <Music className="w-5 h-5 text-amber-400" />
-            <span>Acervo Geral & Moderação de Obras</span>
+            <span>Moderação & Acervo Musical</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Audite composições cadastradas, controle destaques na página inicial e verifique prévias sonoras com restrição de 60 segundos.
+            Supervisione novas composições cadastradas, execute audição e configure os destaques da vitrine pública.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-xl text-xs">
-          <span className="text-slate-400">Total no Catálogo:</span>
-          <span className="font-bold text-white">{songs.length} faixas</span>
-          <span className="text-amber-400 font-bold ml-2">({featuredSongIds.length} em destaque)</span>
-        </div>
+        <button
+          onClick={handleExportCsv}
+          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition self-start sm:self-auto"
+        >
+          <Download className="w-4 h-4 text-amber-400" />
+          <span>Exportar Acervo CSV</span>
+        </button>
       </div>
 
       {/* Filter and Search Bar */}
@@ -146,18 +182,19 @@ export const AdminSongsTab: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por título da música, autores ou código de registro..."
+            placeholder="Buscar por título, compositor ou estilo musical..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition"
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={genreFilter}
             onChange={e => setGenreFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500"
+            aria-label="Filtrar por gênero"
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="all">Todos os Gêneros</option>
             {genresList.map(g => (
@@ -168,13 +205,13 @@ export const AdminSongsTab: React.FC = () => {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500"
+            aria-label="Filtrar por status"
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="all">Todos os Status</option>
-            <option value="published">Publicadas</option>
-            <option value="pending_approval">Aguardando aprovação</option>
-            <option value="rejected">Rejeitadas</option>
+            <option value="published">Publicadas (Ativas)</option>
             <option value="draft">Rascunhos</option>
+            <option value="rejected">Rejeitadas</option>
           </select>
         </div>
       </div>
@@ -182,28 +219,30 @@ export const AdminSongsTab: React.FC = () => {
       {/* Songs Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/50 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="py-4 px-6">Música / Capa</th>
-                <th className="py-4 px-6">Gênero & Autoria</th>
-                <th className="py-4 px-6">Valoração & Disponibilidade</th>
-                <th className="py-4 px-6">Audições</th>
-                <th className="py-4 px-6 text-center">Destaque Home</th>
-                <th className="py-4 px-6 text-right">Ações</th>
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <tr>
+                <th className="p-4">Obra / Capa</th>
+                <th className="p-4">Autoria / Gênero</th>
+                <th className="p-4">Audições</th>
+                <th className="p-4">Valor Sugerido</th>
+                <th className="p-4">Moderação / Status</th>
+                <th className="p-4">Destaque Home</th>
+                <th className="p-4 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80 text-xs">
+            <tbody className="divide-y divide-slate-800/80">
               {filteredSongs.map(song => {
-                const isFeatured = featuredSongIds.includes(song.id);
                 const isPlaying = playingSongId === song.id;
+                const isFeatured = featuredSongIds.includes(song.id);
 
                 return (
                   <tr key={song.id} className="hover:bg-slate-800/40 transition">
-                    {/* Song info + Player trigger */}
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3.5">
-                        <div className="relative shrink-0 group">
+                    
+                    {/* Song Cover & Play */}
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="relative group/play shrink-0">
                           <img 
                             src={song.coverUrl} 
                             alt={song.title} 
@@ -211,130 +250,98 @@ export const AdminSongsTab: React.FC = () => {
                           />
                           <button
                             onClick={() => handlePlayToggle(song)}
-                            className={`absolute inset-0 rounded-xl flex items-center justify-center transition ${
-                              isPlaying 
-                                ? 'bg-amber-500 text-slate-950' 
-                                : 'bg-black/60 opacity-0 group-hover:opacity-100 text-white'
-                            }`}
-                            title={isPlaying ? "Pausar Prévia" : "Ouvir Prévia (60s)"}
+                            aria-label={isPlaying ? 'Pausar áudio' : 'Ouvir prévia'}
+                            className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center text-white opacity-0 group-hover/play:opacity-100 transition"
                           >
-                            {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
+                            {isPlaying ? <Pause className="w-5 h-5 fill-amber-400 text-amber-400" /> : <Play className="w-5 h-5 fill-white" />}
                           </button>
                         </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-white text-sm truncate">{song.title}</span>
-                            <SongStatusBadge status={song.status} />
-                          </div>
-                          <p className="text-[11px] text-slate-400 truncate mt-0.5">{song.summary || song.notes || "Composição com guia acústica disponível."}</p>
-                          {song.registryCode && (
-                            <span className="text-[10px] text-amber-400 font-mono">Reg: {song.registryCode}</span>
-                          )}
+                        <div>
+                          <strong className="text-white text-sm block">“{song.title}”</strong>
+                          <span className="text-[11px] text-slate-500 font-mono">Cadastrada em {song.dateRegistered}</span>
                         </div>
                       </div>
                     </td>
 
-                    {/* Genre & Authors */}
-                    <td className="py-4 px-6">
-                      <div>
-                        <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[11px] font-medium border border-slate-700">
-                          {song.genre}
-                        </span>
-                        <p className="text-slate-400 text-[11px] mt-1.5 truncate max-w-xs">{song.authors}</p>
-                      </div>
+                    {/* Authors & Genre */}
+                    <td className="p-4 space-y-1">
+                      <span className="text-slate-200 block">{song.authors}</span>
+                      <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full inline-block">
+                        {song.genre}
+                      </span>
                     </td>
 
-                    {/* Value & Release Availability */}
-                    <td className="py-4 px-6">
-                      <div>
-                        {song.valueType === 'suggested' && song.suggestedValue ? (
-                          <span className="text-emerald-400 font-bold text-xs block">
-                            R$ {song.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </span>
-                        ) : (
-                          <span className="text-amber-400 font-medium text-xs block">
-                            Sob Consulta
-                          </span>
-                        )}
-                        <span className={`text-[10px] font-semibold ${
-                          song.isAvailableForRelease ? 'text-emerald-400' : 'text-slate-400'
-                        }`}>
-                          {song.isAvailableForRelease ? '• Disponível para Gravação' : '• Bloqueada temporariamente'}
-                        </span>
-                      </div>
+                    {/* Plays */}
+                    <td className="p-4">
+                      <span className="text-white font-bold block">{song.playCount}</span>
+                      <span className="text-[10px] text-slate-500">audições</span>
                     </td>
 
-                    {/* Audições */}
-                    <td className="py-4 px-6">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-slate-300 font-bold">
-                          <Volume2 className="w-3.5 h-3.5 text-purple-400" />
-                          <span>{song.playCount}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400">{song.interestedCount} interessados</p>
-                      </div>
+                    {/* Price */}
+                    <td className="p-4 font-mono font-bold text-emerald-400">
+                      {song.valueType === 'suggested' && song.suggestedValue 
+                        ? `R$ ${song.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+                        : 'Sob Consulta'}
                     </td>
 
-                    {/* Spotlight toggle */}
-                    <td className="py-4 px-6 text-center">
+                    {/* Status Toggle */}
+                    <td className="p-4">
                       <button
-                            onClick={() => handleFeatureToggle(song)}
-                        className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 mx-auto transition ${
-                          isFeatured
-                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                        onClick={() => handlePublicationToggle(song)}
+                        disabled={pendingSongId === song.id}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border transition flex items-center gap-1.5 ${
+                          song.status === 'published'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                            : song.status === 'rejected'
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                        }`}
+                      >
+                        {song.status === 'published' ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Aprovada</span>
+                          </>
+                        ) : song.status === 'rejected' ? (
+                          <>
+                            <X className="w-3 h-3 text-rose-400" />
+                            <span>Rejeitada</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="w-3 h-3 text-amber-400" />
+                            <span>Rascunho</span>
+                          </>
+                        )}
+                      </button>
+                    </td>
+
+                    {/* Featured Toggle */}
+                    <td className="p-4">
+                      <button
+                        onClick={() => handleFeatureToggle(song)}
+                        className={`p-2 rounded-xl border transition ${
+                          isFeatured 
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-bold' 
                             : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
                         }`}
-                        title="Destacar esta composição na página inicial da plataforma"
+                        title={isFeatured ? 'Remover dos destaques da Home' : 'Colocar em destaque na Home'}
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>{isFeatured ? 'Destaque ON' : 'Destacar'}</span>
+                        <Sparkles className="w-4 h-4" />
                       </button>
                     </td>
 
                     {/* Actions */}
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => setSelectedSong(song)}
-                          className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-                          title="Ver letra completa e detalhes"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          onClick={() => void handlePublicationToggle(song)}
-                          disabled={pendingSongId === song.id}
-                          className={`p-2 rounded-lg border transition ${
-                            song.status === 'published'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                          }`}
-                          title={song.status === 'published' ? "Retirar do catálogo público" : "Aprovar e publicar"}
-                        >
-                          {song.status === 'published' ? <Globe className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                        </button>
-
-                        {song.status === 'pending_approval' && (
-                          <button
-                            onClick={() => void handleReject(song)}
-                            disabled={pendingSongId === song.id}
-                            className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 transition disabled:opacity-50"
-                            title="Rejeitar e devolver ao compositor"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => handleDelete(song)}
-                          className="p-2 rounded-lg bg-slate-800 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700 transition"
-                          title="Rejeitar e remover do catálogo público"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                    <td className="p-4 text-right space-x-1 whitespace-nowrap">
+                      <button
+                        onClick={() => setSelectedSong(song)}
+                        className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                        title="Ver letra e detalhes"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                     </td>
+
                   </tr>
                 );
               })}
@@ -343,71 +350,86 @@ export const AdminSongsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* SONG DETAILS MODAL */}
+      {/* SONG INSPECTION MODAL */}
       {selectedSong && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-fadeIn">
+            
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-4">
                 <img 
                   src={selectedSong.coverUrl} 
                   alt={selectedSong.title} 
-                  className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-500/40"
+                  className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-400"
                 />
                 <div>
-                  <h3 className="text-xl font-bold text-white">{selectedSong.title}</h3>
-                  <p className="text-xs text-amber-400 font-medium">{selectedSong.genre} • {selectedSong.subgenre || 'Original'}</p>
-                  <p className="text-xs text-slate-400">Autoria: {selectedSong.authors}</p>
+                  <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                    {selectedSong.genre}
+                  </span>
+                  <h3 className="text-xl font-bold text-white mt-1">“{selectedSong.title}”</h3>
+                  <p className="text-xs text-slate-400">Autores: {selectedSong.authors}</p>
                 </div>
               </div>
 
               <button 
                 onClick={() => setSelectedSong(null)}
-                className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* Lyrics viewer */}
             <div className="space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Letra da Obra:</span>
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-200 font-mono whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
-                {selectedSong.lyrics}
+              <span className="text-xs font-bold text-slate-300 block uppercase tracking-wider">
+                Letra Completa da Obra:
+              </span>
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 font-mono whitespace-pre-line leading-relaxed max-h-60 overflow-y-auto">
+                {selectedSong.lyrics || 'Letra não informada pelo compositor.'}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-slate-950 p-4 rounded-2xl border border-slate-800">
-              <div>
-                <span className="text-slate-400 block text-[11px]">Código de Registro ECAD / EDA</span>
-                <span className="font-mono text-white">{selectedSong.registryCode || "Não informado"}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[11px]">Data de Registro</span>
-                <span className="text-white">{selectedSong.dateRegistered}</span>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+              <span className="text-xs text-slate-400">
+                Status Atual: <strong className="text-white capitalize">{selectedSong.status}</strong>
+              </span>
+
+              <div className="flex items-center gap-2">
+                {selectedSong.status !== 'published' ? (
+                  <button
+                    onClick={() => {
+                      handlePublicationToggle(selectedSong);
+                      setSelectedSong(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs shadow-md transition"
+                  >
+                    Aprovar e Publicar Obra
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      handleReject(selectedSong);
+                      setSelectedSong(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-md transition"
+                  >
+                    Rejeitar / Despublicar
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setSelectedSong(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs"
+                >
+                  Fechar
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={() => setSelectedSong(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs"
-              >
-                Fechar
-              </button>
-            </div>
           </div>
         </div>
       )}
+
     </div>
   );
-};
-
-const SongStatusBadge = ({ status }: { status: SongStatus }) => {
-  const meta: Record<SongStatus, { label: string; className: string }> = {
-    draft: { label: 'Rascunho', className: 'bg-slate-800 text-slate-400 border-slate-700' },
-    pending_approval: { label: 'Aguardando aprovação', className: 'bg-amber-500/10 text-amber-300 border-amber-500/30' },
-    published: { label: 'Pública', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-    rejected: { label: 'Rejeitada', className: 'bg-red-500/10 text-red-300 border-red-500/30' }
-  };
-  return <span className={`${meta[status].className} border text-[10px] font-bold px-1.5 py-0.5 rounded`}>{meta[status].label}</span>;
 };

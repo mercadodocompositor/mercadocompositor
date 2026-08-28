@@ -15,7 +15,8 @@ import {
   X,
   Building2,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  ExternalLink
 } from 'lucide-react';
 
 export const AdminTransactionsTab: React.FC = () => {
@@ -47,7 +48,7 @@ export const AdminTransactionsTab: React.FC = () => {
       case 'em_negociacao':
         return <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Em Negociação</span>;
       case 'pagamento_pendente':
-        return <span className="bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Aguardando Pix</span>;
+        return <span className="bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Aguardando Pagamento</span>;
       case 'nova':
         return <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Nova Proposta</span>;
       default:
@@ -62,24 +63,73 @@ export const AdminTransactionsTab: React.FC = () => {
     }
   };
 
+  // Export CSV
+  const handleExportCsv = () => {
+    if (filteredRequests.length === 0) return;
+
+    const headers = [
+      'ID',
+      'Obra_Musical',
+      'Interprete_Comprador',
+      'Documento',
+      'Email',
+      'WhatsApp',
+      'Status',
+      'Valor_Acordado_BRL',
+      'Finalidade',
+      'Data_Proposta'
+    ];
+
+    const rows = filteredRequests.map(r => [
+      `"${r.id}"`,
+      `"${r.songTitle.replace(/"/g, '""')}"`,
+      `"${r.buyerName.replace(/"/g, '""')}"`,
+      `"${r.cpfCnpj}"`,
+      `"${r.buyerEmail}"`,
+      `"${r.buyerWhatsapp}"`,
+      r.status,
+      r.agreedValue ? r.agreedValue.toFixed(2) : '0.00',
+      `"${r.purpose.replace(/"/g, '""')}"`,
+      r.createdAt
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `relatorio_transacoes_admin_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fadeIn pb-12">
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             <FileCheck2 className="w-5 h-5 text-amber-400" />
             <span>Auditoria de Propostas & Termos de Liberação</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Supervisione negociações entre intérpretes e compositores, recibos de pagamento e certificados digitais emitidos.
+            Supervisione negociações entre intérpretes e compositores, quitações de valores e certificados digitais emitidos.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <button
+            onClick={handleExportCsv}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition"
+          >
+            <Download className="w-4 h-4 text-amber-400" />
+            <span>Exportar CSV</span>
+          </button>
+
           <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl text-xs">
             <span className="text-slate-400">Total Transacionado:</span>
-            <span className="font-bold text-emerald-400 ml-2">
+            <span className="font-bold text-emerald-400 ml-2 font-mono">
               R$ {requests.reduce((acc, r) => acc + (r.agreedValue || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
           </div>
@@ -99,109 +149,114 @@ export const AdminTransactionsTab: React.FC = () => {
           />
         </div>
 
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as any)}
-          className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500"
-        >
-          <option value="all">Todos os Status</option>
-          <option value="nova">Novas Propostas</option>
-          <option value="em_negociacao">Em Negociação</option>
-          <option value="pagamento_confirmado">Pagamento Confirmado</option>
-          <option value="liberacao_enviada">Liberação Emitida</option>
-        </select>
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+              statusFilter === 'all'
+                ? 'bg-slate-800 text-white border border-slate-700 font-bold'
+                : 'text-slate-400 hover:text-white bg-slate-950'
+            }`}
+          >
+            Todas ({requests.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('liberacao_enviada')}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+              statusFilter === 'liberacao_enviada'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
+                : 'text-slate-400 hover:text-emerald-400 bg-slate-950'
+            }`}
+          >
+            Liberadas ({requests.filter(r => r.status === 'liberacao_enviada').length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('pagamento_confirmado')}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+              statusFilter === 'pagamento_confirmado'
+                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold'
+                : 'text-slate-400 hover:text-blue-400 bg-slate-950'
+            }`}
+          >
+            Pagas ({requests.filter(r => r.status === 'pagamento_confirmado').length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('em_negociacao')}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+              statusFilter === 'em_negociacao'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
+                : 'text-slate-400 hover:text-amber-400 bg-slate-950'
+            }`}
+          >
+            Negociação ({requests.filter(r => r.status === 'em_negociacao').length})
+          </button>
+        </div>
       </div>
 
       {/* Requests Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/50 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="py-4 px-6">Música & Intérprete</th>
-                <th className="py-4 px-6">Finalidade / Mensagem</th>
-                <th className="py-4 px-6">Valor Acordado</th>
-                <th className="py-4 px-6">Data & Status</th>
-                <th className="py-4 px-6 text-right">Ações & Termos</th>
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <tr>
+                <th className="p-4">Obra / Proposta</th>
+                <th className="p-4">Intérprete / Produtor</th>
+                <th className="p-4">Finalidade</th>
+                <th className="p-4">Valor Acordado</th>
+                <th className="p-4">Status</th>
+                <th className="p-4">Data</th>
+                <th className="p-4 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80 text-xs">
+            <tbody className="divide-y divide-slate-800/80">
               {filteredRequests.map(req => (
                 <tr key={req.id} className="hover:bg-slate-800/40 transition">
-                  {/* Song & Buyer */}
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      {req.songCover && (
-                        <img 
-                          src={req.songCover} 
-                          alt={req.songTitle} 
-                          className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <span className="font-bold text-white text-sm block truncate">{req.songTitle}</span>
-                        <span className="text-amber-400 font-semibold text-xs block truncate">{req.buyerStageName || req.buyerName}</span>
-                        <span className="text-[10px] text-slate-400">{req.buyerCityState} • Doc: {req.cpfCnpj}</span>
-                      </div>
-                    </div>
+                  <td className="p-4">
+                    <strong className="text-white text-sm block">“{req.songTitle}”</strong>
+                    <span className="text-[11px] text-slate-400">ID: {req.id.slice(0, 8)}...</span>
                   </td>
 
-                  {/* Purpose & Message */}
-                  <td className="py-4 px-6">
-                    <div className="max-w-xs space-y-1">
-                      <p className="text-slate-300 font-medium truncate">{req.purpose}</p>
-                      <p className="text-[11px] text-slate-400 truncate">{req.message}</p>
-                    </div>
+                  <td className="p-4 space-y-0.5">
+                    <strong className="text-slate-200 block">{req.buyerName}</strong>
+                    <span className="text-[11px] text-slate-400 block">{req.buyerWhatsapp}</span>
                   </td>
 
-                  {/* Value */}
-                  <td className="py-4 px-6">
-                    <div>
-                      {req.agreedValue ? (
-                        <span className="text-emerald-400 font-bold text-sm block">
-                          R$ {req.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs italic">A combinar</span>
-                      )}
-                      {req.paymentReceivedAt && (
-                        <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5">
-                          <CheckCircle2 className="w-3 h-3" /> Pix Liquidado
-                        </span>
-                      )}
-                    </div>
+                  <td className="p-4 max-w-xs truncate text-slate-300">
+                    {req.purpose}
                   </td>
 
-                  {/* Date & Status */}
-                  <td className="py-4 px-6">
-                    <div className="space-y-1.5">
-                      {getStatusBadge(req.status)}
-                      <p className="text-[10px] text-slate-400">{req.createdAt}</p>
-                    </div>
+                  <td className="p-4 font-mono font-bold text-emerald-400">
+                    {req.agreedValue 
+                      ? `R$ ${req.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+                      : 'Em aberto'}
                   </td>
 
-                  {/* Actions */}
-                  <td className="py-4 px-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="p-4">
+                    {getStatusBadge(req.status)}
+                  </td>
+
+                  <td className="p-4 text-slate-400 font-mono text-[11px]">
+                    {req.createdAt.split('T')[0] || req.createdAt}
+                  </td>
+
+                  <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                    {req.releaseId && (
                       <button
-                        onClick={() => setSelectedRequest(req)}
-                        className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-                        title="Ver Proposta Completa"
+                        onClick={() => handleOpenReleaseModal(req.releaseId!)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold hover:bg-emerald-500/30 transition"
+                        title="Ver Termo Oficial Emitido"
                       >
-                        <Eye className="w-3.5 h-3.5" />
+                        Ver Termo
                       </button>
+                    )}
 
-                      {req.releaseId && (
-                        <button
-                          onClick={() => handleOpenReleaseModal(req.releaseId!)}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition"
-                          title="Auditar Termo de Liberação Oficial"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span>Ver Termo</span>
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => setSelectedRequest(req)}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition"
+                      title="Ver detalhes da solicitação"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -210,54 +265,42 @@ export const AdminTransactionsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* REQUEST DETAIL MODAL */}
+      {/* REQUEST DETAILS MODAL */}
       {selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 space-y-5 animate-fadeIn">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Proposta Comercial</span>
-                <h3 className="text-xl font-bold text-white">{selectedRequest.songTitle}</h3>
-                <p className="text-xs text-slate-400">Solicitado por {selectedRequest.buyerName} em {selectedRequest.createdAt}</p>
+                <h3 className="font-bold text-white text-lg">Proposta de Gravação</h3>
+                <p className="text-xs text-slate-400">Obra: “{selectedRequest.songTitle}”</p>
               </div>
               <button 
                 onClick={() => setSelectedRequest(null)}
-                className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
-                <span className="text-slate-400 font-bold block">Mensagem do Solicitante:</span>
-                <p className="text-slate-200 leading-relaxed italic">"{selectedRequest.message}"</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Intérprete / Artista</span>
-                  <span className="text-white font-semibold">{selectedRequest.buyerStageName || selectedRequest.buyerName}</span>
+            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs space-y-2 text-slate-300">
+              <p>Intérprete: <strong className="text-white">{selectedRequest.buyerName}</strong></p>
+              <p>Documento: <span className="font-mono text-white">{selectedRequest.cpfCnpj}</span></p>
+              <p>E-mail: <span className="text-white">{selectedRequest.buyerEmail}</span></p>
+              <p>WhatsApp: <span className="text-white">{selectedRequest.buyerWhatsapp}</span></p>
+              <p>Cidade / UF: <span className="text-white">{selectedRequest.buyerCityState}</span></p>
+              <p>Finalidade: <span className="text-amber-300">{selectedRequest.purpose}</span></p>
+              {selectedRequest.message && (
+                <div className="pt-2 border-t border-slate-800">
+                  <span className="text-slate-500 block mb-1">Mensagem enviada:</span>
+                  <p className="italic bg-slate-900 p-2.5 rounded-xl border border-slate-800">{selectedRequest.message}</p>
                 </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Documento (CPF/CNPJ)</span>
-                  <span className="text-white font-mono">{selectedRequest.cpfCnpj}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">E-mail</span>
-                  <span className="text-white">{selectedRequest.buyerEmail}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">WhatsApp</span>
-                  <span className="text-white">{selectedRequest.buyerWhatsapp}</span>
-                </div>
-              </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex justify-end pt-2">
               <button
                 onClick={() => setSelectedRequest(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs"
+                className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
               >
                 Fechar
               </button>
@@ -269,7 +312,7 @@ export const AdminTransactionsTab: React.FC = () => {
       {/* AUDIT RELEASE TERM MODAL */}
       {selectedRelease && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-fadeIn">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
@@ -300,56 +343,66 @@ export const AdminTransactionsTab: React.FC = () => {
                 </p>
               </div>
 
-              <div className="text-xs leading-relaxed space-y-3 font-sans">
-                <p>
-                  Pelo presente instrumento particular, o(a) <strong>CEDENTE / AUTOR(A)</strong>,{' '}
-                  <strong>{selectedRelease.composerName}</strong>, portador(a) do CPF nº {selectedRelease.composerCpf}, residente em {selectedRelease.composerCityState}, autoriza o(a) <strong>CESSIONÁRIO(A) / INTÉRPRETE</strong>,{' '}
-                  <strong>{selectedRelease.buyerName}</strong>, inscrito(a) no documento {selectedRelease.buyerDocument}, a gravar e explorar comercialmente a obra musical intitulada:
-                </p>
-
-                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-center space-y-1">
-                  <span className="text-xs font-bold text-amber-900 uppercase">Obra Musical</span>
-                  <h4 className="text-base font-bold text-slate-900">"{selectedRelease.songTitle}"</h4>
-                  <p className="text-xs text-slate-600">Autoria Registrada: {selectedRelease.authors}</p>
+              <div className="grid grid-cols-2 gap-4 text-xs font-sans bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <span className="font-bold text-slate-700 block uppercase text-[10px]">Outorgante (Compositor):</span>
+                  <p className="font-bold text-slate-900">{selectedRelease.composerName}</p>
+                  <p className="text-slate-600">CPF: {selectedRelease.composerCpf}</p>
+                  <p className="text-slate-600">{selectedRelease.composerCityState}</p>
                 </div>
 
-                <div className="space-y-1.5 pt-2">
-                  <p><strong>Condições Acordadas:</strong> {selectedRelease.releaseType}</p>
-                  <p><strong>Finalidade Autorizada:</strong> {selectedRelease.authorizedPurpose}</p>
-                  <p><strong>Valor Negociado:</strong> R$ {selectedRelease.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                  <p><strong>Cláusula de Créditos:</strong> {selectedRelease.additionalConditions}</p>
+                <div>
+                  <span className="font-bold text-slate-700 block uppercase text-[10px]">Outorgado (Intérprete):</span>
+                  <p className="font-bold text-slate-900">{selectedRelease.buyerName}</p>
+                  <p className="text-slate-600">Documento: {selectedRelease.buyerDocument}</p>
+                  <p className="text-slate-600">{selectedRelease.buyerCityState}</p>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-sans text-slate-500">
-                <div>
-                  <span className="font-bold text-slate-700 block">Assinatura Digital Verificada</span>
-                  <span className="font-mono text-[10px]">{selectedRelease.digitalSignature}</span>
-                </div>
-                <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase">
-                  Hash Integridade Válido
-                </div>
+              <div className="space-y-3 text-xs leading-relaxed font-sans">
+                <p>
+                  <strong>Obra Musical:</strong> “{selectedRelease.songTitle}” (Autores: {selectedRelease.authors})
+                </p>
+                <p>
+                  <strong>Tipo de Autorização:</strong> {selectedRelease.releaseType}
+                </p>
+                <p>
+                  <strong>Valor Total Acordado e Quitado:</strong> R$ {selectedRelease.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+                <p>
+                  <strong>Finalidade Autorizada:</strong> {selectedRelease.authorizedPurpose}
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-xs font-sans text-slate-600">
+                <span>Assinatura Digital Registrada: {selectedRelease.digitalSignature}</span>
+                <span className="text-emerald-700 font-bold">✓ Válido & Indexado</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={() => window.print()}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-2"
+            <div className="flex items-center justify-between pt-2">
+              <a
+                href={`/validar-documento?codigo=${selectedRelease.documentCode}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1.5"
               >
-                <Printer className="w-4 h-4" />
-                <span>Imprimir / Salvar PDF</span>
-              </button>
+                <span>Validar na Página Pública</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
               <button
                 onClick={() => setSelectedRelease(null)}
-                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs"
+                className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
               >
-                Concluir Auditoria
+                Fechar Auditoria
               </button>
             </div>
+
           </div>
         </div>
       )}
+
     </div>
   );
 };

@@ -4,43 +4,45 @@ import { AdminComposer, SubscriptionStatus } from '../../types';
 import { 
   Users, 
   Search, 
-  Filter, 
   CheckCircle2, 
   XCircle, 
   AlertTriangle, 
   PlusCircle, 
   ExternalLink, 
-  Edit, 
   Trash2, 
   Phone, 
   Mail, 
-  MapPin, 
   Music, 
   Eye, 
   DollarSign,
-  ShieldAlert,
   ShieldCheck,
-  X
+  X,
+  Download,
+  Copy,
+  Check,
+  Sparkles,
+  Link as LinkIcon
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { APP_CONFIG } from '../../config/appConfig';
 
 export const AdminComposersTab: React.FC = () => {
-  const navigate = useNavigate();
   const { 
     adminComposers, 
     updateAdminComposerStatus, 
     toggleComposerVerified, 
-    addAdminComposer,
-    profile
+    deleteAdminComposer,
+    addAdminComposer
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | SubscriptionStatus>('all');
   const [selectedComposer, setSelectedComposer] = useState<AdminComposer | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addMode, setAddMode] = useState<'invite' | 'manual'>('invite');
+  const [invitePlan, setInvitePlan] = useState('Plano Ouro (Ilimitado)');
+  const [copiedInviteLink, setCopiedInviteLink] = useState(false);
 
-  // New Composer Form state
+  // New Composer Form state for manual add
   const [newForm, setNewForm] = useState({
     name: '',
     stageName: '',
@@ -49,12 +51,11 @@ export const AdminComposersTab: React.FC = () => {
     cpf: '',
     cityState: '',
     username: '',
-    planName: 'Plano Bronze',
-    monthlyValue: 24.90,
+    planName: 'Plano Ouro',
+    monthlyValue: 54.90,
     subscriptionStatus: 'active' as SubscriptionStatus,
     photo: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
-    isVerified: false,
-    notes: ''
+    isVerified: true
   });
 
   // Filter logic
@@ -71,18 +72,106 @@ export const AdminComposersTab: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleCopyInviteLink = () => {
+    const planSlug = encodeURIComponent(invitePlan);
+    const inviteUrl = `${window.location.origin}/autenticacao?modo=cadastro&plano=${planSlug}`;
+    navigator.clipboard.writeText(inviteUrl);
+    setCopiedInviteLink(true);
+    setTimeout(() => setCopiedInviteLink(false), 2500);
+  };
+
+  const handleManualAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Para garantir a segurança de credenciais, orientamos que o compositor conclua o registro pelo link oficial de cadastro (ex.: /cadastro), onde ele mesmo define a senha e confirma seu e-mail.');
+    if (!newForm.name || !newForm.email || !newForm.stageName) {
+      alert('Preencha os campos obrigatórios: Nome civil, Nome artístico e E-mail.');
+      return;
+    }
+
+    addAdminComposer({
+      name: newForm.name,
+      stageName: newForm.stageName,
+      email: newForm.email,
+      whatsapp: newForm.whatsapp,
+      cpf: newForm.cpf,
+      cityState: newForm.cityState || 'Brasil',
+      username: newForm.username || newForm.stageName.toLowerCase().replace(/\s+/g, '-'),
+      planName: newForm.planName,
+      monthlyValue: newForm.monthlyValue,
+      subscriptionStatus: newForm.subscriptionStatus,
+      photo: newForm.photo,
+      isVerified: newForm.isVerified
+    });
+
+    alert('Compositor adicionado com sucesso à base de dados administrativa!');
     setIsAddModalOpen(false);
+    setNewForm({
+      name: '',
+      stageName: '',
+      email: '',
+      whatsapp: '',
+      cpf: '',
+      cityState: '',
+      username: '',
+      planName: 'Plano Ouro',
+      monthlyValue: 54.90,
+      subscriptionStatus: 'active',
+      photo: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
+      isVerified: true
+    });
+  };
+
+  const handleExportCsv = () => {
+    if (filteredComposers.length === 0) return;
+
+    const headers = [
+      'Nome_Civil',
+      'Nome_Artistico',
+      'Email',
+      'WhatsApp',
+      'CPF',
+      'Cidade_Estado',
+      'Plano',
+      'Valor_Mensal_BRL',
+      'Status_Assinatura',
+      'Qtd_Musicas',
+      'Audicoes_Totais',
+      'Receita_Liberacoes_BRL',
+      'Verificado'
+    ];
+
+    const rows = filteredComposers.map(c => [
+      `"${c.name.replace(/"/g, '""')}"`,
+      `"${c.stageName.replace(/"/g, '""')}"`,
+      `"${c.email}"`,
+      `"${c.whatsapp}"`,
+      `"${c.cpf}"`,
+      `"${c.cityState.replace(/"/g, '""')}"`,
+      `"${c.planName}"`,
+      c.monthlyValue.toFixed(2),
+      c.subscriptionStatus,
+      c.songCount,
+      c.totalPlays,
+      c.revenueGenerated.toFixed(2),
+      c.isVerified ? 'Sim' : 'Nao'
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `relatorio_compositores_admin_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fadeIn pb-12">
+      
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             <Users className="w-5 h-5 text-amber-400" />
             <span>Gestão de Compositores & Assinaturas</span>
           </h2>
@@ -91,18 +180,27 @@ export const AdminComposersTab: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition self-start sm:self-auto"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>Cadastrar Compositor</span>
-        </button>
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <button
+            onClick={handleExportCsv}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition"
+          >
+            <Download className="w-4 h-4 text-amber-400" />
+            <span>Exportar CSV</span>
+          </button>
+
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Adicionar / Convidar</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        {/* Search */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -120,7 +218,7 @@ export const AdminComposersTab: React.FC = () => {
             onClick={() => setStatusFilter('all')}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'all'
-                ? 'bg-slate-800 text-white border border-slate-700'
+                ? 'bg-slate-800 text-white border border-slate-700 font-bold'
                 : 'text-slate-400 hover:text-white bg-slate-950'
             }`}
           >
@@ -130,7 +228,7 @@ export const AdminComposersTab: React.FC = () => {
             onClick={() => setStatusFilter('active')}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'active'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
                 : 'text-slate-400 hover:text-emerald-400 bg-slate-950'
             }`}
           >
@@ -140,7 +238,7 @@ export const AdminComposersTab: React.FC = () => {
             onClick={() => setStatusFilter('pending')}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'pending'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
                 : 'text-slate-400 hover:text-amber-400 bg-slate-950'
             }`}
           >
@@ -150,7 +248,7 @@ export const AdminComposersTab: React.FC = () => {
             onClick={() => setStatusFilter('suspended')}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'suspended'
-                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold'
                 : 'text-slate-400 hover:text-rose-400 bg-slate-950'
             }`}
           >
@@ -162,157 +260,108 @@ export const AdminComposersTab: React.FC = () => {
       {/* Composers Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/50 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="py-4 px-6">Compositor</th>
-                <th className="py-4 px-6">Contato & Local</th>
-                <th className="py-4 px-6">Assinatura & Plano</th>
-                <th className="py-4 px-6">Desempenho</th>
-                <th className="py-4 px-6 text-center">Status / Ação Rápida</th>
-                <th className="py-4 px-6 text-right">Gerenciar</th>
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <tr>
+                <th className="p-4">Compositor / Perfil</th>
+                <th className="p-4">Contato / Localização</th>
+                <th className="p-4">Plano / Valor</th>
+                <th className="p-4">Status da Assinatura</th>
+                <th className="p-4">Catálogo / Audições</th>
+                <th className="p-4">Receita Gerada</th>
+                <th className="p-4 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80 text-xs">
+            <tbody className="divide-y divide-slate-800/80">
               {filteredComposers.map(composer => (
                 <tr key={composer.id} className="hover:bg-slate-800/40 transition">
-                  {/* Avatar + Name */}
-                  <td className="py-4 px-6">
+                  {/* Photo & Stage Name */}
+                  <td className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className="relative shrink-0">
-                        <img 
-                          src={composer.photo} 
-                          alt={composer.name} 
-                          className="w-11 h-11 rounded-xl object-cover border border-slate-700"
-                        />
-                        {composer.isVerified && (
-                          <div className="absolute -bottom-1 -right-1 bg-amber-500 rounded-full p-0.5 text-slate-950 shadow" title="Perfil Verificado">
-                            <CheckCircle2 className="w-3 h-3 stroke-[3]" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
+                      <img 
+                        src={composer.photo} 
+                        alt={composer.name} 
+                        className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
+                      />
+                      <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-white text-sm truncate">{composer.stageName}</span>
+                          <strong className="text-white text-sm">{composer.stageName}</strong>
+                          {composer.isVerified && (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" title="Verificado" />
+                          )}
                         </div>
-                        <p className="text-[11px] text-slate-400 truncate">{composer.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">CPF: {composer.cpf}</p>
+                        <span className="text-[11px] text-slate-400 block">{composer.name}</span>
                       </div>
                     </div>
                   </td>
 
-                  {/* Contact & Location */}
-                  <td className="py-4 px-6">
-                    <div className="space-y-1 text-slate-300">
-                      <div className="flex items-center gap-1.5 text-slate-400">
-                        <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span className="truncate">{composer.email}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-slate-400">
-                        <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span>{composer.whatsapp}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-slate-400">
-                        <MapPin className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                        <span>{composer.cityState}</span>
-                      </div>
-                    </div>
+                  {/* Contact */}
+                  <td className="p-4 space-y-0.5">
+                    <span className="text-slate-200 block truncate max-w-xs">{composer.email}</span>
+                    <span className="text-[11px] text-slate-400 block">{composer.whatsapp} • {composer.cityState}</span>
                   </td>
 
-                  {/* Subscription & Plan */}
-                  <td className="py-4 px-6">
-                    <div>
-                      <span className="text-white font-semibold block">{composer.planName}</span>
-                      <span className="text-amber-400 font-bold text-xs block">
-                        R$ {composer.monthlyValue.toFixed(2)} / mês
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        Desde {composer.registeredAt}
-                      </span>
-                    </div>
+                  {/* Plan */}
+                  <td className="p-4">
+                    <strong className="text-white block">{composer.planName}</strong>
+                    <span className="text-amber-400 font-mono font-bold text-[11px]">
+                      R$ {composer.monthlyValue.toFixed(2)}/mês
+                    </span>
                   </td>
 
-                  {/* Performance */}
-                  <td className="py-4 px-6">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Music className="w-3.5 h-3.5 text-purple-400" />
-                        <span className="text-white font-bold">{composer.songCount}</span>
-                        <span className="text-slate-400 text-[11px]">músicas</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {composer.totalPlays.toLocaleString('pt-BR')} audições
-                      </div>
-                      <div className="text-[11px] font-semibold text-emerald-400">
-                        R$ {composer.revenueGenerated.toLocaleString('pt-BR')} gerados
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Quick Status Toggle */}
-                  <td className="py-4 px-6 text-center">
+                  {/* Status Dropdown */}
+                  <td className="p-4">
                     <select
                       value={composer.subscriptionStatus}
                       onChange={e => updateAdminComposerStatus(composer.id, e.target.value as SubscriptionStatus)}
-                      className={`text-xs font-bold px-3 py-1.5 rounded-xl border appearance-none cursor-pointer focus:outline-none transition ${
+                      aria-label="Status da assinatura"
+                      className={`text-[11px] font-bold uppercase rounded-lg px-2.5 py-1 border transition focus:outline-none ${
                         composer.subscriptionStatus === 'active'
-                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                           : composer.subscriptionStatus === 'pending'
-                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                          : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                       }`}
                     >
-                      <option value="active" className="bg-slate-900 text-white">Ativo</option>
-                      <option value="pending" className="bg-slate-900 text-white">Pendente</option>
-                      <option value="suspended" className="bg-slate-900 text-white">Suspenso</option>
-                      <option value="cancelled" className="bg-slate-900 text-white">Cancelado</option>
+                      <option value="active">Ativo</option>
+                      <option value="pending">Pendente</option>
+                      <option value="suspended">Suspenso</option>
+                      <option value="cancelled">Cancelado</option>
                     </select>
                   </td>
 
-                  {/* Action Buttons */}
-                  <td className="py-4 px-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setSelectedComposer(composer)}
-                        className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-                        title="Ver detalhes completos"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
+                  {/* Songs & Plays */}
+                  <td className="p-4">
+                    <span className="text-white font-bold block">{composer.songCount} músicas</span>
+                    <span className="text-[11px] text-slate-400 block">{composer.totalPlays} audições</span>
+                  </td>
 
-                      <button
-                        onClick={() => composer.username === profile.username && navigate(`/compositor/${composer.username}`)}
-                        disabled={composer.username !== profile.username}
-                        className="p-2 rounded-lg bg-slate-800 enabled:hover:bg-amber-500 enabled:hover:text-slate-950 text-slate-200 border border-slate-700 transition disabled:opacity-35 disabled:cursor-not-allowed"
-                        title={composer.username === profile.username ? 'Abrir perfil público' : 'Perfil público completo indisponível no protótipo local'}
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </button>
+                  {/* Revenue */}
+                  <td className="p-4 font-mono font-bold text-emerald-400">
+                    R$ {composer.revenueGenerated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
 
-                      <button
-                        onClick={() => toggleComposerVerified(composer.id)}
-                        className={`p-2 rounded-lg border transition ${
-                          composer.isVerified 
-                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' 
-                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                        }`}
-                        title="Alternar Selo de Verificado"
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                      </button>
+                  {/* Actions */}
+                  <td className="p-4 text-right space-x-1 whitespace-nowrap">
+                    <button
+                      onClick={() => toggleComposerVerified(composer.id)}
+                      className={`p-2 rounded-lg border transition ${
+                        composer.isVerified 
+                          ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' 
+                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                      title={composer.isVerified ? 'Remover selo de verificado' : 'Conceder selo de verificado'}
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                    </button>
 
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`Deseja cancelar o acesso de ${composer.name}? O histórico será preservado.`)) {
-                            updateAdminComposerStatus(composer.id, 'cancelled');
-                          }
-                        }}
-                        className="p-2 rounded-lg bg-slate-800 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700 transition"
-                        title="Cancelar acesso e preservar histórico"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setSelectedComposer(composer)}
+                      className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                      title="Ver detalhes do compositor"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -324,253 +373,228 @@ export const AdminComposersTab: React.FC = () => {
       {/* COMPOSER DETAILS MODAL */}
       {selectedComposer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 space-y-5 animate-fadeIn">
             <div className="flex items-start justify-between">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <img 
                   src={selectedComposer.photo} 
                   alt={selectedComposer.name} 
-                  className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-500/40"
+                  className="w-14 h-14 rounded-2xl object-cover border-2 border-amber-400"
                 />
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-xl font-bold text-white">{selectedComposer.stageName}</h3>
+                    <h3 className="font-bold text-white text-lg">{selectedComposer.stageName}</h3>
                     {selectedComposer.isVerified && (
-                      <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/30">
-                        Verificado
-                      </span>
+                      <CheckCircle2 className="w-4 h-4 text-amber-400" />
                     )}
                   </div>
-                  <p className="text-xs text-slate-400">{selectedComposer.name} • CPF: {selectedComposer.cpf}</p>
-                  <p className="text-xs text-slate-400">{selectedComposer.cityState}</p>
+                  <p className="text-xs text-slate-400">{selectedComposer.name} • {selectedComposer.cityState}</p>
                 </div>
               </div>
 
               <button 
                 onClick={() => setSelectedComposer(null)}
-                className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
+            <div className="grid grid-cols-2 gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs">
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400">Total de Obras</span>
-                <p className="text-base font-bold text-white">{selectedComposer.songCount} faixas</p>
+                <span className="text-slate-500 block">E-mail</span>
+                <span className="text-white font-medium">{selectedComposer.email}</span>
               </div>
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400">Audições Registradas</span>
-                <p className="text-base font-bold text-purple-400">{selectedComposer.totalPlays.toLocaleString('pt-BR')}</p>
+                <span className="text-slate-500 block">WhatsApp</span>
+                <span className="text-white font-mono">{selectedComposer.whatsapp}</span>
               </div>
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400">Faturamento em Liberações</span>
-                <p className="text-base font-bold text-emerald-400">R$ {selectedComposer.revenueGenerated.toLocaleString('pt-BR')}</p>
+                <span className="text-slate-500 block">CPF</span>
+                <span className="text-white font-mono">{selectedComposer.cpf}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Plano Atual</span>
+                <span className="text-amber-400 font-bold">{selectedComposer.planName}</span>
               </div>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-300">
-              <h4 className="font-bold text-white text-sm">Informações Comerciais & Contato</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                <div>
-                  <span className="text-slate-400 block text-[11px]">E-mail de Cadastro</span>
-                  <span className="font-semibold text-white">{selectedComposer.email}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">WhatsApp</span>
-                  <span className="font-semibold text-white">{selectedComposer.whatsapp}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Plano Contratado</span>
-                  <span className="font-semibold text-amber-400">{selectedComposer.planName} (R$ {selectedComposer.monthlyValue.toFixed(2)}/mês)</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Membro desde</span>
-                  <span className="font-semibold text-white">{selectedComposer.registeredAt}</span>
-                </div>
-              </div>
-            </div>
-
-            {selectedComposer.notes && (
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs">
-                <span className="text-slate-400 block font-bold mb-1">Notas Internas do Administrador:</span>
-                <p className="text-slate-300 leading-relaxed">{selectedComposer.notes}</p>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => {
-                  if (selectedComposer.username === profile.username) {
-                    setSelectedComposer(null);
-                    navigate(`/compositor/${selectedComposer.username}`);
-                  }
-                }}
-                disabled={selectedComposer.username !== profile.username}
-                title={selectedComposer.username === profile.username ? 'Abrir perfil público' : 'Perfil público completo indisponível no protótipo local'}
-                className="px-4 py-2.5 rounded-xl bg-amber-500 enabled:hover:bg-amber-600 text-slate-950 font-bold text-xs flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+              <a
+                href={`/compositor/${selectedComposer.username}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1.5"
               >
-                <ExternalLink className="w-4 h-4" />
-                <span>Visualizar Perfil Público</span>
+                <span>Abrir Vitrine Pública</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
+              <button
+                onClick={() => setSelectedComposer(null)}
+                className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
+              >
+                Fechar Detalhes
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ADD COMPOSER MODAL */}
+      {/* ADD / INVITE COMPOSER MODAL */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
-                <h3 className="text-lg font-bold text-white tracking-tight">Cadastrar Novo Compositor</h3>
-                <p className="text-xs text-slate-400">Adicione uma conta manualmente pelo painel master.</p>
+                <h3 className="font-bold text-white text-base">Adicionar / Convidar Compositor</h3>
+                <p className="text-xs text-slate-400">Envie um convite direto ou cadastre manualmente.</p>
               </div>
               <button 
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-300 leading-relaxed flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <span>Para segurança de senha e confirmação de identidade, as contas de compositores são geradas pelo fluxo seguro do Supabase Auth no link de cadastro oficial.</span>
+            {/* Mode Switcher */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-2xl border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setAddMode('invite')}
+                className={`flex-1 py-2 rounded-xl font-semibold transition ${
+                  addMode === 'invite' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Link de Convite VIP
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddMode('manual')}
+                className={`flex-1 py-2 rounded-xl font-semibold transition ${
+                  addMode === 'manual' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Cadastro Direto no Painel
+              </button>
             </div>
 
-            <form onSubmit={handleAddSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Nome Completo *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newForm.name}
-                    onChange={e => setNewForm({ ...newForm, name: e.target.value })}
-                    placeholder="Ex: João da Silva Santos"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Nome Artístico</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newForm.stageName}
-                    onChange={e => setNewForm({ ...newForm, stageName: e.target.value })}
-                    placeholder="Ex: João Silva"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">E-mail *</label>
-                  <input 
-                    type="email" 
-                    required
-                    value={newForm.email}
-                    onChange={e => setNewForm({ ...newForm, email: e.target.value })}
-                    placeholder="joao@musica.com.br"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">WhatsApp *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newForm.whatsapp}
-                    onChange={e => setNewForm({ ...newForm, whatsapp: e.target.value })}
-                    placeholder="(62) 99876-5432"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Plano</label>
+            {addMode === 'invite' ? (
+              <div className="space-y-4 text-xs">
+                <div className="space-y-1.5">
+                  <label className="text-slate-300 font-semibold block">Plano do Convite:</label>
                   <select
-                    value={newForm.planName}
-                    onChange={event => {
-                      const plan = APP_CONFIG.plans.find(item => item.name === event.target.value) || APP_CONFIG.plans[0];
-                      setNewForm({ ...newForm, planName: plan.name, monthlyValue: plan.priceValue });
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    value={invitePlan}
+                    onChange={e => setInvitePlan(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white"
                   >
-                    {APP_CONFIG.plans.map(plan => <option key={plan.name} value={plan.name}>{plan.name} — R$ {plan.priceMonthly}</option>)}
+                    {APP_CONFIG.plans.map(p => (
+                      <option key={p.name} value={p.name}>{p.name} — R$ {p.priceMonthly}/mês</option>
+                    ))}
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Status inicial</label>
-                  <select value={newForm.subscriptionStatus} onChange={event => setNewForm({ ...newForm, subscriptionStatus: event.target.value as SubscriptionStatus })} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white">
-                    <option value="active">Ativo</option><option value="pending">Pendente</option><option value="suspended">Suspenso</option>
-                  </select>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">CPF *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newForm.cpf}
-                    onChange={e => setNewForm({ ...newForm, cpf: e.target.value })}
-                    placeholder="123.456.789-00"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  />
+                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <span className="text-slate-400 block text-[11px]">Link oficial para enviar ao compositor:</span>
+                  <code className="block text-amber-300 font-mono text-[11px] break-all">
+                    {window.location.origin}/autenticacao?modo=cadastro&plano={encodeURIComponent(invitePlan)}
+                  </code>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Cidade / Estado *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newForm.cityState}
-                    onChange={e => setNewForm({ ...newForm, cityState: e.target.value })}
-                    placeholder="Goiânia - GO"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-slate-300 font-semibold">Observações Internas</label>
-                <textarea 
-                  rows={2}
-                  value={newForm.notes}
-                  onChange={e => setNewForm({ ...newForm, notes: e.target.value })}
-                  placeholder="Informações adicionais sobre o contrato do compositor..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs"
+                  onClick={handleCopyInviteLink}
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md transition"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20"
-                >
-                  Salvar Cadastro
+                  {copiedInviteLink ? <Check className="w-4 h-4 text-slate-950" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedInviteLink ? 'Link de Convite Copiado!' : 'Copiar Link de Convite'}</span>
                 </button>
               </div>
-            </form>
+            ) : (
+              <form onSubmit={handleManualAddSubmit} className="space-y-3 text-xs">
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Nome Civil Completo *</label>
+                  <input
+                    required
+                    type="text"
+                    value={newForm.name}
+                    onChange={e => setNewForm({ ...newForm, name: e.target.value })}
+                    placeholder="Ex: Carlos Eduardo Lima"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">Nome Artístico *</label>
+                    <input
+                      required
+                      type="text"
+                      value={newForm.stageName}
+                      onChange={e => setNewForm({ ...newForm, stageName: e.target.value })}
+                      placeholder="Ex: Cadu Lima"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">E-mail *</label>
+                    <input
+                      required
+                      type="email"
+                      value={newForm.email}
+                      onChange={e => setNewForm({ ...newForm, email: e.target.value })}
+                      placeholder="cadu@exemplo.com"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">WhatsApp</label>
+                    <input
+                      type="tel"
+                      value={newForm.whatsapp}
+                      onChange={e => setNewForm({ ...newForm, whatsapp: e.target.value })}
+                      placeholder="(62) 99999-0000"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 font-semibold block mb-1">Cidade / UF</label>
+                    <input
+                      type="text"
+                      value={newForm.cityState}
+                      onChange={e => setNewForm({ ...newForm, cityState: e.target.value })}
+                      placeholder="Goiânia - GO"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold shadow-md"
+                  >
+                    Salvar Compositor
+                  </button>
+                </div>
+              </form>
+            )}
+
           </div>
         </div>
       )}
+
     </div>
   );
 };
