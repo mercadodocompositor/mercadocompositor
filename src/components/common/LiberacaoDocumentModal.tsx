@@ -24,8 +24,10 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
       `Compositor: ${document.composerName}`,
       `Intérprete: ${document.buyerName}`,
       `Valor: R$ ${document.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      `Tipo: ${document.releaseType}`,
       `Emissão: ${formatDate(document.issueDate)}`,
-      'Documento emitido eletronicamente. Recomenda-se revisão jurídica das condições.'
+      `Validação de Autenticidade: ${window.location.origin}/validar-documento?codigo=${document.documentCode}`,
+      'Documento emitido eletronicamente pela plataforma.'
     ].join('\n');
     try {
       await navigator.clipboard.writeText(summary);
@@ -184,7 +186,10 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           <div className="pt-6 border-t border-slate-800 print:border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
             <div className="space-y-1 text-center sm:text-left">
               <p className="text-slate-400">Data da Emissão: <strong className="text-white print:text-slate-900">{formatDate(document.issueDate)}</strong></p>
-              <p className="text-slate-500 font-mono text-[10px]">Código do documento: {document.documentCode}</p>
+              <p className="text-slate-500 font-mono text-[10px]">Código: <strong>{document.documentCode}</strong></p>
+              <p className="text-[10px] text-amber-400/90 print:text-slate-600">
+                Validar em: <a href={`/validar-documento?codigo=${document.documentCode}`} target="_blank" rel="noreferrer" className="underline hover:text-amber-300">mercadodocompositor.com.br/validar-documento</a>
+              </p>
             </div>
 
             <div className="text-center space-y-1 bg-slate-900 print:bg-slate-100 p-3 rounded-xl border border-slate-800 print:border-slate-300 max-w-xs">

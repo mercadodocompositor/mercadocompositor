@@ -9,6 +9,33 @@ interface InterestModalProps {
   isOpen?: boolean;
 }
 
+const maskCpfCnpj = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+};
+
+const maskPhone = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 10) {
+    return digits
+      .replace(/(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{4})(\d{1,4})$/, '$1-$2');
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, '($1) $2')
+    .replace(/(\d{5})(\d{1,4})$/, '$1-$2');
+};
+
 export const InterestModal: React.FC<InterestModalProps> = ({ song, onClose, isOpen = true }) => {
   const { addInterestRequest } = useApp();
 
@@ -142,7 +169,7 @@ export const InterestModal: React.FC<InterestModalProps> = ({ song, onClose, isO
                     type="text"
                     required
                     value={cpfCnpj}
-                    onChange={e => setCpfCnpj(e.target.value)}
+                    onChange={e => setCpfCnpj(maskCpfCnpj(e.target.value))}
                     placeholder="000.000.000-00"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition"
                   />
@@ -186,7 +213,7 @@ export const InterestModal: React.FC<InterestModalProps> = ({ song, onClose, isO
                     type="tel"
                     required
                     value={buyerWhatsapp}
-                    onChange={e => setBuyerWhatsapp(e.target.value)}
+                    onChange={e => setBuyerWhatsapp(maskPhone(e.target.value))}
                     placeholder="(00) 90000-0000"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition"
                   />

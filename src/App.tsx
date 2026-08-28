@@ -9,6 +9,7 @@ const DashboardLayout = lazy(() => import('./pages/dashboard/DashboardLayout').t
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.AdminLayout })));
 const LegalPage = lazy(() => import('./pages/LegalPage').then(m => ({ default: m.LegalPage })));
 const InterestRequestPage = lazy(() => import('./pages/InterestRequestPage').then(m => ({ default: m.InterestRequestPage })));
+const ValidarDocumentoPage = lazy(() => import('./pages/ValidarDocumentoPage').then(m => ({ default: m.ValidarDocumentoPage })));
 
 const PageLoader = () => <div className="min-h-screen bg-[#060B18]" />;
 
@@ -45,6 +46,8 @@ const AppRoutes: React.FC = () => (
       <Route path="/compositor/:username/musica/:songRef/interesse" element={<InterestRequestPage />} />
       <Route path="/termos" element={<LegalPage />} />
       <Route path="/privacidade" element={<LegalPage />} />
+      <Route path="/validar-documento" element={<ValidarDocumentoPage />} />
+      <Route path="/validar-documento/:code" element={<ValidarDocumentoPage />} />
       <Route path="/dashboard/*" element={<ComposerRoute><DashboardLayout /></ComposerRoute>} />
       <Route path="/admin/*" element={<AdminRoute><AdminLayout /></AdminRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />

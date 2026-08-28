@@ -51,11 +51,11 @@ export const Footer: React.FC = () => {
           <div className="space-y-3">
             <h4 className="text-white font-semibold text-base">Institucional</h4>
             <ul className="space-y-2 text-slate-400">
-              <li><a href="#" className="hover:text-amber-400 transition">Sobre o Mercado do Compositor</a></li>
-              <li><a href="#" className="hover:text-amber-400 transition flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-500" /> Termos de Uso</a></li>
-              <li><a href="#" className="hover:text-amber-400 transition flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-slate-500" /> Política de Privacidade</a></li>
-              <li><a href="#" className="hover:text-amber-400 transition">Direitos Autorais e ECAD</a></li>
-              <li><a href="#" className="hover:text-amber-400 transition">Dúvidas Frequentes (FAQ)</a></li>
+              <li><Link to="/validar-documento" className="text-amber-400/90 hover:text-amber-300 transition flex items-center gap-1.5 font-medium"><ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> Validar Liberação</Link></li>
+              <li><Link to="/termos" className="hover:text-amber-400 transition flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-500" /> Termos de Uso</Link></li>
+              <li><Link to="/privacidade" className="hover:text-amber-400 transition flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-slate-500" /> Política de Privacidade</Link></li>
+              <li><a href="#como-funciona" className="hover:text-amber-400 transition">Direitos Autorais e ECAD</a></li>
+              <li><a href="#faq" className="hover:text-amber-400 transition">Dúvidas Frequentes (FAQ)</a></li>
             </ul>
           </div>
 

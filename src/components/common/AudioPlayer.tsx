@@ -60,7 +60,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const handleEnded = () => {
       setIsPlaying(false);
       setHasEnded(true);
-      setCurrentTime(maxDurationSeconds);
+      if (audio) {
+        setCurrentTime(Math.min(audio.currentTime, maxDurationSeconds));
+      }
     };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);

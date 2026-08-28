@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const [, , inputPath, outputPath, durationArg = '35'] = process.argv;
+const [, , inputPath, outputPath, durationArg = '60'] = process.argv;
 
 if (!inputPath || !outputPath) {
   throw new Error('Uso: node scripts/create-mp3-preview.mjs <entrada.mp3> <saida.mp3> [segundos]');

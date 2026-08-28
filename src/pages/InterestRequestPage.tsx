@@ -19,6 +19,33 @@ const initialForm: FormData = {
   purpose: 'Gravação de Single / Lançamento Digital', message: ''
 };
 
+const maskCpfCnpj = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+};
+
+const maskPhone = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 10) {
+    return digits
+      .replace(/(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{4})(\d{1,4})$/, '$1-$2');
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, '($1) $2')
+    .replace(/(\d{5})(\d{1,4})$/, '$1-$2');
+};
+
 export const InterestRequestPage: React.FC = () => {
   const { username, songRef } = useParams<{ username: string; songRef: string }>();
   const navigate = useNavigate();
@@ -98,8 +125,8 @@ export const InterestRequestPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="mt-7 space-y-5">
           <input value={website} onChange={event => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
           <div className="grid gap-4 sm:grid-cols-2"><Field label="Nome completo" required value={form.buyerName} onChange={value => set('buyerName', value)} autoComplete="name" placeholder="Ex.: João da Silva" /><Field label="Nome artístico / empresa" value={form.buyerStageName} onChange={value => set('buyerStageName', value)} autoComplete="organization" placeholder="Ex.: Dupla João & Maria" /></div>
-          <div className="grid gap-4 sm:grid-cols-2"><Field label="CPF ou CNPJ" required value={form.cpfCnpj} onChange={value => set('cpfCnpj', value)} autoComplete="off" placeholder="000.000.000-00" /><Field label="Cidade e estado" required value={form.buyerCityState} onChange={value => set('buyerCityState', value)} autoComplete="address-level2" placeholder="São Paulo - SP" /></div>
-          <div className="grid gap-4 sm:grid-cols-2"><Field label="E-mail de contato" required type="email" value={form.buyerEmail} onChange={value => set('buyerEmail', value)} autoComplete="email" placeholder="voce@exemplo.com.br" /><Field label="WhatsApp" required type="tel" value={form.buyerWhatsapp} onChange={value => set('buyerWhatsapp', value)} autoComplete="tel" placeholder="(00) 90000-0000" /></div>
+          <div className="grid gap-4 sm:grid-cols-2"><Field label="CPF ou CNPJ" required value={form.cpfCnpj} onChange={value => set('cpfCnpj', maskCpfCnpj(value))} autoComplete="off" placeholder="000.000.000-00" /><Field label="Cidade e estado" required value={form.buyerCityState} onChange={value => set('buyerCityState', value)} autoComplete="address-level2" placeholder="São Paulo - SP" /></div>
+          <div className="grid gap-4 sm:grid-cols-2"><Field label="E-mail de contato" required type="email" value={form.buyerEmail} onChange={value => set('buyerEmail', value)} autoComplete="email" placeholder="voce@exemplo.com.br" /><Field label="WhatsApp" required type="tel" value={form.buyerWhatsapp} onChange={value => set('buyerWhatsapp', maskPhone(value))} autoComplete="tel" placeholder="(00) 90000-0000" /></div>
           <label className="block text-xs font-semibold text-slate-300">Finalidade da gravação *<select required value={form.purpose} onChange={event => set('purpose', event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-3 text-sm text-white focus:border-amber-500 focus:outline-none"><option>Gravação de Single / Lançamento Digital</option><option>Gravação de Álbum / EP Completo</option><option>Gravação de DVD / Projeto Ao Vivo</option><option>Uso Comercial / Trilha Sonora / Publicidade</option><option>Outra finalidade</option></select></label>
           <label className="block text-xs font-semibold text-slate-300">Mensagem para o compositor *<textarea required minLength={20} maxLength={3000} rows={6} value={form.message} onChange={event => set('message', event.target.value)} placeholder="Conte sobre seu projeto, prazo desejado e proposta..." className="mt-1.5 w-full resize-y rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-3 text-sm leading-relaxed text-white focus:border-amber-500 focus:outline-none" /><span className="mt-1 block text-right text-[11px] text-slate-500">{form.message.length}/3000</span></label>
           <label className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-xs leading-relaxed text-slate-400"><input type="checkbox" checked={acceptedTerms} onChange={event => setAcceptedTerms(event.target.checked)} className="mt-0.5" /><span>Declaro que os dados são verdadeiros e estou ciente de que valores e autorização serão negociados diretamente com o compositor. Li a <Link to="/privacidade" target="_blank" className="text-amber-400 hover:underline">Política de Privacidade</Link>.</span></label>
