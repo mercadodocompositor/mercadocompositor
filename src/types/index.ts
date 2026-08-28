@@ -114,8 +114,10 @@ export interface ComposerProfile {
   bio: string;
   experienceYears: string;
   genres: string[];
+  society?: string;
   instagram: string;
   youtube: string;
+  spotify?: string;
   website: string;
   photo: string;
   coverPhoto: string;

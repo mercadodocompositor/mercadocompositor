@@ -153,10 +153,15 @@ export const PublicProfilePage: React.FC = () => {
                     />
 
                     <div className="space-y-2 pb-2">
-                      <div className="flex items-center justify-center md:justify-start gap-2">
+                      <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
                         <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full flex items-center gap-1">
                           <Sparkles className="w-3 h-3" /> Compositor Verificado
                         </span>
+                        {profile.society && (
+                          <span className="bg-slate-800 text-slate-300 text-[10px] font-semibold px-2.5 py-0.5 rounded-full border border-slate-700">
+                            {profile.society.split(' - ')[0]}
+                          </span>
+                        )}
                       </div>
 
                       <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
@@ -169,10 +174,12 @@ export const PublicProfilePage: React.FC = () => {
                           {profile.city} — {profile.state}
                         </span>
 
-                        <span className="flex items-center gap-1 text-slate-400">
-                          <Award className="w-4 h-4 text-amber-400" />
-                          {profile.experienceYears} de experiência
-                        </span>
+                        {profile.experienceYears && (
+                          <span className="flex items-center gap-1 text-slate-400">
+                            <Award className="w-4 h-4 text-amber-400" />
+                            {profile.experienceYears}
+                          </span>
+                        )}
 
                         <span className="flex items-center gap-1 text-amber-300 font-semibold">
                           <Disc className="w-4 h-4 text-amber-400" />
@@ -183,7 +190,7 @@ export const PublicProfilePage: React.FC = () => {
                   </div>
 
                   {/* Actions & Social Links */}
-                  <div className="flex items-center gap-3 pb-2">
+                  <div className="flex items-center gap-3 pb-2 flex-wrap justify-center md:justify-end">
                     {profile.instagram && (
                       <a href={instagramUrl(profile.instagram)} target="_blank" rel="noreferrer" aria-label="Instagram do compositor" className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 rounded-xl border border-slate-700 transition">
                         <Instagram className="w-5 h-5" />
@@ -192,6 +199,11 @@ export const PublicProfilePage: React.FC = () => {
                     {profile.youtube && (
                       <a href={externalUrl(profile.youtube)} target="_blank" rel="noreferrer" aria-label="YouTube do compositor" className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 rounded-xl border border-slate-700 transition">
                         <Youtube className="w-5 h-5" />
+                      </a>
+                    )}
+                    {profile.spotify && (
+                      <a href={externalUrl(profile.spotify)} target="_blank" rel="noreferrer" aria-label="Spotify do compositor" className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 rounded-xl border border-slate-700 transition">
+                        <Music className="w-5 h-5" />
                       </a>
                     )}
                     {profile.website && (
