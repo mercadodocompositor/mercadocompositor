@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { InterestRequest, RequestStatus, ReleaseDocument } from '../../types';
 import { LiberacaoDocumentModal } from '../../components/common/LiberacaoDocumentModal';
@@ -20,19 +21,28 @@ import {
   Music,
   Filter,
   Check,
-  AlertCircle
+  AlertCircle,
+  ArrowLeft,
+  User,
+  MapPin,
+  Calendar,
+  ExternalLink
 } from 'lucide-react';
 
 export const RequestsTab: React.FC = () => {
+  const { requestId } = useParams<{ requestId?: string }>();
+  const navigate = useNavigate();
   const { requests, songs, updateRequestStatus, issueRelease, updateSong, releases, profile } = useApp();
 
   const [activeTab, setActiveTab] = useState<RequestStatus | 'todas'>('todas');
   const [selectedSongFilter, setSelectedSongFilter] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'recent' | 'oldest'>('recent');
-  const [selectedRequest, setSelectedRequest] = useState<InterestRequest | null>(null);
   
-  // Detail drawer form state
+  // Selected request state based on URL or local state
+  const activeRequest = requestId ? requests.find(r => r.id === requestId) : null;
+  
+  // Detail page form state
   const [agreedValueInput, setAgreedValueInput] = useState<number | ''>('');
   const [notesInput, setNotesInput] = useState('');
   const [releaseTypeInput, setReleaseTypeInput] = useState<string>('Autorização de Gravação e Exploração Fonográfica (Não-Exclusiva)');
@@ -66,6 +76,16 @@ export const RequestsTab: React.FC = () => {
     if (current === 'arquivada') return ['arquivada', 'nova'];
     return [current];
   };
+
+  // Sync form inputs when active request changes
+  useEffect(() => {
+    if (activeRequest) {
+      setAgreedValueInput(activeRequest.agreedValue || '');
+      setNotesInput(activeRequest.notes || '');
+      setArchiveReason('');
+      setCloseSongForRelease(false);
+    }
+  }, [activeRequest]);
 
   const normalize = (value: string) => value
     .normalize('NFD')
@@ -106,18 +126,9 @@ export const RequestsTab: React.FC = () => {
     return value;
   };
 
-  const handleOpenDetail = (req: InterestRequest) => {
-    setSelectedRequest(req);
-    setAgreedValueInput(req.agreedValue || '');
-    setNotesInput(req.notes || '');
-    setArchiveReason('');
-    setCloseSongForRelease(false);
-  };
-
   const handleSaveDetails = () => {
-    if (!selectedRequest) return;
-    const persistedRequest = requests.find(request => request.id === selectedRequest.id);
-    if (persistedRequest && !getAllowedStatuses(persistedRequest.status).includes(selectedRequest.status)) {
+    if (!activeRequest) return;
+    if (!getAllowedStatuses(activeRequest.status).includes(activeRequest.status)) {
       showToast('Essa mudança de status não é permitida no fluxo atual.');
       return;
     }
@@ -127,56 +138,58 @@ export const RequestsTab: React.FC = () => {
     }
 
     let finalNotes = notesInput;
-    if (selectedRequest.status === 'arquivada' && archiveReason) {
+    if (activeRequest.status === 'arquivada' && archiveReason) {
       finalNotes = finalNotes ? `${finalNotes}\n[Motivo do Arquivamento: ${archiveReason}]` : `[Motivo do Arquivamento: ${archiveReason}]`;
     }
 
-    updateRequestStatus(selectedRequest.id, selectedRequest.status, {
+    updateRequestStatus(activeRequest.id, activeRequest.status, {
       agreedValue: agreedValueInput ? Number(agreedValueInput) : undefined,
       notes: finalNotes
     });
     showToast("Detalhes e observações salvos com sucesso!");
-    setSelectedRequest(null);
+  };
+
+  const handleStatusChange = (newStatus: RequestStatus) => {
+    if (!activeRequest) return;
+    updateRequestStatus(activeRequest.id, newStatus, {
+      agreedValue: agreedValueInput ? Number(agreedValueInput) : undefined,
+      notes: notesInput
+    });
+    showToast(`Status alterado para "${statusLabels[newStatus]}"`);
   };
 
   const handleMarkPaymentReceived = () => {
-    if (!selectedRequest) return;
+    if (!activeRequest) return;
     if (!agreedValueInput || Number(agreedValueInput) <= 0) {
       showToast('Informe um valor acordado maior que zero antes de confirmar o pagamento.');
       return;
     }
     if (!window.confirm(`Confirmar o recebimento de R$ ${Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}?`)) return;
-    updateRequestStatus(selectedRequest.id, 'pagamento_confirmado', {
+    updateRequestStatus(activeRequest.id, 'pagamento_confirmado', {
       agreedValue: Number(agreedValueInput),
       notes: notesInput,
       paymentReceivedAt: new Date().toISOString()
     });
-    showToast("Pagamento marcado como recebido! O botão de Emitir Liberação está liberado.");
-    setSelectedRequest(prev => prev ? {
-      ...prev,
-      status: 'pagamento_confirmado',
-      agreedValue: Number(agreedValueInput)
-    } : null);
+    showToast("Pagamento marcado como recebido! O botão de Emitir Liberação está disponível.");
   };
 
   const handleCreateRelease = async () => {
-    if (!selectedRequest) return;
-    const existingRelease = releases.find(release => release.requestId === selectedRequest.id);
+    if (!activeRequest) return;
+    const existingRelease = releases.find(release => release.requestId === activeRequest.id);
     if (existingRelease) {
       setViewingReleaseDoc(existingRelease);
-      setSelectedRequest(null);
       return;
     }
-    if (selectedRequest.status !== 'pagamento_confirmado') {
+    if (activeRequest.status !== 'pagamento_confirmado') {
       showToast('A liberação só pode ser emitida após a confirmação do pagamento.');
       return;
     }
-    const agreedValue = Number(agreedValueInput || selectedRequest.agreedValue);
+    const agreedValue = Number(agreedValueInput || activeRequest.agreedValue);
     if (!agreedValue || agreedValue <= 0) {
       showToast('Informe o valor acordado antes de emitir a liberação.');
       return;
     }
-    const requestedSong = songs.find(song => song.id === selectedRequest.songId);
+    const requestedSong = songs.find(song => song.id === activeRequest.songId);
     if (!requestedSong) {
       showToast('A música vinculada a esta solicitação não foi encontrada.');
       return;
@@ -184,19 +197,19 @@ export const RequestsTab: React.FC = () => {
 
     const isExclusive = releaseTypeInput.toLowerCase().includes('exclusiv');
 
-    const newDoc = issueRelease(selectedRequest.id, {
-      requestId: selectedRequest.id,
-      songId: selectedRequest.songId,
-      songTitle: selectedRequest.songTitle,
+    const newDoc = issueRelease(activeRequest.id, {
+      requestId: activeRequest.id,
+      songId: activeRequest.songId,
+      songTitle: activeRequest.songTitle,
       authors: requestedSong.authors,
       composerName: profile.name,
       composerCpf: profile.cpf,
       composerCityState: `${profile.city} - ${profile.state}`,
-      buyerName: selectedRequest.buyerName,
-      buyerDocument: selectedRequest.cpfCnpj,
-      buyerCityState: selectedRequest.buyerCityState,
+      buyerName: activeRequest.buyerName,
+      buyerDocument: activeRequest.cpfCnpj,
+      buyerCityState: activeRequest.buyerCityState,
       agreedValue,
-      authorizedPurpose: selectedRequest.purpose,
+      authorizedPurpose: activeRequest.purpose,
       releaseType: releaseTypeInput,
       issueDate: new Date().toLocaleDateString('en-CA'),
       additionalConditions: isExclusive 
@@ -213,7 +226,6 @@ export const RequestsTab: React.FC = () => {
     }
 
     setViewingReleaseDoc(newDoc);
-    setSelectedRequest(null);
   };
 
   const handleSimulateWhatsApp = (phone: string, songTitle: string, buyerName?: string) => {
@@ -230,16 +242,6 @@ export const RequestsTab: React.FC = () => {
     window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
   };
 
-  React.useEffect(() => {
-    if (!selectedRequest) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSelectedRequest(null);
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [selectedRequest]);
-
-  // Timeline step helper
   const getTimelineStep = (status: RequestStatus) => {
     switch (status) {
       case 'nova': return 1;
@@ -259,6 +261,437 @@ export const RequestsTab: React.FC = () => {
     { step: 5, label: 'Liberação Emitida', icon: FileCheck },
   ];
 
+  // ==========================================
+  // VIEW 1: DEDICATED REQUEST DETAIL FULL PAGE
+  // ==========================================
+  if (activeRequest) {
+    const song = songs.find(s => s.id === activeRequest.songId);
+    const existingRelease = releases.find(r => r.requestId === activeRequest.id);
+
+    return (
+      <div className="space-y-6 animate-fadeIn pb-12">
+        {/* Toast Feedback */}
+        {toastMessage && (
+          <div role="status" className="fixed top-20 right-5 z-50 max-w-sm bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn">
+            <CheckCircle2 className="w-5 h-5 shrink-0" />
+            <span className="flex-1">{toastMessage}</span>
+            <button type="button" onClick={() => setToastMessage(null)} aria-label="Fechar aviso" className="p-1 hover:bg-emerald-600/20 rounded-lg">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Top Breadcrumb / Back Button */}
+        <div className="flex items-center justify-between">
+          <Link
+            to="/dashboard/solicitacoes"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition"
+          >
+            <ArrowLeft className="w-4 h-4 text-amber-400" />
+            <span>Voltar para todas as solicitações</span>
+          </Link>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/30">
+              {getRequestCode(activeRequest.id)}
+            </span>
+            <span className={`text-xs font-bold uppercase px-3 py-1.5 rounded-xl border ${
+              activeRequest.status === 'pagamento_confirmado' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
+              activeRequest.status === 'em_negociacao' ? 'bg-orange-500/20 text-orange-300 border-orange-500/40' :
+              activeRequest.status === 'pagamento_pendente' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' :
+              activeRequest.status === 'liberacao_enviada' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' :
+              'bg-slate-800 text-slate-300 border-slate-700'
+            }`}>
+              {statusLabels[activeRequest.status]}
+            </span>
+          </div>
+        </div>
+
+        {/* Main Title & Timeline Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+            <div>
+              <span className="text-xs text-slate-400 block font-medium">Detalhes da Proposta de Gravação</span>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+                {activeRequest.buyerName}
+                {activeRequest.buyerStageName && (
+                  <span className="text-amber-400 font-medium text-lg sm:text-xl ml-2">
+                    ({activeRequest.buyerStageName})
+                  </span>
+                )}
+              </h1>
+            </div>
+
+            {/* Direct Contact Buttons Header */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handleSimulateWhatsApp(activeRequest.buyerWhatsapp, activeRequest.songTitle, activeRequest.buyerName)}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"
+              >
+                <Phone className="w-4 h-4" />
+                <span>Conversar no WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleEmail(activeRequest.buyerEmail, activeRequest.songTitle, activeRequest.buyerName)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2 border border-slate-700 transition"
+              >
+                <Mail className="w-4 h-4 text-amber-400" />
+                <span>E-mail</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Stepper / Timeline Component */}
+          {activeRequest.status !== 'arquivada' && (
+            <div className="space-y-3">
+              <span className="text-[11px] text-slate-400 uppercase font-bold tracking-wider block">
+                Progresso da Negociação
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {timelineSteps.map(stepItem => {
+                  const currentStepNum = getTimelineStep(activeRequest.status);
+                  const isDone = currentStepNum >= stepItem.step;
+                  const isCurrent = currentStepNum === stepItem.step;
+                  const IconComponent = stepItem.icon;
+
+                  return (
+                    <div 
+                      key={stepItem.step} 
+                      className={`p-3 rounded-2xl border transition flex flex-col items-center text-center gap-2 ${
+                        isCurrent
+                          ? 'bg-amber-500/10 border-amber-500 text-amber-400 ring-2 ring-amber-500/20'
+                          : isDone
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-500'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                        isCurrent ? 'bg-amber-500 text-slate-950' : isDone ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-600'
+                      }`}>
+                        {isDone && !isCurrent ? <Check className="w-4 h-4" /> : <IconComponent className="w-4 h-4" />}
+                      </div>
+                      <span className={`text-xs font-semibold ${isCurrent ? 'text-white' : isDone ? 'text-slate-200' : 'text-slate-500'}`}>
+                        {stepItem.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 2-Column Responsive Grid Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* LEFT COLUMN: Song & Buyer Info (5 Cols) */}
+          <div className="lg:col-span-5 space-y-6">
+            
+            {/* Song Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <span className="text-[11px] uppercase font-bold text-amber-400 tracking-wider block">
+                Composição Solicitada
+              </span>
+
+              <div className="flex items-center gap-4">
+                <img
+                  src={song?.coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80'}
+                  alt={activeRequest.songTitle}
+                  className="w-16 h-16 rounded-2xl object-cover border border-slate-700 shadow-md shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    {song?.genre || 'Composição'}
+                  </span>
+                  <h3 className="text-lg font-bold text-white mt-1 truncate">
+                    “{activeRequest.songTitle}”
+                  </h3>
+                  <p className="text-xs text-slate-400 truncate">Autoria: {song?.authors || profile.stageName}</p>
+                </div>
+              </div>
+
+              {song && (
+                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                  <span>Valor de Referência:</span>
+                  <strong className="text-amber-300">
+                    {song.valueType === 'suggested' && song.suggestedValue 
+                      ? `R$ ${song.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                      : 'Sob consulta'}
+                  </strong>
+                </div>
+              )}
+            </div>
+
+            {/* Buyer Contact Details Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <span className="text-[11px] uppercase font-bold text-amber-400 tracking-wider block">
+                Dados do Intérprete / Comprador
+              </span>
+
+              <div className="space-y-3 text-xs">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                  <span className="text-slate-400">Nome Completo:</span>
+                  <strong className="text-white">{activeRequest.buyerName}</strong>
+                </div>
+
+                {activeRequest.buyerStageName && (
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                    <span className="text-slate-400">Nome Artístico:</span>
+                    <strong className="text-amber-300">{activeRequest.buyerStageName}</strong>
+                  </div>
+                )}
+
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                  <span className="text-slate-400">CPF / CNPJ:</span>
+                  <strong className="text-slate-200 font-mono">{formatCpfCnpj(activeRequest.cpfCnpj)}</strong>
+                </div>
+
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                  <span className="text-slate-400">WhatsApp:</span>
+                  <strong className="text-emerald-400 font-mono">{activeRequest.buyerWhatsapp}</strong>
+                </div>
+
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                  <span className="text-slate-400">E-mail:</span>
+                  <strong className="text-slate-200 truncate max-w-[200px]">{activeRequest.buyerEmail}</strong>
+                </div>
+
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                  <span className="text-slate-400">Cidade / UF:</span>
+                  <strong className="text-slate-200">{activeRequest.buyerCityState}</strong>
+                </div>
+
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                  <span className="text-slate-400">Data de Envio:</span>
+                  <strong className="text-slate-200">{formatDate(activeRequest.createdAt)}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Purpose & Proposal Message */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <span className="text-[11px] uppercase font-bold text-amber-400 tracking-wider block">
+                Projeto & Mensagem
+              </span>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <span className="text-slate-400 block mb-1 font-semibold">Finalidade Declarada:</span>
+                  <p className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 font-medium leading-relaxed">
+                    {activeRequest.purpose}
+                  </p>
+                </div>
+
+                {activeRequest.message && (
+                  <div>
+                    <span className="text-slate-400 block mb-1 font-semibold">Mensagem do Interessado:</span>
+                    <p className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-300 italic leading-relaxed whitespace-pre-line">
+                      “{activeRequest.message}”
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          {/* RIGHT COLUMN: Negotiation, Payments, Release Configuration (7 Cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            
+            {/* Negotiation & Agreement Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Gestão Financeira e Status</h3>
+                  <p className="text-xs text-slate-400">Controle os valores acordados e registre o recebimento do pagamento</p>
+                </div>
+              </div>
+
+              {/* Status and Value Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block text-slate-400 mb-1.5 font-semibold">Status da Negociação</label>
+                  <select
+                    value={activeRequest.status}
+                    onChange={e => handleStatusChange(e.target.value as RequestStatus)}
+                    disabled={activeRequest.status === 'pagamento_confirmado' || activeRequest.status === 'liberacao_enviada'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-3 text-white font-medium focus:outline-none focus:border-amber-500"
+                  >
+                    {getAllowedStatuses(activeRequest.status).map(status => (
+                      <option key={status} value={status}>{statusLabels[status]}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1.5 font-semibold">Valor Acordado (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-3 text-slate-500 font-bold text-xs">R$</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={agreedValueInput}
+                      onChange={e => setAgreedValueInput(e.target.value ? Number(e.target.value) : '')}
+                      placeholder="0,00"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-3 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  {agreedValueInput !== '' && (
+                    <span className="text-[11px] text-emerald-400 font-semibold mt-1 block">
+                      = R$ {Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Archive reason helper */}
+              {activeRequest.status === 'arquivada' && (
+                <div className="space-y-1 text-xs animate-fadeIn bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                  <label className="block text-slate-400 font-semibold mb-1">Motivo do Arquivamento (Opcional):</label>
+                  <select
+                    value={archiveReason}
+                    onChange={e => setArchiveReason(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">Selecione um motivo...</option>
+                    <option value="Valor não acordado">Valor proposto não aceito</option>
+                    <option value="Interessado não respondeu">Interessado não deu continuidade</option>
+                    <option value="Obra já liberada para outro intérprete">Obra já liberada com exclusividade para outro artista</option>
+                    <option value="Desistência mútua">Desistência mútua das partes</option>
+                    <option value="Outro motivo">Outro motivo</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Internal Notes */}
+              <div>
+                <label className="block text-xs text-slate-400 mb-1.5 font-semibold">
+                  Observações Internas (Visíveis apenas para você)
+                </label>
+                <textarea
+                  rows={4}
+                  maxLength={500}
+                  value={notesInput}
+                  onChange={e => setNotesInput(e.target.value)}
+                  placeholder="Ex: Conversa realizada por WhatsApp em 28/08. Pagamento de R$ 3.500 recebido na conta do compositor via PIX."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-xs text-white focus:outline-none focus:border-amber-500 leading-relaxed"
+                />
+              </div>
+
+              {/* Release Configuration Section */}
+              {(activeRequest.status === 'pagamento_confirmado' || activeRequest.status === 'liberacao_enviada') && (
+                <div className="bg-slate-950 p-5 rounded-2xl border border-amber-500/30 space-y-4 animate-fadeIn text-xs">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <ShieldCheck className="w-5 h-5" />
+                    <span>Configuração do Termo de Autorização Fonográfica</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1.5 font-semibold">Tipo de Autorização / Licença:</label>
+                    <select
+                      value={releaseTypeInput}
+                      onChange={e => setReleaseTypeInput(e.target.value)}
+                      disabled={Boolean(existingRelease)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="Autorização de Gravação e Exploração Fonográfica (Não-Exclusiva)">
+                        Autorização Não-Exclusiva (Padrão para regravações fonográficas)
+                      </option>
+                      <option value="Autorização Exclusiva de Gravação e Fixação (12 meses)">
+                        Autorização Exclusiva por 12 meses
+                      </option>
+                      <option value="Autorização Exclusiva de Gravação e Fixação (24 meses)">
+                        Autorização Exclusiva por 24 meses
+                      </option>
+                      <option value="Cessão Exclusiva Definitiva de Direitos Patrimoniais">
+                        Cessão Exclusiva Definitiva de Direitos Patrimoniais
+                      </option>
+                    </select>
+                  </div>
+
+                  {!existingRelease && releaseTypeInput.toLowerCase().includes('exclusiv') && (
+                    <label className="flex items-start gap-2.5 pt-1 text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={closeSongForRelease}
+                        onChange={e => setCloseSongForRelease(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500"
+                      />
+                      <span>Fechar automaticamente a música para novos interessados no catálogo público após a emissão.</span>
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons Bar */}
+              <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                {activeRequest.status === 'pagamento_pendente' && (
+                  <button
+                    type="button"
+                    onClick={handleMarkPaymentReceived}
+                    className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Confirmar Pagamento Recebido</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleSaveDetails}
+                  className="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition"
+                >
+                  Salvar Alterações
+                </button>
+
+                {existingRelease ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewingReleaseDoc(existingRelease)}
+                    className="px-6 py-3 rounded-2xl bg-blue-500 hover:bg-blue-400 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Visualizar Documento de Liberação</span>
+                  </button>
+                ) : activeRequest.status === 'pagamento_confirmado' ? (
+                  <button
+                    type="button"
+                    onClick={handleCreateRelease}
+                    className="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
+                  >
+                    <FileCheck className="w-4 h-4" />
+                    <span>Emitir Liberação Oficial</span>
+                  </button>
+                ) : null}
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* Document Viewer Modal if user generates/views release */}
+        {viewingReleaseDoc && (
+          <LiberacaoDocumentModal 
+            document={viewingReleaseDoc}
+            onClose={() => setViewingReleaseDoc(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 2: REQUESTS LIST CATALOG
+  // ==========================================
   return (
     <div className="space-y-6 animate-fadeIn">
       
@@ -485,7 +918,7 @@ export const RequestsTab: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => handleOpenDetail(req)}
+                    onClick={() => navigate(`/dashboard/solicitacoes/${req.id}`)}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-400 font-bold text-xs transition flex items-center gap-1"
                   >
                     <span>Ver detalhes</span>
@@ -498,291 +931,6 @@ export const RequestsTab: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* Detail Drawer / Modal with Visual Timeline & Full Controls */}
-      {selectedRequest && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div role="dialog" aria-modal="true" aria-labelledby="request-dialog-title" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative my-8 text-slate-100 space-y-6">
-            
-            <button
-              type="button"
-              onClick={() => setSelectedRequest(null)}
-              aria-label="Fechar detalhes da solicitação"
-              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/80 hover:bg-slate-800 transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-amber-400 uppercase tracking-wider font-bold bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                  Código: {getRequestCode(selectedRequest.id)}
-                </span>
-                <span className="text-[11px] text-slate-400">
-                  Recebida em {formatDate(selectedRequest.createdAt)}
-                </span>
-              </div>
-              <h3 id="request-dialog-title" className="text-2xl font-bold text-white mt-1">
-                {selectedRequest.buyerName}{selectedRequest.buyerStageName ? ` (${selectedRequest.buyerStageName})` : ''}
-              </h3>
-            </div>
-
-            {/* Stepper / Timeline Visual Component */}
-            {selectedRequest.status !== 'arquivada' && (
-              <div className="bg-slate-950 border border-slate-800/90 p-4 rounded-2xl">
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block mb-3">
-                  Etapa da Negociação:
-                </span>
-                <div className="grid grid-cols-5 gap-1 text-center">
-                  {timelineSteps.map(stepItem => {
-                    const currentStepNum = getTimelineStep(selectedRequest.status);
-                    const isDone = currentStepNum >= stepItem.step;
-                    const isCurrent = currentStepNum === stepItem.step;
-                    const IconComponent = stepItem.icon;
-
-                    return (
-                      <div key={stepItem.step} className="flex flex-col items-center gap-1.5">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition ${
-                          isCurrent
-                            ? 'bg-amber-500 text-slate-950 ring-4 ring-amber-500/20'
-                            : isDone
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                              : 'bg-slate-900 text-slate-600 border border-slate-800'
-                        }`}>
-                          {isDone && !isCurrent ? <Check className="w-4 h-4" /> : <IconComponent className="w-4 h-4" />}
-                        </div>
-                        <span className={`text-[9px] leading-tight font-medium ${
-                          isCurrent ? 'text-amber-400 font-bold' : isDone ? 'text-slate-300' : 'text-slate-600'
-                        }`}>
-                          {stepItem.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Buyer Details Grid */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <p>Música: <strong className="text-amber-300">“{selectedRequest.songTitle}”</strong></p>
-              <p>CPF / CNPJ: <strong className="text-slate-200">{formatCpfCnpj(selectedRequest.cpfCnpj)}</strong></p>
-              <p>E-mail: <strong className="text-slate-200">{selectedRequest.buyerEmail}</strong></p>
-              <p>WhatsApp: <strong className="text-slate-200">{selectedRequest.buyerWhatsapp}</strong></p>
-              <p>Cidade/UF: <strong className="text-slate-200">{selectedRequest.buyerCityState}</strong></p>
-              <p>Status atual: <strong className="text-amber-400 uppercase">{statusLabels[selectedRequest.status]}</strong></p>
-            </div>
-
-            {/* Purpose & Message */}
-            <div className="space-y-2 text-xs">
-              <span className="font-semibold text-slate-300">Finalidade Declarada:</span>
-              <p className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-slate-200 font-medium">
-                {selectedRequest.purpose}
-              </p>
-
-              {selectedRequest.message && (
-                <>
-                  <span className="font-semibold text-slate-300 block pt-1">Mensagem do Interessado:</span>
-                  <p className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-slate-300 italic leading-relaxed">
-                    “{selectedRequest.message}”
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* Direct Contact Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-stretch gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => handleSimulateWhatsApp(selectedRequest.buyerWhatsapp, selectedRequest.songTitle, selectedRequest.buyerName)}
-                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition"
-              >
-                <Phone className="w-4 h-4" />
-                <span>Conversar no WhatsApp</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleEmail(selectedRequest.buyerEmail, selectedRequest.songTitle, selectedRequest.buyerName)}
-                className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition"
-              >
-                <Mail className="w-4 h-4 text-amber-400" />
-                <span>Responder por E-mail</span>
-              </button>
-            </div>
-
-            {/* Negotiation & Payment Management Controls */}
-            <div className="bg-slate-950/90 p-5 rounded-2xl border border-slate-800 space-y-4">
-              <h4 className="font-bold text-white text-sm flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-amber-400" />
-                <span>Gestão da Negociação e Pagamento Direto</span>
-              </h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Status da Negociação</label>
-                  <select
-                    value={selectedRequest.status}
-                    onChange={e => setSelectedRequest({ ...selectedRequest, status: e.target.value as RequestStatus })}
-                    disabled={selectedRequest.status === 'pagamento_confirmado' || selectedRequest.status === 'liberacao_enviada'}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-amber-500"
-                  >
-                    {getAllowedStatuses(requests.find(request => request.id === selectedRequest.id)?.status || selectedRequest.status).map(status => (
-                      <option key={status} value={status}>{statusLabels[status]}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Valor Acordado (R$)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-500 font-bold text-xs">R$</span>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={agreedValueInput}
-                      onChange={e => setAgreedValueInput(e.target.value ? Number(e.target.value) : '')}
-                      placeholder="0,00"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  {agreedValueInput !== '' && (
-                    <span className="text-[11px] text-emerald-400 font-semibold mt-1 block">
-                      = R$ {Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Archive reason helper when selecting "arquivada" */}
-              {selectedRequest.status === 'arquivada' && (
-                <div className="animate-fadeIn space-y-1 text-xs">
-                  <label className="block text-slate-400 font-semibold">Motivo do Arquivamento (Opcional):</label>
-                  <select
-                    value={archiveReason}
-                    onChange={e => setArchiveReason(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="">Selecione um motivo...</option>
-                    <option value="Valor não acordado">Valor proposto não aceito</option>
-                    <option value="Interessado não respondeu">Interessado não deu continuidade</option>
-                    <option value="Obra já liberada para outro intérprete">Obra já liberada com exclusividade para outro artista</option>
-                    <option value="Desistência mútua">Desistência mútua das partes</option>
-                    <option value="Outro motivo">Outro motivo</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Release Type Configuration if payment is confirmed or sending release */}
-              {(selectedRequest.status === 'pagamento_confirmado' || selectedRequest.status === 'liberacao_enviada') && (
-                <div className="bg-slate-900 p-4 rounded-xl border border-amber-500/30 space-y-3 animate-fadeIn text-xs">
-                  <div className="flex items-center gap-2 text-amber-400 font-bold">
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Configuração do Termo de Autorização</span>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">Tipo de Autorização Fonográfica:</label>
-                    <select
-                      value={releaseTypeInput}
-                      onChange={e => setReleaseTypeInput(e.target.value)}
-                      disabled={releases.some(r => r.requestId === selectedRequest.id)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                    >
-                      <option value="Autorização de Gravação e Exploração Fonográfica (Não-Exclusiva)">
-                        Autorização Não-Exclusiva (Padrão para regravações fonográficas)
-                      </option>
-                      <option value="Autorização Exclusiva de Gravação e Fixação (12 meses)">
-                        Autorização Exclusiva por 12 meses
-                      </option>
-                      <option value="Autorização Exclusiva de Gravação e Fixação (24 meses)">
-                        Autorização Exclusiva por 24 meses
-                      </option>
-                      <option value="Cessão Exclusiva Definitiva de Direitos Patrimoniais">
-                        Cessão Exclusiva Definitiva de Direitos Patrimoniais
-                      </option>
-                    </select>
-                  </div>
-
-                  {!releases.some(r => r.requestId === selectedRequest.id) && releaseTypeInput.toLowerCase().includes('exclusiv') && (
-                    <label className="flex items-start gap-2 pt-1 text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={closeSongForRelease}
-                        onChange={e => setCloseSongForRelease(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-500"
-                      />
-                      <span>Fechar automaticamente a música para novos interessados no catálogo público após a emissão.</span>
-                    </label>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs text-slate-400 mb-1 font-semibold">Observações Internas (Visíveis apenas para você)</label>
-                <textarea
-                  rows={3}
-                  maxLength={500}
-                  value={notesInput}
-                  onChange={e => setNotesInput(e.target.value)}
-                  placeholder="Ex: Pagamento de R$ 3.500 recebido via PIX em 28/08. Liberado para gravação do single."
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
-                {selectedRequest.status === 'pagamento_pendente' && (
-                  <button
-                    type="button"
-                    onClick={handleMarkPaymentReceived}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Confirmar Pagamento</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleSaveDetails}
-                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition"
-                >
-                  Salvar Alterações
-                </button>
-
-                {releases.some(release => release.requestId === selectedRequest.id) ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const document = releases.find(release => release.requestId === selectedRequest.id);
-                      if (document) {
-                        setViewingReleaseDoc(document);
-                        setSelectedRequest(null);
-                      }
-                    }}
-                    className="px-5 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-blue-500/20 transition"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>Visualizar Liberação</span>
-                  </button>
-                ) : selectedRequest.status === 'pagamento_confirmado' ? (
-                  <button
-                    type="button"
-                    onClick={handleCreateRelease}
-                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition"
-                  >
-                    <FileCheck className="w-4 h-4" />
-                    <span>Emitir Liberação Oficial</span>
-                  </button>
-                ) : null}
-              </div>
-
-            </div>
-
-          </div>
-        </div>
-      )}
 
       {/* Document Viewer Modal if user generates/views release */}
       {viewingReleaseDoc && (

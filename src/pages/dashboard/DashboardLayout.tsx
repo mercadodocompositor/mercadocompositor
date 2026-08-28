@@ -271,6 +271,7 @@ export const DashboardLayout: React.FC = () => {
             <Route path="/musicas/nova" element={<AddSongTab />} />
             <Route path="/musicas/:songId/editar" element={<AddSongTab />} />
             <Route path="/solicitacoes" element={<RequestsTab />} />
+            <Route path="/solicitacoes/:requestId" element={<RequestsTab />} />
             <Route path="/liberacoes" element={<ReleasesTab />} />
             <Route path="/perfil" element={<ProfileTab />} />
             <Route path="/assinatura" element={<SubscriptionTab />} />
