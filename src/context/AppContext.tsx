@@ -66,6 +66,8 @@ interface AppContextType {
   
   // ADMIN PANEL STATES & ACTIONS
   isAdminAuthenticated: boolean;
+  adminRole: 'master' | 'moderator' | 'financial';
+  setAdminRole: (role: 'master' | 'moderator' | 'financial') => void;
   adminLogin: (email?: string, password?: string) => Promise<boolean>;
   adminLogout: () => void;
   
@@ -165,6 +167,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     return false;
   });
+
+  const [adminRole, setAdminRole] = useState<'master' | 'moderator' | 'financial'>('master');
 
   const [adminComposers, setAdminComposers] = useState<AdminComposer[]>(() => {
     return [];
@@ -622,6 +626,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       // ADMIN
       isAdminAuthenticated,
+      adminRole,
+      setAdminRole,
       adminLogin,
       adminLogout,
       adminComposers,

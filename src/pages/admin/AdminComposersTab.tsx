@@ -3,8 +3,13 @@ import { useApp } from '../../context/AppContext';
 import { AdminComposer, SubscriptionStatus } from '../../types';
 import { useAdminToast } from '../../components/admin/AdminToast';
 import { AdminConfirmDialog } from '../../components/admin/AdminConfirmDialog';
+import { AdminSecurityPinDialog } from '../../components/admin/AdminSecurityPinDialog';
+import { AdminMaskedData } from '../../components/admin/AdminMaskedData';
 import { AdminDrawer } from '../../components/admin/AdminDrawer';
 import { AdminPagination } from '../../components/admin/AdminPagination';
+import { AdminBulkBar } from '../../components/admin/AdminBulkBar';
+import { AdminDateRangeFilter, DateFilterPreset, filterByDatePreset } from '../../components/admin/AdminDateRangeFilter';
+import { useDebounce } from '../../hooks/useDebounce';
 import { 
   Users, 
   Search, 
@@ -28,7 +33,10 @@ import {
   ArrowUpDown, 
   ArrowUp, 
   ArrowDown, 
-  Link as LinkIcon 
+  Link as LinkIcon, 
+  CheckSquare, 
+  Square,
+  Lock
 } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
 
@@ -47,12 +55,19 @@ export const AdminComposersTab: React.FC = () => {
   const toast = useAdminToast();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
   const [statusFilter, setStatusFilter] = useState<'all' | SubscriptionStatus>('all');
+  const [datePreset, setDatePreset] = useState<DateFilterPreset>('all');
   const [selectedComposer, setSelectedComposer] = useState<AdminComposer | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addMode, setAddMode] = useState<'invite' | 'manual'>('invite');
   const [invitePlan, setInvitePlan] = useState('Plano Ouro (Ilimitado)');
   const [copiedInviteLink, setCopiedInviteLink] = useState(false);
+
+  // Bulk Selection State
+  const [selectedComposerIds, setSelectedComposerIds] = useState<string[]>([]);
+  const [bulkActionType, setBulkActionType] = useState<'activate' | 'suspend' | 'verify' | null>(null);
 
   // Sorting & Pagination state
   const [sortField, setSortField] = useState<SortField>('revenueGenerated');
@@ -60,7 +75,7 @@ export const AdminComposersTab: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Confirmation dialog state
+  // Security PIN deletion dialog state
   const [composerToDelete, setComposerToDelete] = useState<AdminComposer | null>(null);
 
   // New Composer Form state for manual add
@@ -93,15 +108,16 @@ export const AdminComposersTab: React.FC = () => {
   const filteredAndSortedComposers = useMemo(() => {
     const result = adminComposers.filter(composer => {
       const matchesSearch = 
-        composer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        composer.stageName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        composer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        composer.cityState.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        composer.cpf.includes(searchTerm);
+        composer.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        composer.stageName.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        composer.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        composer.cityState.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        composer.cpf.includes(debouncedSearchTerm);
 
       const matchesStatus = statusFilter === 'all' || composer.subscriptionStatus === statusFilter;
+      const matchesDate = filterByDatePreset(composer.createdAt, datePreset);
 
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && matchesDate;
     });
 
     result.sort((a, b) => {
@@ -119,13 +135,59 @@ export const AdminComposersTab: React.FC = () => {
     });
 
     return result;
-  }, [adminComposers, searchTerm, statusFilter, sortField, sortOrder]);
+  }, [adminComposers, debouncedSearchTerm, statusFilter, datePreset, sortField, sortOrder]);
 
   // Paginated list
   const paginatedComposers = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredAndSortedComposers.slice(start, start + pageSize);
   }, [filteredAndSortedComposers, currentPage, pageSize]);
+
+  // Bulk Selection Handlers
+  const isAllSelected = paginatedComposers.length > 0 && paginatedComposers.every(c => selectedComposerIds.includes(c.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      const paginatedIds = paginatedComposers.map(c => c.id);
+      setSelectedComposerIds(prev => prev.filter(id => !paginatedIds.includes(id)));
+    } else {
+      const paginatedIds = paginatedComposers.map(c => c.id);
+      setSelectedComposerIds(prev => Array.from(new Set([...prev, ...paginatedIds])));
+    }
+  };
+
+  const handleToggleSelectComposer = (id: string) => {
+    setSelectedComposerIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // Bulk Execution
+  const handleBulkActivate = () => {
+    selectedComposerIds.forEach(id => updateAdminComposerStatus(id, 'active'));
+    toast.success('Assinaturas Ativadas!', `${selectedComposerIds.length} compositores agora estão com status ativo.`);
+    setSelectedComposerIds([]);
+    setBulkActionType(null);
+  };
+
+  const handleBulkSuspend = () => {
+    selectedComposerIds.forEach(id => updateAdminComposerStatus(id, 'suspended'));
+    toast.warning('Assinaturas Suspensas', `${selectedComposerIds.length} compositores foram suspensos.`);
+    setSelectedComposerIds([]);
+    setBulkActionType(null);
+  };
+
+  const handleBulkVerify = () => {
+    selectedComposerIds.forEach(id => {
+      const comp = adminComposers.find(c => c.id === id);
+      if (comp && !comp.isVerified) {
+        toggleComposerVerified(id);
+      }
+    });
+    toast.success('Selo Verificado em Lote!', `${selectedComposerIds.length} perfis foram verificados.`);
+    setSelectedComposerIds([]);
+    setBulkActionType(null);
+  };
 
   const handleCopyInviteLink = () => {
     const planSlug = encodeURIComponent(invitePlan);
@@ -176,10 +238,10 @@ export const AdminComposersTab: React.FC = () => {
     });
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDeleteByPin = () => {
     if (!composerToDelete) return;
     deleteAdminComposer(composerToDelete.id);
-    toast.error('Compositor removido', `${composerToDelete.stageName} foi excluído da base.`);
+    toast.error('Compositor removido', `${composerToDelete.stageName} foi excluído permanentemente da base.`);
     if (selectedComposer?.id === composerToDelete.id) {
       setSelectedComposer(null);
     }
@@ -204,8 +266,12 @@ export const AdminComposersTab: React.FC = () => {
     }
   };
 
-  const handleExportCsv = () => {
-    if (filteredAndSortedComposers.length === 0) {
+  const handleExportCsv = (onlySelected: boolean = false) => {
+    const listToExport = onlySelected
+      ? adminComposers.filter(c => selectedComposerIds.includes(c.id))
+      : filteredAndSortedComposers;
+
+    if (listToExport.length === 0) {
       toast.warning('Nenhum dado', 'Não há registros para exportar com os filtros atuais.');
       return;
     }
@@ -226,7 +292,7 @@ export const AdminComposersTab: React.FC = () => {
       'Verificado'
     ];
 
-    const rows = filteredAndSortedComposers.map(c => [
+    const rows = listToExport.map(c => [
       `"${c.name.replace(/"/g, '""')}"`,
       `"${c.stageName.replace(/"/g, '""')}"`,
       `"${c.email}"`,
@@ -250,7 +316,7 @@ export const AdminComposersTab: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Relatório CSV Gerado', 'O download do arquivo foi iniciado.');
+    toast.success('Relatório CSV Gerado', `${listToExport.length} compositores exportados.`);
   };
 
   const renderSortIcon = (field: SortField) => {
@@ -273,13 +339,18 @@ export const AdminComposersTab: React.FC = () => {
             <span>Gestão de Compositores & Assinaturas</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Controle total sobre o status de pagamento, catálogo cadastrado e verificação de perfil de cada autor.
+            Controle de assinaturas com proteção de dados LGPD e autorização segura para exclusões.
           </p>
         </div>
 
         <div className="flex items-center gap-3 self-start sm:self-auto">
+          <AdminDateRangeFilter
+            activePreset={datePreset}
+            onPresetChange={preset => { setDatePreset(preset); setCurrentPage(1); }}
+          />
+
           <button
-            onClick={handleExportCsv}
+            onClick={() => handleExportCsv(false)}
             className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition shadow-sm"
           >
             <Download className="w-4 h-4 text-amber-400" />
@@ -296,13 +367,13 @@ export const AdminComposersTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
+      {/* Filter and Search Bar with Debounce */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-lg">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por nome, nome artístico, e-mail, cidade ou CPF..."
+            placeholder="Buscar por nome, nome artístico, e-mail, cidade ou CPF (busca instantânea)..."
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition"
@@ -354,12 +425,26 @@ export const AdminComposersTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Composers DataTable */}
+      {/* Composers DataTable with LGPD Masked Data */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
+                <th className="p-4 w-10 text-center">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAll}
+                    className="text-slate-400 hover:text-white transition"
+                    title={isAllSelected ? "Desmarcar todos" : "Selecionar todos da página"}
+                  >
+                    {isAllSelected ? (
+                      <CheckSquare className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Square className="w-4 h-4 text-slate-600" />
+                    )}
+                  </button>
+                </th>
                 <th 
                   onClick={() => handleSort('stageName')}
                   className="p-4 cursor-pointer hover:text-white transition group select-none"
@@ -367,7 +452,7 @@ export const AdminComposersTab: React.FC = () => {
                   <span>Compositor / Perfil</span>
                   {renderSortIcon('stageName')}
                 </th>
-                <th className="p-4">Contato / Localização</th>
+                <th className="p-4">Contato / Localização (LGPD)</th>
                 <th 
                   onClick={() => handleSort('monthlyValue')}
                   className="p-4 cursor-pointer hover:text-white transition group select-none"
@@ -402,111 +487,146 @@ export const AdminComposersTab: React.FC = () => {
             <tbody className="divide-y divide-slate-800/80">
               {paginatedComposers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
                     Nenhum compositor encontrado para os filtros selecionados.
                   </td>
                 </tr>
               ) : (
-                paginatedComposers.map(composer => (
-                  <tr key={composer.id} className="hover:bg-slate-800/40 transition">
-                    {/* Photo & Stage Name */}
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <img 
-                          src={composer.photo} 
-                          alt={composer.name} 
-                          className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
-                        />
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <strong className="text-white text-sm">{composer.stageName}</strong>
-                            {composer.isVerified && (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" title="Verificado" />
-                            )}
+                paginatedComposers.map(composer => {
+                  const isSelected = selectedComposerIds.includes(composer.id);
+
+                  return (
+                    <tr 
+                      key={composer.id} 
+                      className={`transition ${isSelected ? 'bg-amber-500/10 hover:bg-amber-500/15' : 'hover:bg-slate-800/40'}`}
+                    >
+                      {/* Checkbox */}
+                      <td className="p-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelectComposer(composer.id)}
+                          className="text-slate-400 hover:text-white transition"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-amber-400" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-600" />
+                          )}
+                        </button>
+                      </td>
+
+                      {/* Photo & Stage Name */}
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={composer.photo} 
+                            alt={composer.name} 
+                            className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
+                          />
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <strong className="text-white text-sm">{composer.stageName}</strong>
+                              {composer.isVerified && (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" title="Verificado" />
+                              )}
+                            </div>
+                            <span className="text-[11px] text-slate-400 block">{composer.name}</span>
                           </div>
-                          <span className="text-[11px] text-slate-400 block">{composer.name}</span>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Contact */}
-                    <td className="p-4 space-y-0.5">
-                      <span className="text-slate-200 block truncate max-w-xs">{composer.email}</span>
-                      <span className="text-[11px] text-slate-400 block">{composer.whatsapp} • {composer.cityState}</span>
-                    </td>
+                      {/* Contact with LGPD Mask */}
+                      <td className="p-4 space-y-1">
+                        <div className="text-slate-200 block truncate max-w-xs">
+                          <AdminMaskedData 
+                            value={composer.email} 
+                            type="email" 
+                            subjectName={composer.stageName} 
+                          />
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                          <AdminMaskedData 
+                            value={composer.whatsapp} 
+                            type="phone" 
+                            subjectName={composer.stageName} 
+                          />
+                          <span>• {composer.cityState}</span>
+                        </div>
+                      </td>
 
-                    {/* Plan */}
-                    <td className="p-4">
-                      <strong className="text-white block">{composer.planName}</strong>
-                      <span className="text-amber-400 font-mono font-bold text-[11px]">
-                        R$ {composer.monthlyValue.toFixed(2)}/mês
-                      </span>
-                    </td>
+                      {/* Plan */}
+                      <td className="p-4">
+                        <strong className="text-white block">{composer.planName}</strong>
+                        <span className="text-amber-400 font-mono font-bold text-[11px]">
+                          R$ {composer.monthlyValue.toFixed(2)}/mês
+                        </span>
+                      </td>
 
-                    {/* Status Dropdown */}
-                    <td className="p-4">
-                      <select
-                        value={composer.subscriptionStatus}
-                        onChange={e => handleStatusChange(composer, e.target.value as SubscriptionStatus)}
-                        aria-label="Status da assinatura"
-                        className={`text-[11px] font-bold uppercase rounded-lg px-2.5 py-1 border transition focus:outline-none cursor-pointer ${
-                          composer.subscriptionStatus === 'active'
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                            : composer.subscriptionStatus === 'pending'
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                            : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                        }`}
-                      >
-                        <option value="active">Ativo</option>
-                        <option value="pending">Pendente</option>
-                        <option value="suspended">Suspenso</option>
-                        <option value="cancelled">Cancelado</option>
-                      </select>
-                    </td>
+                      {/* Status Dropdown */}
+                      <td className="p-4">
+                        <select
+                          value={composer.subscriptionStatus}
+                          onChange={e => handleStatusChange(composer, e.target.value as SubscriptionStatus)}
+                          aria-label="Status da assinatura"
+                          className={`text-[11px] font-bold uppercase rounded-lg px-2.5 py-1 border transition focus:outline-none cursor-pointer ${
+                            composer.subscriptionStatus === 'active'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : composer.subscriptionStatus === 'pending'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          }`}
+                        >
+                          <option value="active">Ativo</option>
+                          <option value="pending">Pendente</option>
+                          <option value="suspended">Suspenso</option>
+                          <option value="cancelled">Cancelado</option>
+                        </select>
+                      </td>
 
-                    {/* Songs & Plays */}
-                    <td className="p-4">
-                      <span className="text-white font-bold block">{composer.songCount} músicas</span>
-                      <span className="text-[11px] text-slate-400 block">{composer.totalPlays} audições</span>
-                    </td>
+                      {/* Songs & Plays */}
+                      <td className="p-4">
+                        <span className="text-white font-bold block">{composer.songCount} músicas</span>
+                        <span className="text-[11px] text-slate-400 block">{composer.totalPlays} audições</span>
+                      </td>
 
-                    {/* Revenue */}
-                    <td className="p-4 font-mono font-bold text-emerald-400">
-                      R$ {composer.revenueGenerated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </td>
+                      {/* Revenue */}
+                      <td className="p-4 font-mono font-bold text-emerald-400">
+                        R$ {composer.revenueGenerated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
 
-                    {/* Actions */}
-                    <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
-                      <button
-                        onClick={() => handleToggleVerified(composer)}
-                        className={`p-2 rounded-xl border transition ${
-                          composer.isVerified 
-                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30' 
-                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'
-                        }`}
-                        title={composer.isVerified ? 'Remover selo de verificado' : 'Conceder selo de verificado'}
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                      </button>
+                      {/* Actions */}
+                      <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          onClick={() => handleToggleVerified(composer)}
+                          className={`p-2 rounded-xl border transition ${
+                            composer.isVerified 
+                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30' 
+                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'
+                          }`}
+                          title={composer.isVerified ? 'Remover selo de verificado' : 'Conceder selo de verificado'}
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                        </button>
 
-                      <button
-                        onClick={() => setSelectedComposer(composer)}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
-                        title="Ver ficha completa (Drawer)"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                        <button
+                          onClick={() => setSelectedComposer(composer)}
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                          title="Ver ficha completa (Drawer)"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
 
-                      <button
-                        onClick={() => setComposerToDelete(composer)}
-                        className="p-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 transition"
-                        title="Excluir compositor"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                        <button
+                          onClick={() => setComposerToDelete(composer)}
+                          className="p-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 transition"
+                          title="Excluir compositor (Requer PIN)"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -522,7 +642,44 @@ export const AdminComposersTab: React.FC = () => {
         />
       </div>
 
-      {/* COMPOSER DETAILS SIDE DRAWER */}
+      {/* FLOATING BULK ACTIONS BAR */}
+      <AdminBulkBar
+        selectedCount={selectedComposerIds.length}
+        onClearSelection={() => setSelectedComposerIds([])}
+        itemLabel="compositores"
+        actions={[
+          {
+            id: 'activate',
+            label: 'Ativar Assinaturas',
+            icon: <CheckCircle2 className="w-4 h-4" />,
+            variant: 'success',
+            onClick: () => setBulkActionType('activate')
+          },
+          {
+            id: 'verify',
+            label: 'Verificar Perfis',
+            icon: <ShieldCheck className="w-4 h-4" />,
+            variant: 'primary',
+            onClick: () => setBulkActionType('verify')
+          },
+          {
+            id: 'suspend',
+            label: 'Suspender',
+            icon: <XCircle className="w-4 h-4" />,
+            variant: 'danger',
+            onClick: () => setBulkActionType('suspend')
+          },
+          {
+            id: 'export',
+            label: 'Exportar CSV',
+            icon: <Download className="w-4 h-4" />,
+            variant: 'secondary',
+            onClick: () => handleExportCsv(true)
+          }
+        ]}
+      />
+
+      {/* COMPOSER DETAILS SIDE DRAWER WITH LGPD MASKED DATA */}
       <AdminDrawer
         isOpen={!!selectedComposer}
         onClose={() => setSelectedComposer(null)}
@@ -591,23 +748,36 @@ export const AdminComposersTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Contact & Registration Data */}
+            {/* Contact & Registration Data with LGPD Mask */}
             <div className="space-y-3">
-              <h5 className="font-bold text-white text-xs uppercase tracking-wider text-slate-400">
-                Dados Cadastrais & Contato
+              <h5 className="font-bold text-white text-xs uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Dados Cadastrais & Contato (LGPD)</span>
               </h5>
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                   <span className="text-slate-400">E-mail:</span>
-                  <span className="text-white font-medium">{selectedComposer.email}</span>
+                  <AdminMaskedData 
+                    value={selectedComposer.email} 
+                    type="email" 
+                    subjectName={selectedComposer.stageName} 
+                  />
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                   <span className="text-slate-400">WhatsApp:</span>
-                  <span className="text-white font-mono">{selectedComposer.whatsapp}</span>
+                  <AdminMaskedData 
+                    value={selectedComposer.whatsapp} 
+                    type="phone" 
+                    subjectName={selectedComposer.stageName} 
+                  />
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                   <span className="text-slate-400">CPF:</span>
-                  <span className="text-white font-mono">{selectedComposer.cpf}</span>
+                  <AdminMaskedData 
+                    value={selectedComposer.cpf} 
+                    type="cpf" 
+                    subjectName={selectedComposer.stageName} 
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Vitrine Username:</span>
@@ -658,23 +828,44 @@ export const AdminComposersTab: React.FC = () => {
                 className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Excluir</span>
+                <span>Excluir (PIN)</span>
               </button>
             </div>
           </div>
         )}
       </AdminDrawer>
 
-      {/* CONFIRM DELETE DIALOG */}
-      <AdminConfirmDialog
+      {/* SECURITY PIN CONFIRMATION DIALOG (FOR DELETIONS) */}
+      <AdminSecurityPinDialog
         isOpen={!!composerToDelete}
         title={`Excluir ${composerToDelete?.stageName}?`}
-        description="Esta ação removerá permanentemente o perfil administrativo deste compositor. Esta ação não pode ser desfeita."
-        confirmLabel="Sim, Excluir Compositor"
-        cancelLabel="Cancelar"
-        variant="danger"
-        onConfirm={handleConfirmDelete}
+        description="Esta ação removerá permanentemente todos os registros deste compositor. Por motivos de segurança e conformidade, digite seu PIN mestre para confirmar."
+        correctPin="1234"
+        actionLabel="Confirmar Exclusão"
+        onSuccess={handleConfirmDeleteByPin}
         onCancel={() => setComposerToDelete(null)}
+      />
+
+      {/* CONFIRM BULK ACTION DIALOG */}
+      <AdminConfirmDialog
+        isOpen={!!bulkActionType}
+        title={
+          bulkActionType === 'activate'
+            ? `Ativar ${selectedComposerIds.length} assinaturas?`
+            : bulkActionType === 'suspend'
+            ? `Suspender ${selectedComposerIds.length} assinaturas?`
+            : `Conceder selo de verificação a ${selectedComposerIds.length} compositores?`
+        }
+        description={`Esta alteração em lote será aplicada a todos os ${selectedComposerIds.length} compositores selecionados imediatamente.`}
+        confirmLabel="Confirmar Ação em Lote"
+        cancelLabel="Cancelar"
+        variant={bulkActionType === 'suspend' ? 'warning' : 'info'}
+        onConfirm={() => {
+          if (bulkActionType === 'activate') handleBulkActivate();
+          else if (bulkActionType === 'suspend') handleBulkSuspend();
+          else if (bulkActionType === 'verify') handleBulkVerify();
+        }}
+        onCancel={() => setBulkActionType(null)}
       />
 
       {/* ADD / INVITE COMPOSER MODAL */}

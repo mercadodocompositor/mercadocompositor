@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAdminToast } from '../../components/admin/AdminToast';
 import { AdminConfirmDialog } from '../../components/admin/AdminConfirmDialog';
+import { AdminSecurityPinDialog } from '../../components/admin/AdminSecurityPinDialog';
 import { 
   Settings, 
   DollarSign, 
@@ -15,7 +16,9 @@ import {
   AlertTriangle,
   RotateCcw,
   Sparkles,
-  Percent
+  Percent,
+  KeyRound,
+  Lock
 } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
 import { DEFAULT_PLATFORM_SETTINGS } from '../../data/platformDefaults';
@@ -40,9 +43,24 @@ export const AdminSettingsTab: React.FC = () => {
   });
 
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false);
+  const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // If critical financial settings changed (pixKey or feePercentage), require PIN
+    const isCriticalChange = 
+      formData.pixKey !== platformSettings.pixKey || 
+      formData.platformFeePercentage !== platformSettings.platformFeePercentage;
+
+    if (isCriticalChange) {
+      setIsPinDialogOpen(true);
+    } else {
+      applySettings();
+    }
+  };
+
+  const applySettings = () => {
     updatePlatformSettings({
       ...formData,
       planMonthlyPrice: Number(formData.planMonthlyPrice),
@@ -51,6 +69,7 @@ export const AdminSettingsTab: React.FC = () => {
     });
 
     toast.success('Configurações Salvas!', 'As preferências globais do SaaS foram atualizadas com sucesso.');
+    setIsPinDialogOpen(false);
   };
 
   const handleConfirmReset = () => {
@@ -106,6 +125,7 @@ export const AdminSettingsTab: React.FC = () => {
               <label className="text-slate-300 font-semibold flex items-center gap-1.5">
                 <Percent className="w-3.5 h-3.5 text-amber-400" />
                 <span>Taxa de Intermediação sobre Liberações Fonográficas (%)</span>
+                <Lock className="w-3 h-3 text-amber-400/80 ml-auto" title="Protegido por PIN" />
               </label>
               <input
                 type="number"
@@ -123,6 +143,7 @@ export const AdminSettingsTab: React.FC = () => {
               <label className="text-slate-300 font-semibold flex items-center gap-1.5">
                 <QrCode className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Chave Pix Master da Plataforma</span>
+                <Lock className="w-3 h-3 text-amber-400/80 ml-auto" title="Protegido por PIN" />
               </label>
               <input
                 type="text"
@@ -258,6 +279,17 @@ export const AdminSettingsTab: React.FC = () => {
         variant="warning"
         onConfirm={handleConfirmReset}
         onCancel={() => setIsConfirmResetOpen(false)}
+      />
+
+      {/* SECURITY PIN DIALOG FOR FINANCIAL CHANGES */}
+      <AdminSecurityPinDialog
+        isOpen={isPinDialogOpen}
+        title="Alterar Chave Pix / Taxa Master?"
+        description="Você está alterando parâmetros financeiros críticos da plataforma. Digite o PIN mestre de segurança para confirmar."
+        correctPin="1234"
+        actionLabel="Autorizar Mudanças"
+        onSuccess={applySettings}
+        onCancel={() => setIsPinDialogOpen(false)}
       />
     </div>
   );

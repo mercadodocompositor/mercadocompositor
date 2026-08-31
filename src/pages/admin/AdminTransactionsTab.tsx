@@ -4,6 +4,9 @@ import { InterestRequest, ReleaseDocument, RequestStatus } from '../../types';
 import { useAdminToast } from '../../components/admin/AdminToast';
 import { AdminDrawer } from '../../components/admin/AdminDrawer';
 import { AdminPagination } from '../../components/admin/AdminPagination';
+import { AdminDateRangeFilter, DateFilterPreset, filterByDatePreset } from '../../components/admin/AdminDateRangeFilter';
+import { AdminMaskedData } from '../../components/admin/AdminMaskedData';
+import { useDebounce } from '../../hooks/useDebounce';
 import { 
   FileCheck2, 
   Search, 
@@ -24,18 +27,26 @@ import {
   ArrowUp, 
   ArrowDown, 
   Copy, 
-  Check 
+  Check, 
+  Percent, 
+  Wallet, 
+  TrendingUp, 
+  Receipt,
+  Lock 
 } from 'lucide-react';
 
 type SortField = 'songTitle' | 'buyerName' | 'agreedValue' | 'status' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
 export const AdminTransactionsTab: React.FC = () => {
-  const { requests, releases, updateRequestStatus } = useApp();
+  const { requests, releases, platformSettings } = useApp();
   const toast = useAdminToast();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
   const [statusFilter, setStatusFilter] = useState<'all' | RequestStatus>('all');
+  const [datePreset, setDatePreset] = useState<DateFilterPreset>('all');
   const [selectedRelease, setSelectedRelease] = useState<ReleaseDocument | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<InterestRequest | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -45,6 +56,8 @@ export const AdminTransactionsTab: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const feePercentage = platformSettings.platformFeePercentage || 10;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -93,14 +106,15 @@ export const AdminTransactionsTab: React.FC = () => {
   const filteredAndSortedRequests = useMemo(() => {
     const result = requests.filter(req => {
       const matchesSearch = 
-        req.songTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.buyerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.buyerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (req.buyerStageName && req.buyerStageName.toLowerCase().includes(searchTerm.toLowerCase()));
+        req.songTitle.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        req.buyerName.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        req.buyerEmail.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (req.buyerStageName && req.buyerStageName.toLowerCase().includes(debouncedSearchTerm.toLowerCase()));
 
       const matchesStatus = statusFilter === 'all' || req.status === statusFilter;
+      const matchesDate = filterByDatePreset(req.createdAt, datePreset);
 
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && matchesDate;
     });
 
     result.sort((a, b) => {
@@ -121,14 +135,34 @@ export const AdminTransactionsTab: React.FC = () => {
     });
 
     return result;
-  }, [requests, searchTerm, statusFilter, sortField, sortOrder]);
+  }, [requests, debouncedSearchTerm, statusFilter, datePreset, sortField, sortOrder]);
 
   const paginatedRequests = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredAndSortedRequests.slice(start, start + pageSize);
   }, [filteredAndSortedRequests, currentPage, pageSize]);
 
-  // Export CSV
+  // Financial Reconciliation Calculations
+  const reconciliation = useMemo(() => {
+    const completedRequests = filteredAndSortedRequests.filter(r => 
+      r.status === 'pagamento_confirmado' || r.status === 'liberacao_enviada'
+    );
+
+    const totalGmv = completedRequests.reduce((acc, r) => acc + (r.agreedValue || 0), 0);
+    const platformRevenue = totalGmv * (feePercentage / 100);
+    const composerPayout = totalGmv - platformRevenue;
+    const avgTicket = completedRequests.length > 0 ? totalGmv / completedRequests.length : 0;
+
+    return {
+      totalGmv,
+      platformRevenue,
+      composerPayout,
+      avgTicket,
+      completedCount: completedRequests.length
+    };
+  }, [filteredAndSortedRequests, feePercentage]);
+
+  // Export CSV with Split Details
   const handleExportCsv = () => {
     if (filteredAndSortedRequests.length === 0) {
       toast.warning('Nenhum dado', 'Não há transações para exportar com os filtros atuais.');
@@ -143,33 +177,43 @@ export const AdminTransactionsTab: React.FC = () => {
       'Email',
       'WhatsApp',
       'Status',
-      'Valor_Acordado_BRL',
+      'Valor_Bruto_BRL',
+      'Taxa_Plataforma_BRL',
+      'Repasse_Compositor_BRL',
       'Finalidade',
       'Data_Proposta'
     ];
 
-    const rows = filteredAndSortedRequests.map(r => [
-      `"${r.id}"`,
-      `"${r.songTitle.replace(/"/g, '""')}"`,
-      `"${r.buyerName.replace(/"/g, '""')}"`,
-      `"${r.cpfCnpj}"`,
-      `"${r.buyerEmail}"`,
-      `"${r.buyerWhatsapp}"`,
-      r.status,
-      r.agreedValue ? r.agreedValue.toFixed(2) : '0.00',
-      `"${r.purpose.replace(/"/g, '""')}"`,
-      r.createdAt
-    ]);
+    const rows = filteredAndSortedRequests.map(r => {
+      const grossVal = r.agreedValue || 0;
+      const feeVal = grossVal * (feePercentage / 100);
+      const netVal = grossVal - feeVal;
+
+      return [
+        `"${r.id}"`,
+        `"${r.songTitle.replace(/"/g, '""')}"`,
+        `"${r.buyerName.replace(/"/g, '""')}"`,
+        `"${r.cpfCnpj}"`,
+        `"${r.buyerEmail}"`,
+        `"${r.buyerWhatsapp}"`,
+        r.status,
+        grossVal.toFixed(2),
+        feeVal.toFixed(2),
+        netVal.toFixed(2),
+        `"${r.purpose.replace(/"/g, '""')}"`,
+        r.createdAt
+      ];
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `relatorio_transacoes_admin_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `conciliacao_financeira_admin_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Relatório CSV Gerado', 'O download do histórico de propostas foi iniciado.');
+    toast.success('Relatório Financeiro Gerado', 'O arquivo CSV com split de intermediação foi baixado.');
   };
 
   const renderSortIcon = (field: SortField) => {
@@ -181,8 +225,6 @@ export const AdminTransactionsTab: React.FC = () => {
       : <ArrowDown className="w-3 h-3 text-amber-400 inline ml-1" />;
   };
 
-  const totalVolume = requests.reduce((acc, r) => acc + (r.agreedValue || 0), 0);
-
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
       
@@ -191,38 +233,98 @@ export const AdminTransactionsTab: React.FC = () => {
         <div>
           <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             <FileCheck2 className="w-5 h-5 text-amber-400" />
-            <span>Auditoria de Propostas & Termos de Liberação</span>
+            <span>Auditoria Financeira & Termos de Liberação</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Supervisione negociações entre intérpretes e compositores, quitações de valores e certificados digitais emitidos.
+            Supervisione negociações, conciliação de receitas, take-rate retido e certificados emitidos (Conformidade LGPD).
           </p>
         </div>
 
         <div className="flex items-center gap-3 self-start sm:self-auto">
+          <AdminDateRangeFilter
+            activePreset={datePreset}
+            onPresetChange={preset => { setDatePreset(preset); setCurrentPage(1); }}
+          />
+
           <button
             onClick={handleExportCsv}
             className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition shadow-sm"
           >
             <Download className="w-4 h-4 text-amber-400" />
-            <span>Exportar CSV</span>
+            <span>Exportar Conciliação CSV</span>
           </button>
-
-          <div className="bg-slate-900 border border-slate-800 px-4 py-2.5 rounded-xl text-xs shadow-sm">
-            <span className="text-slate-400">Total Transacionado:</span>
-            <span className="font-bold text-emerald-400 ml-2 font-mono">
-              R$ {totalVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
+      {/* FINANCIAL RECONCILIATION CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Volume Bruto Transacionado */}
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-2 shadow-lg">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-semibold uppercase tracking-wider">GMV Concluído</span>
+            <Receipt className="w-4 h-4 text-blue-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-white font-mono">
+            R$ {reconciliation.totalGmv.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-slate-400">
+            {reconciliation.completedCount} autorizações quitadas
+          </p>
+        </div>
+
+        {/* Card 2: Receita da Plataforma (Take Rate) */}
+        <div className="bg-slate-900 border border-amber-500/30 p-5 rounded-2xl space-y-2 shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+              <Percent className="w-3.5 h-3.5" /> Take-Rate ({feePercentage}%)
+            </span>
+            <TrendingUp className="w-4 h-4 text-amber-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-amber-400 font-mono">
+            R$ {reconciliation.platformRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-slate-400">
+            Comissão líquida retida pela plataforma
+          </p>
+        </div>
+
+        {/* Card 3: Repasse aos Compositores */}
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-2 shadow-lg">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-semibold uppercase tracking-wider">Repasse aos Autores</span>
+            <Wallet className="w-4 h-4 text-emerald-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-emerald-400 font-mono">
+            R$ {reconciliation.composerPayout.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-slate-400">
+            Valor líquido repassado aos compositores
+          </p>
+        </div>
+
+        {/* Card 4: Ticket Médio */}
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-2 shadow-lg">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-semibold uppercase tracking-wider">Ticket Médio</span>
+            <DollarSign className="w-4 h-4 text-purple-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-white font-mono">
+            R$ {reconciliation.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </h3>
+          <p className="text-[11px] text-slate-400">
+            Valor médio por cessão musical
+          </p>
+        </div>
+      </div>
+
+      {/* Filter and Search Bar with Debounce */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-lg">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por música, intérprete, produtor ou e-mail..."
+            placeholder="Buscar por música, intérprete, produtor ou e-mail (busca instantânea)..."
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition"
@@ -273,7 +375,7 @@ export const AdminTransactionsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Requests DataTable */}
+      {/* Requests DataTable with Financial Split & LGPD Mask */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
@@ -290,7 +392,7 @@ export const AdminTransactionsTab: React.FC = () => {
                   onClick={() => handleSort('buyerName')}
                   className="p-4 cursor-pointer hover:text-white transition group select-none"
                 >
-                  <span>Intérprete / Produtor</span>
+                  <span>Intérprete (LGPD)</span>
                   {renderSortIcon('buyerName')}
                 </th>
                 <th className="p-4">Finalidade</th>
@@ -298,9 +400,10 @@ export const AdminTransactionsTab: React.FC = () => {
                   onClick={() => handleSort('agreedValue')}
                   className="p-4 cursor-pointer hover:text-white transition group select-none"
                 >
-                  <span>Valor Acordado</span>
+                  <span>Valor Acordado (GMV)</span>
                   {renderSortIcon('agreedValue')}
                 </th>
+                <th className="p-4">Split Plataforma / Autor</th>
                 <th 
                   onClick={() => handleSort('status')}
                   className="p-4 cursor-pointer hover:text-white transition group select-none"
@@ -321,62 +424,91 @@ export const AdminTransactionsTab: React.FC = () => {
             <tbody className="divide-y divide-slate-800/80">
               {paginatedRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
                     Nenhuma proposta encontrada para os filtros selecionados.
                   </td>
                 </tr>
               ) : (
-                paginatedRequests.map(req => (
-                  <tr key={req.id} className="hover:bg-slate-800/40 transition">
-                    <td className="p-4">
-                      <strong className="text-white text-sm block">“{req.songTitle}”</strong>
-                      <span className="text-[11px] text-slate-400">ID: {req.id.slice(0, 8)}...</span>
-                    </td>
+                paginatedRequests.map(req => {
+                  const grossVal = req.agreedValue || 0;
+                  const feeVal = grossVal * (feePercentage / 100);
+                  const netVal = grossVal - feeVal;
 
-                    <td className="p-4 space-y-0.5">
-                      <strong className="text-slate-200 block">{req.buyerName}</strong>
-                      <span className="text-[11px] text-slate-400 block">{req.buyerWhatsapp}</span>
-                    </td>
+                  return (
+                    <tr key={req.id} className="hover:bg-slate-800/40 transition">
+                      <td className="p-4">
+                        <strong className="text-white text-sm block">“{req.songTitle}”</strong>
+                        <span className="text-[11px] text-slate-400">ID: {req.id.slice(0, 8)}...</span>
+                      </td>
 
-                    <td className="p-4 max-w-xs truncate text-slate-300">
-                      {req.purpose}
-                    </td>
+                      <td className="p-4 space-y-1">
+                        <strong className="text-slate-200 block">{req.buyerName}</strong>
+                        <div className="text-[11px] text-slate-400">
+                          <AdminMaskedData
+                            value={req.buyerWhatsapp}
+                            type="phone"
+                            subjectName={req.buyerName}
+                          />
+                        </div>
+                      </td>
 
-                    <td className="p-4 font-mono font-bold text-emerald-400">
-                      {req.agreedValue 
-                        ? `R$ ${req.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
-                        : 'Em aberto'}
-                    </td>
+                      <td className="p-4 max-w-xs truncate text-slate-300">
+                        {req.purpose}
+                      </td>
 
-                    <td className="p-4">
-                      {getStatusBadge(req.status)}
-                    </td>
+                      <td className="p-4 font-mono font-bold text-white">
+                        {grossVal > 0 
+                          ? `R$ ${grossVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+                          : 'Em aberto'}
+                      </td>
 
-                    <td className="p-4 text-slate-400 font-mono text-[11px]">
-                      {req.createdAt.split('T')[0] || req.createdAt}
-                    </td>
+                      {/* Split Column */}
+                      <td className="p-4 space-y-0.5">
+                        {grossVal > 0 ? (
+                          <>
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-amber-400 font-mono font-semibold">Taxa: R$ {feeVal.toFixed(2)}</span>
+                              <span className="text-slate-500">({feePercentage}%)</span>
+                            </div>
+                            <div className="text-[10px] text-emerald-400 font-mono">
+                              Repasse: R$ {netVal.toFixed(2)}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-slate-500 text-[11px]">—</span>
+                        )}
+                      </td>
 
-                    <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
-                      {req.releaseId && (
+                      <td className="p-4">
+                        {getStatusBadge(req.status)}
+                      </td>
+
+                      <td className="p-4 text-slate-400 font-mono text-[11px]">
+                        {req.createdAt.split('T')[0] || req.createdAt}
+                      </td>
+
+                      <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                        {req.releaseId && (
+                          <button
+                            onClick={() => handleOpenReleaseModal(req.releaseId!)}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold hover:bg-emerald-500/30 transition cursor-pointer"
+                            title="Ver Termo Oficial Emitido"
+                          >
+                            Ver Termo
+                          </button>
+                        )}
+
                         <button
-                          onClick={() => handleOpenReleaseModal(req.releaseId!)}
-                          className="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold hover:bg-emerald-500/30 transition cursor-pointer"
-                          title="Ver Termo Oficial Emitido"
+                          onClick={() => setSelectedRequest(req)}
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
+                          title="Ver detalhes da solicitação (Drawer)"
                         >
-                          Ver Termo
+                          <Eye className="w-4 h-4" />
                         </button>
-                      )}
-
-                      <button
-                        onClick={() => setSelectedRequest(req)}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
-                        title="Ver detalhes da solicitação (Drawer)"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -392,7 +524,7 @@ export const AdminTransactionsTab: React.FC = () => {
         />
       </div>
 
-      {/* REQUEST DETAILS SIDE DRAWER */}
+      {/* REQUEST DETAILS SIDE DRAWER WITH LGPD MASK */}
       <AdminDrawer
         isOpen={!!selectedRequest}
         onClose={() => setSelectedRequest(null)}
@@ -438,10 +570,11 @@ export const AdminTransactionsTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Buyer Contact Data */}
+            {/* Buyer Contact Data with LGPD Mask */}
             <div className="space-y-3">
-              <h5 className="font-bold text-white uppercase tracking-wider text-slate-400 text-[11px]">
-                Dados do Solicitante / Intérprete
+              <h5 className="font-bold text-white uppercase tracking-wider text-slate-400 text-[11px] flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Dados do Intérprete / Solicitante (LGPD)</span>
               </h5>
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
@@ -456,15 +589,27 @@ export const AdminTransactionsTab: React.FC = () => {
                 )}
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                   <span className="text-slate-400">CPF / CNPJ:</span>
-                  <span className="text-white font-mono">{selectedRequest.cpfCnpj}</span>
+                  <AdminMaskedData
+                    value={selectedRequest.cpfCnpj}
+                    type="cpf"
+                    subjectName={selectedRequest.buyerName}
+                  />
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                   <span className="text-slate-400">E-mail:</span>
-                  <span className="text-white">{selectedRequest.buyerEmail}</span>
+                  <AdminMaskedData
+                    value={selectedRequest.buyerEmail}
+                    type="email"
+                    subjectName={selectedRequest.buyerName}
+                  />
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                   <span className="text-slate-400">WhatsApp:</span>
-                  <span className="text-white font-mono">{selectedRequest.buyerWhatsapp}</span>
+                  <AdminMaskedData
+                    value={selectedRequest.buyerWhatsapp}
+                    type="phone"
+                    subjectName={selectedRequest.buyerName}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Cidade / Estado:</span>
@@ -473,24 +618,41 @@ export const AdminTransactionsTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Terms & Financial Proposal */}
+            {/* Terms & Financial Proposal with Split Breakdown */}
             <div className="space-y-3">
               <h5 className="font-bold text-white uppercase tracking-wider text-slate-400 text-[11px]">
-                Finalidade & Valores
+                Finalidade & Split Financeiro
               </h5>
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                   <span className="text-slate-400">Finalidade:</span>
                   <span className="text-amber-300 font-semibold">{selectedRequest.purpose}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Valor Acordado:</span>
-                  <strong className="text-emerald-400 font-mono text-sm">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="text-slate-400">Valor Bruto Acordado (GMV):</span>
+                  <strong className="text-white font-mono text-sm">
                     {selectedRequest.agreedValue 
                       ? `R$ ${selectedRequest.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
                       : 'Sob Negociação'}
                   </strong>
                 </div>
+
+                {selectedRequest.agreedValue && (
+                  <>
+                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                      <span className="text-slate-400">Comissão da Plataforma ({feePercentage}%):</span>
+                      <strong className="text-amber-400 font-mono">
+                        R$ {(selectedRequest.agreedValue * (feePercentage / 100)).toFixed(2)}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Repasse Líquido ao Autor:</span>
+                      <strong className="text-emerald-400 font-mono text-sm">
+                        R$ {(selectedRequest.agreedValue * (1 - feePercentage / 100)).toFixed(2)}
+                      </strong>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -507,7 +669,7 @@ export const AdminTransactionsTab: React.FC = () => {
         )}
       </AdminDrawer>
 
-      {/* AUDIT RELEASE TERM DRAWER / MODAL */}
+      {/* AUDIT RELEASE TERM DRAWER */}
       <AdminDrawer
         isOpen={!!selectedRelease}
         onClose={() => setSelectedRelease(null)}

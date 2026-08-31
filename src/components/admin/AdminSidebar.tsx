@@ -13,7 +13,9 @@ import {
   ArrowLeft, 
   LogOut,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  UserCog,
+  Check
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -30,51 +32,72 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onCloseMobile
 }) => {
   const navigate = useNavigate();
-  const { adminComposers, songs, requests, adminLogout } = useApp();
+  const { adminComposers, songs, requests, adminLogout, adminRole, setAdminRole } = useApp();
 
-  const navItems = [
+  const allNavItems = [
     {
       id: 'overview',
       label: 'Visão Geral Executiva',
       icon: LayoutDashboard,
-      badge: null
+      badge: null,
+      roles: ['master', 'moderator', 'financial']
     },
     {
       id: 'compositores',
       label: 'Compositores & Planos',
       icon: Users,
-      badge: adminComposers.length.toString()
+      badge: adminComposers.length.toString(),
+      roles: ['master', 'financial']
     },
     {
       id: 'musicas',
       label: 'Acervo & Moderação',
       icon: Music,
-      badge: songs.length.toString()
+      badge: songs.length.toString(),
+      roles: ['master', 'moderator']
     },
     {
       id: 'transacoes',
       label: 'Propostas & Liberações',
       icon: FileCheck2,
-      badge: requests.length.toString()
+      badge: requests.length.toString(),
+      roles: ['master', 'financial']
     },
     {
       id: 'configuracoes',
       label: 'Configurações SaaS',
       icon: Settings,
-      badge: null
+      badge: null,
+      roles: ['master']
     },
     {
       id: 'logs',
       label: 'Logs de Auditoria',
       icon: Activity,
-      badge: null
+      badge: null,
+      roles: ['master', 'financial']
     }
   ];
+
+  const allowedNavItems = allNavItems.filter(item => item.roles.includes(adminRole));
 
   const handleTabClick = (tabId: string) => {
     onSelectTab(tabId);
     onCloseMobile();
   };
+
+  const getRoleBadge = () => {
+    switch (adminRole) {
+      case 'moderator':
+        return { label: 'MODERADOR', bg: 'bg-blue-500/20 text-blue-400 border-blue-500/30' };
+      case 'financial':
+        return { label: 'FINANCEIRO', bg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+      default:
+        return { label: 'MASTER / DONO', bg: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
+    }
+  };
+
+  const roleInfo = getRoleBadge();
 
   return (
     <>
@@ -93,30 +116,36 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       `}>
         {/* Top brand */}
         <div>
-          <div className="p-6 border-b border-slate-800/80">
+          <div className="p-6 border-b border-slate-800/80 space-y-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
                 <img src="/logo.webp" alt="Mercado do Compositor" className="w-full h-full object-contain" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="text-white font-bold text-base tracking-tight">Master Admin</span>
-                  <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">
-                    DONO
-                  </span>
                 </div>
                 <p className="text-slate-400 text-xs truncate">{APP_CONFIG.name}</p>
               </div>
+            </div>
+
+            {/* RBAC Active Role Badge */}
+            <div className="flex items-center justify-between bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-xs">
+              <span className="text-slate-400 text-[11px]">Perfil RBAC:</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${roleInfo.bg}`}>
+                {roleInfo.label}
+              </span>
             </div>
           </div>
 
           {/* Nav List */}
           <div className="px-3 py-6 space-y-1.5">
-            <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Gestão da Plataforma
+            <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+              <span>Gestão da Plataforma</span>
+              <span className="font-mono text-[9px] text-slate-500">{allowedNavItems.length} módulos</span>
             </div>
 
-            {navItems.map(item => {
+            {allowedNavItems.map(item => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
               return (
@@ -146,8 +175,27 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
         </div>
 
-        {/* Bottom Actions */}
+        {/* Bottom Actions & Role Switcher */}
         <div className="p-4 border-t border-slate-800/80 space-y-2">
+          
+          {/* RBAC Role Switcher Dropdown */}
+          <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase">
+              <UserCog className="w-3.5 h-3.5 text-amber-400" />
+              <span>Simular Perfil / Papel:</span>
+            </div>
+            <select
+              value={adminRole}
+              onChange={e => setAdminRole(e.target.value as 'master' | 'moderator' | 'financial')}
+              aria-label="Perfil administrativo"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs text-white px-2 py-1 focus:outline-none focus:border-amber-500 cursor-pointer"
+            >
+              <option value="master">Master Admin (Dono)</option>
+              <option value="moderator">Moderador Musical</option>
+              <option value="financial">Auditor Financeiro</option>
+            </select>
+          </div>
+
           <button
             onClick={() => navigate('/dashboard')}
             className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-amber-400 hover:bg-slate-900 border border-transparent hover:border-slate-800 transition"
@@ -170,25 +218,16 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <ExternalLink className="w-3.5 h-3.5 opacity-60" />
           </button>
 
-          <div className="pt-2">
-            <div className="bg-slate-900/90 border border-slate-800 p-3 rounded-xl flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-xs">
-                OA
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white truncate">Owner Admin</p>
-                <p className="text-[10px] text-slate-400 truncate">admin@mercadodocompositor.com.br</p>
-              </div>
-            </div>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => { adminLogout(); navigate('/autenticacao?modo=admin'); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-500/10 transition"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sair do Painel Admin</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => { adminLogout(); navigate('/autenticacao?modo=admin'); }}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-500/10 transition"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Sair do Painel Administrativo</span>
-          </button>
         </div>
       </aside>
     </>

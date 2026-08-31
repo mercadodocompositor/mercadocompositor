@@ -5,6 +5,10 @@ import { useAdminToast } from '../../components/admin/AdminToast';
 import { AdminConfirmDialog } from '../../components/admin/AdminConfirmDialog';
 import { AdminDrawer } from '../../components/admin/AdminDrawer';
 import { AdminPagination } from '../../components/admin/AdminPagination';
+import { AdminBulkBar } from '../../components/admin/AdminBulkBar';
+import { AdminWaveformPlayer } from '../../components/admin/AdminWaveformPlayer';
+import { AdminDateRangeFilter, DateFilterPreset, filterByDatePreset } from '../../components/admin/AdminDateRangeFilter';
+import { useDebounce } from '../../hooks/useDebounce';
 import { 
   Music, 
   Search, 
@@ -27,7 +31,8 @@ import {
   ArrowUpDown, 
   ArrowUp, 
   ArrowDown, 
-  UserCheck 
+  CheckSquare, 
+  Square 
 } from 'lucide-react';
 
 type SortField = 'title' | 'authors' | 'genre' | 'playCount' | 'suggestedValue' | 'status' | 'dateRegistered';
@@ -45,10 +50,17 @@ export const AdminSongsTab: React.FC = () => {
   const toast = useAdminToast();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
   const [genreFilter, setGenreFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [datePreset, setDatePreset] = useState<DateFilterPreset>('all');
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [pendingSongId, setPendingSongId] = useState<string | null>(null);
+
+  // Bulk Selection State
+  const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
+  const [bulkActionType, setBulkActionType] = useState<'approve' | 'reject' | null>(null);
 
   // Sorting & Pagination
   const [sortField, setSortField] = useState<SortField>('dateRegistered');
@@ -168,14 +180,15 @@ export const AdminSongsTab: React.FC = () => {
   const filteredAndSortedSongs = useMemo(() => {
     const result = songs.filter(song => {
       const matchesSearch = 
-        song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        song.authors.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        song.genre.toLowerCase().includes(searchTerm.toLowerCase());
+        song.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        song.authors.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        song.genre.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
 
       const matchesGenre = genreFilter === 'all' || song.genre === genreFilter;
       const matchesStatus = statusFilter === 'all' || song.status === statusFilter;
+      const matchesDate = filterByDatePreset(song.dateRegistered, datePreset);
 
-      return matchesSearch && matchesGenre && matchesStatus;
+      return matchesSearch && matchesGenre && matchesStatus && matchesDate;
     });
 
     result.sort((a, b) => {
@@ -193,16 +206,58 @@ export const AdminSongsTab: React.FC = () => {
     });
 
     return result;
-  }, [songs, searchTerm, genreFilter, statusFilter, sortField, sortOrder]);
+  }, [songs, debouncedSearchTerm, genreFilter, statusFilter, datePreset, sortField, sortOrder]);
 
   const paginatedSongs = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredAndSortedSongs.slice(start, start + pageSize);
   }, [filteredAndSortedSongs, currentPage, pageSize]);
 
-  // Export CSV
-  const handleExportCsv = () => {
-    if (filteredAndSortedSongs.length === 0) {
+  // Bulk Selection Handlers
+  const isAllSelected = paginatedSongs.length > 0 && paginatedSongs.every(s => selectedSongIds.includes(s.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      const paginatedIds = paginatedSongs.map(s => s.id);
+      setSelectedSongIds(prev => prev.filter(id => !paginatedIds.includes(id)));
+    } else {
+      const paginatedIds = paginatedSongs.map(s => s.id);
+      setSelectedSongIds(prev => Array.from(new Set([...prev, ...paginatedIds])));
+    }
+  };
+
+  const handleToggleSelectSong = (id: string) => {
+    setSelectedSongIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // Bulk Execution
+  const handleBulkApprove = async () => {
+    for (const id of selectedSongIds) {
+      await moderateSong(id, 'published');
+    }
+    toast.success('Obras Aprovadas em Lote!', `${selectedSongIds.length} músicas foram publicadas.`);
+    setSelectedSongIds([]);
+    setBulkActionType(null);
+  };
+
+  const handleBulkReject = async () => {
+    for (const id of selectedSongIds) {
+      await moderateSong(id, 'rejected');
+    }
+    toast.error('Obras Rejeitadas em Lote', `${selectedSongIds.length} músicas foram marcadas como rejeitadas.`);
+    setSelectedSongIds([]);
+    setBulkActionType(null);
+  };
+
+  // Export CSV (Full or Selected)
+  const handleExportCsv = (onlySelected: boolean = false) => {
+    const listToExport = onlySelected 
+      ? songs.filter(s => selectedSongIds.includes(s.id))
+      : filteredAndSortedSongs;
+
+    if (listToExport.length === 0) {
       toast.warning('Nenhum dado', 'Não há músicas para exportar com os filtros atuais.');
       return;
     }
@@ -219,7 +274,7 @@ export const AdminSongsTab: React.FC = () => {
       'Em_Destaque'
     ];
 
-    const rows = filteredAndSortedSongs.map(s => [
+    const rows = listToExport.map(s => [
       `"${s.id}"`,
       `"${s.title.replace(/"/g, '""')}"`,
       `"${s.genre}"`,
@@ -239,7 +294,7 @@ export const AdminSongsTab: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Relatório CSV Gerado', 'O catálogo de músicas foi exportado.');
+    toast.success('Relatório CSV Gerado', `${listToExport.length} músicas exportadas.`);
   };
 
   const renderSortIcon = (field: SortField) => {
@@ -262,26 +317,33 @@ export const AdminSongsTab: React.FC = () => {
             <span>Moderação & Acervo Musical</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Supervisione novas composições cadastradas, execute audição e configure os destaques da vitrine pública.
+            Supervisione novas composições cadastradas, execute audição com waveform e faça moderação em lote.
           </p>
         </div>
 
-        <button
-          onClick={handleExportCsv}
-          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition self-start sm:self-auto shadow-sm"
-        >
-          <Download className="w-4 h-4 text-amber-400" />
-          <span>Exportar Acervo CSV</span>
-        </button>
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <AdminDateRangeFilter
+            activePreset={datePreset}
+            onPresetChange={preset => { setDatePreset(preset); setCurrentPage(1); }}
+          />
+
+          <button
+            onClick={() => handleExportCsv(false)}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition shadow-sm"
+          >
+            <Download className="w-4 h-4 text-amber-400" />
+            <span>Exportar CSV</span>
+          </button>
+        </div>
       </div>
 
-      {/* Filter and Search Bar */}
+      {/* Filter and Search Bar with Debounce */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-lg">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por título, compositor ou estilo musical..."
+            placeholder="Buscar por título, compositor ou estilo musical (com busca instantânea)..."
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition"
@@ -315,12 +377,26 @@ export const AdminSongsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Songs DataTable */}
+      {/* Songs DataTable with Multi-select */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
+                <th className="p-4 w-10 text-center">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAll}
+                    className="text-slate-400 hover:text-white transition"
+                    title={isAllSelected ? "Desmarcar todos" : "Selecionar todos da página"}
+                  >
+                    {isAllSelected ? (
+                      <CheckSquare className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Square className="w-4 h-4 text-slate-600" />
+                    )}
+                  </button>
+                </th>
                 <th 
                   onClick={() => handleSort('title')}
                   className="p-4 cursor-pointer hover:text-white transition group select-none"
@@ -363,7 +439,7 @@ export const AdminSongsTab: React.FC = () => {
             <tbody className="divide-y divide-slate-800/80">
               {paginatedSongs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
                     Nenhuma música encontrada para os filtros selecionados.
                   </td>
                 </tr>
@@ -371,9 +447,27 @@ export const AdminSongsTab: React.FC = () => {
                 paginatedSongs.map(song => {
                   const isPlaying = playingSongId === song.id;
                   const isFeatured = featuredSongIds.includes(song.id);
+                  const isSelected = selectedSongIds.includes(song.id);
 
                   return (
-                    <tr key={song.id} className="hover:bg-slate-800/40 transition">
+                    <tr 
+                      key={song.id} 
+                      className={`transition ${isSelected ? 'bg-amber-500/10 hover:bg-amber-500/15' : 'hover:bg-slate-800/40'}`}
+                    >
+                      {/* Checkbox */}
+                      <td className="p-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelectSong(song.id)}
+                          className="text-slate-400 hover:text-white transition"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-amber-400" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-600" />
+                          )}
+                        </button>
+                      </td>
                       
                       {/* Song Cover & Play */}
                       <td className="p-4">
@@ -509,7 +603,37 @@ export const AdminSongsTab: React.FC = () => {
         />
       </div>
 
-      {/* SONG MODERATION SIDE DRAWER */}
+      {/* FLOATING BULK ACTIONS BAR */}
+      <AdminBulkBar
+        selectedCount={selectedSongIds.length}
+        onClearSelection={() => setSelectedSongIds([])}
+        itemLabel="músicas"
+        actions={[
+          {
+            id: 'approve',
+            label: 'Aprovar Selecionadas',
+            icon: <CheckCircle2 className="w-4 h-4" />,
+            variant: 'success',
+            onClick: () => setBulkActionType('approve')
+          },
+          {
+            id: 'reject',
+            label: 'Rejeitar Selecionadas',
+            icon: <X className="w-4 h-4" />,
+            variant: 'danger',
+            onClick: () => setBulkActionType('reject')
+          },
+          {
+            id: 'export',
+            label: 'Exportar CSV',
+            icon: <Download className="w-4 h-4" />,
+            variant: 'secondary',
+            onClick: () => handleExportCsv(true)
+          }
+        ]}
+      />
+
+      {/* SONG MODERATION SIDE DRAWER WITH WAVEFORM PLAYER */}
       <AdminDrawer
         isOpen={!!selectedSong}
         onClose={() => setSelectedSong(null)}
@@ -572,34 +696,12 @@ export const AdminSongsTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Audio Player Box */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-white flex items-center gap-2">
-                  <Volume2 className="w-4 h-4 text-amber-400" />
-                  <span>Áudio de Prévia (Até 60s)</span>
-                </span>
-                <button
-                  onClick={() => handlePlayToggle(selectedSong)}
-                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl flex items-center gap-1.5 transition text-[11px]"
-                >
-                  {playingSongId === selectedSong.id ? (
-                    <>
-                      <Pause className="w-3.5 h-3.5 fill-current" />
-                      <span>Pausar</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                      <span>Ouvir Prévia</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                A prévia pública protege o fonograma original cortando automaticamente em 60 segundos para audição no catálogo.
-              </p>
-            </div>
+            {/* WAVEFORM AUDIO PLAYER */}
+            <AdminWaveformPlayer
+              audioUrl={selectedSong.previewAudioUrl || selectedSong.audioUrl}
+              title={`Prévia: ${selectedSong.title}`}
+              maxPreviewSeconds={60}
+            />
 
             {/* Quick Financial & Performance Stats */}
             <div className="grid grid-cols-2 gap-3">
@@ -649,7 +751,7 @@ export const AdminSongsTab: React.FC = () => {
         )}
       </AdminDrawer>
 
-      {/* CONFIRM REJECT DIALOG */}
+      {/* CONFIRM SINGLE REJECT DIALOG */}
       <AdminConfirmDialog
         isOpen={!!songToReject}
         title={`Rejeitar a música “${songToReject?.title}”?`}
@@ -659,6 +761,22 @@ export const AdminSongsTab: React.FC = () => {
         variant="warning"
         onConfirm={handleConfirmReject}
         onCancel={() => setSongToReject(null)}
+      />
+
+      {/* CONFIRM BULK ACTION DIALOG */}
+      <AdminConfirmDialog
+        isOpen={!!bulkActionType}
+        title={bulkActionType === 'approve' ? `Aprovar ${selectedSongIds.length} músicas?` : `Rejeitar ${selectedSongIds.length} músicas?`}
+        description={
+          bulkActionType === 'approve'
+            ? `Todas as ${selectedSongIds.length} músicas selecionadas serão publicadas e ficarão visíveis na vitrine pública do Mercado do Compositor.`
+            : `Todas as ${selectedSongIds.length} músicas selecionadas serão despublicadas e marcadas como rejeitadas.`
+        }
+        confirmLabel={bulkActionType === 'approve' ? 'Sim, Aprovar Todas' : 'Sim, Rejeitar Todas'}
+        cancelLabel="Cancelar"
+        variant={bulkActionType === 'approve' ? 'info' : 'warning'}
+        onConfirm={bulkActionType === 'approve' ? handleBulkApprove : handleBulkReject}
+        onCancel={() => setBulkActionType(null)}
       />
 
     </div>

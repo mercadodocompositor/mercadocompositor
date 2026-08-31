@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { SystemLog } from '../../types';
 import { useAdminToast } from '../../components/admin/AdminToast';
-import { AdminConfirmDialog } from '../../components/admin/AdminConfirmDialog';
+import { AdminSecurityPinDialog } from '../../components/admin/AdminSecurityPinDialog';
 import { AdminPagination } from '../../components/admin/AdminPagination';
 import { 
   Activity, 
@@ -16,7 +16,9 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   Info, 
-  XCircle 
+  XCircle,
+  Eye,
+  KeyRound 
 } from 'lucide-react';
 
 export const AdminLogsTab: React.FC = () => {
@@ -25,7 +27,7 @@ export const AdminLogsTab: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'auth' | 'financial' | 'moderation' | 'system'>('all');
-  const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
+  const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -50,7 +52,10 @@ export const AdminLogsTab: React.FC = () => {
     return filteredLogs.slice(start, start + pageSize);
   }, [filteredLogs, currentPage, pageSize]);
 
-  const getCategoryIcon = (category: SystemLog['category']) => {
+  const getCategoryIcon = (category: SystemLog['category'], title: string) => {
+    if (title.includes('LGPD')) {
+      return <Eye className="w-4 h-4 text-amber-400" />;
+    }
     switch (category) {
       case 'financial':
         return <DollarSign className="w-4 h-4 text-emerald-400" />;
@@ -63,7 +68,10 @@ export const AdminLogsTab: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: SystemLog['status']) => {
+  const getStatusBadge = (status: SystemLog['status'], title: string) => {
+    if (title.includes('LGPD')) {
+      return <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Auditoria LGPD</span>;
+    }
     switch (status) {
       case 'success':
         return <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Sucesso</span>;
@@ -91,10 +99,10 @@ export const AdminLogsTab: React.FC = () => {
     toast.success('Logs Exportados!', 'O arquivo JSON com a trilha de auditoria foi baixado.');
   };
 
-  const handleConfirmClear = () => {
+  const handleConfirmClearByPin = () => {
     clearSystemLogs();
-    setIsConfirmClearOpen(false);
-    toast.info('Histórico Limpo', 'Os registros de log da sessão foram limpos com sucesso.');
+    setIsPinDialogOpen(false);
+    toast.info('Histórico Limpo', 'Os registros de log da sessão foram limpos com autorização por PIN.');
   };
 
   return (
@@ -107,7 +115,7 @@ export const AdminLogsTab: React.FC = () => {
             <span>Logs de Auditoria & Segurança do Sistema</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            Rastreabilidade completa de logins, transações financeiras, emissões de contratos e uploads no Mercado.
+            Rastreabilidade completa de acessos a dados sensíveis (LGPD), transações e autenticações.
           </p>
         </div>
 
@@ -121,11 +129,11 @@ export const AdminLogsTab: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setIsConfirmClearOpen(true)}
+            onClick={() => setIsPinDialogOpen(true)}
             className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-slate-800 text-xs font-semibold flex items-center gap-2 transition shadow-sm"
           >
             <Trash2 className="w-4 h-4" />
-            <span>Limpar Histórico</span>
+            <span>Limpar Histórico (PIN)</span>
           </button>
         </div>
       </div>
@@ -172,7 +180,7 @@ export const AdminLogsTab: React.FC = () => {
                 : 'text-slate-400 hover:text-amber-400 bg-slate-950'
             }`}
           >
-            Autenticação
+            LGPD & Segurança
           </button>
           <button
             onClick={() => { setCategoryFilter('moderation'); setCurrentPage(1); }}
@@ -204,12 +212,12 @@ export const AdminLogsTab: React.FC = () => {
               >
                 <div className="flex items-start gap-3.5 min-w-0">
                   <div className="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0 mt-0.5">
-                    {getCategoryIcon(log.category)}
+                    {getCategoryIcon(log.category, log.title)}
                   </div>
                   <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2.5 flex-wrap">
                       <span className="text-white font-bold text-xs sm:text-sm">{log.title}</span>
-                      {getStatusBadge(log.status)}
+                      {getStatusBadge(log.status, log.title)}
                     </div>
                     <p className="text-xs text-slate-300 leading-relaxed">{log.description}</p>
                     <div className="flex items-center gap-3 text-[10px] text-slate-400 pt-1">
@@ -238,16 +246,15 @@ export const AdminLogsTab: React.FC = () => {
         />
       </div>
 
-      {/* CONFIRM CLEAR LOGS DIALOG */}
-      <AdminConfirmDialog
-        isOpen={isConfirmClearOpen}
-        title="Limpar histórico de auditoria?"
-        description="Esta ação apagará a listagem temporária de logs da sessão atual. Os eventos gravados em banco de dados seguro de produção permanecerão preservados."
-        confirmLabel="Sim, Limpar Histórico"
-        cancelLabel="Cancelar"
-        variant="warning"
-        onConfirm={handleConfirmClear}
-        onCancel={() => setIsConfirmClearOpen(false)}
+      {/* SECURITY PIN CONFIRMATION DIALOG (FOR LOG PURGING) */}
+      <AdminSecurityPinDialog
+        isOpen={isPinDialogOpen}
+        title="Limpar Trilha de Auditoria?"
+        description="Esta ação removerá permanentemente os registros de log da sessão atual. Digite o PIN mestre para autorizar a limpeza."
+        correctPin="1234"
+        actionLabel="Autorizar Limpeza"
+        onSuccess={handleConfirmClearByPin}
+        onCancel={() => setIsPinDialogOpen(false)}
       />
     </div>
   );
