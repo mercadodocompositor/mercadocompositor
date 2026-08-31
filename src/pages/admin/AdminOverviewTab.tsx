@@ -7,7 +7,6 @@ import {
   FileCheck2, 
   TrendingUp, 
   ShieldCheck, 
-  AlertTriangle, 
   CheckCircle2, 
   Clock, 
   ArrowUpRight, 
@@ -36,7 +35,8 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
     systemLogs 
   } = useApp();
 
-  const [activeChartPeriod, setActiveChartPeriod] = useState<'6m' | '12m'>('6m');
+  const [activePeriod, setActivePeriod] = useState<'6m' | '12m'>('6m');
+  const [hoveredDataPoint, setHoveredDataPoint] = useState<{ month: string; mrr: number; gmv: number; deals: number } | null>(null);
 
   // Metrics Calculations
   const activeComposers = adminComposers.filter(c => c.subscriptionStatus === 'active');
@@ -51,17 +51,28 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
   const totalDealsValue = adminComposers.reduce((acc, c) => acc + c.revenueGenerated, 0);
   const totalReleasesCount = adminComposers.reduce((acc, c) => acc + c.totalReleases, 0);
 
-  // Chart 1: Revenue Evolution Data (Last 6 months)
-  const revenueHistory = [
-    { month: 'Mar', mrr: 1240, gmv: 3400 },
-    { month: 'Abr', mrr: 1860, gmv: 5200 },
-    { month: 'Mai', mrr: 2490, gmv: 8100 },
-    { month: 'Jun', mrr: 3120, gmv: 11400 },
-    { month: 'Jul', mrr: 3850, gmv: 15900 },
-    { month: 'Ago', mrr: mrr > 0 ? mrr : 4620, gmv: totalDealsValue > 0 ? totalDealsValue : 21800 }
+  // Chart 1: Revenue Evolution Data
+  const revenueHistory6m = [
+    { month: 'Mar', mrr: 1240, gmv: 3400, deals: 3 },
+    { month: 'Abr', mrr: 1860, gmv: 5200, deals: 5 },
+    { month: 'Mai', mrr: 2490, gmv: 8100, deals: 7 },
+    { month: 'Jun', mrr: 3120, gmv: 11400, deals: 9 },
+    { month: 'Jul', mrr: 3850, gmv: 15900, deals: 12 },
+    { month: 'Ago', mrr: mrr > 0 ? mrr : 4620, gmv: totalDealsValue > 0 ? totalDealsValue : 21800, deals: totalReleasesCount > 0 ? totalReleasesCount : 15 }
   ];
 
-  const maxRevenue = Math.max(...revenueHistory.map(r => r.gmv));
+  const revenueHistory12m = [
+    { month: 'Set', mrr: 450, gmv: 1200, deals: 1 },
+    { month: 'Out', mrr: 680, gmv: 1800, deals: 2 },
+    { month: 'Nov', mrr: 890, gmv: 2300, deals: 2 },
+    { month: 'Dez', mrr: 1100, gmv: 2900, deals: 3 },
+    { month: 'Jan', mrr: 1200, gmv: 3100, deals: 3 },
+    { month: 'Fev', mrr: 1240, gmv: 3400, deals: 3 },
+    ...revenueHistory6m
+  ];
+
+  const revenueHistory = activePeriod === '6m' ? revenueHistory6m : revenueHistory12m;
+  const maxRevenue = Math.max(...revenueHistory.map(r => r.gmv), 1);
 
   // Chart 2: Songs by Genre Distribution
   const genreCounts = songs.reduce<Record<string, number>>((acc, s) => {
@@ -71,7 +82,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
   }, {});
 
   const totalSongsInDb = songs.length > 0 ? songs.length : 1;
-  const genreData = Object.entries(genreCounts)
+  const genreData = (Object.entries(genreCounts) as [string, number][])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([genre, count]) => ({
@@ -80,22 +91,6 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
       percent: Math.round((count / totalSongsInDb) * 100)
     }));
 
-  // Chart 3: Plan Distribution
-  const planCounts = adminComposers.reduce<Record<string, number>>((acc, c) => {
-    const plan = c.planName || 'Plano Bronze';
-    acc[plan] = (acc[plan] || 0) + 1;
-    return acc;
-  }, {});
-
-  const planColors: Record<string, { bg: string; text: string; bar: string }> = {
-    'Plano Ouro (Ilimitado)': { bg: 'bg-amber-500/10', text: 'text-amber-400', bar: 'bg-amber-500' },
-    'Plano Ouro': { bg: 'bg-amber-500/10', text: 'text-amber-400', bar: 'bg-amber-500' },
-    'Plano Prata (200 Músicas)': { bg: 'bg-blue-500/10', text: 'text-blue-400', bar: 'bg-blue-500' },
-    'Plano Prata': { bg: 'bg-blue-500/10', text: 'text-blue-400', bar: 'bg-blue-500' },
-    'Plano Bronze (100 Músicas)': { bg: 'bg-purple-500/10', text: 'text-purple-400', bar: 'bg-purple-500' },
-    'Plano Bronze': { bg: 'bg-purple-500/10', text: 'text-purple-400', bar: 'bg-purple-500' }
-  };
-
   // Chart 4: Funnel Metrics
   const totalRequestsCount = requests.length > 0 ? requests.length : 28;
   const inNegotiationCount = requests.filter(r => r.status === 'em_negociacao').length || 14;
@@ -103,10 +98,10 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
   const releasedTermsCount = releases.length > 0 ? releases.length : 8;
 
   const funnelSteps = [
-    { label: 'Propostas Recebidas', count: totalRequestsCount, percent: 100, color: 'from-amber-500 to-amber-600' },
-    { label: 'Em Negociação', count: inNegotiationCount, percent: Math.round((inNegotiationCount / totalRequestsCount) * 100), color: 'from-blue-500 to-blue-600' },
-    { label: 'Pagamentos Confirmados', count: confirmedPaymentCount, percent: Math.round((confirmedPaymentCount / totalRequestsCount) * 100), color: 'from-emerald-500 to-emerald-600' },
-    { label: 'Termos Emitidos', count: releasedTermsCount, percent: Math.round((releasedTermsCount / totalRequestsCount) * 100), color: 'from-purple-500 to-purple-600' }
+    { label: 'Propostas Recebidas', count: totalRequestsCount, percent: 100, color: 'from-amber-500 to-amber-600', badge: '100%' },
+    { label: 'Em Negociação', count: inNegotiationCount, percent: Math.round((inNegotiationCount / totalRequestsCount) * 100), color: 'from-blue-500 to-blue-600', badge: `${Math.round((inNegotiationCount / totalRequestsCount) * 100)}%` },
+    { label: 'Pagamentos Confirmados', count: confirmedPaymentCount, percent: Math.round((confirmedPaymentCount / totalRequestsCount) * 100), color: 'from-emerald-500 to-emerald-600', badge: `${Math.round((confirmedPaymentCount / totalRequestsCount) * 100)}%` },
+    { label: 'Termos Emitidos', count: releasedTermsCount, percent: Math.round((releasedTermsCount / totalRequestsCount) * 100), color: 'from-purple-500 to-purple-600', badge: `${Math.round((releasedTermsCount / totalRequestsCount) * 100)}%` }
   ];
 
   return (
@@ -122,13 +117,13 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5" /> Painel Executivo do Dono
               </span>
-              <span className="text-slate-400 text-xs">• Visão Geral da Plataforma SaaS</span>
+              <span className="text-slate-400 text-xs hidden sm:inline">• Visão Geral da Plataforma SaaS</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
               Dashboard Executivo & Métricas
             </h1>
             <p className="text-slate-400 text-xs sm:text-sm max-w-2xl">
-              Consulte gráficos consolidados de receita, taxa de conversão, acervo musical e engajamento da plataforma.
+              Consulte gráficos consolidados de receita recorrente, taxa de conversão, acervo musical e engajamento da plataforma.
             </p>
           </div>
 
@@ -138,14 +133,14 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition"
             >
               <Settings className="w-4 h-4 text-amber-400" />
-              <span>Configurações SaaS</span>
+              <span>Configurações</span>
             </button>
             <button
               onClick={() => onNavigateTab('compositores')}
               className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
             >
               <Users className="w-4 h-4" />
-              <span>Gerenciar Usuários</span>
+              <span>Gerenciar Base</span>
             </button>
           </div>
         </div>
@@ -157,7 +152,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
         {/* Metric 1: MRR */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative group hover:border-amber-500/30 transition shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">MRR (Recorrência Mensal)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">MRR (Recorrência)</span>
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
               <DollarSign className="w-5 h-5" />
             </div>
@@ -167,7 +162,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               R$ {mrr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </h3>
             <div className="flex items-center gap-2 mt-2">
-              <span className="text-emerald-400 font-bold text-xs flex items-center">
+              <span className="text-emerald-400 font-bold text-xs flex items-center bg-emerald-500/10 px-2 py-0.5 rounded-md">
                 <TrendingUp className="w-3.5 h-3.5 mr-1" /> +18.4%
               </span>
               <span className="text-slate-400 text-xs">ARR: R$ {arr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
@@ -216,7 +211,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               <span className="text-purple-400 font-bold text-xs">
                 {totalPlays.toLocaleString('pt-BR')} audições
               </span>
-              <span className="text-slate-400 text-xs">• Prévia de 60s</span>
+              <span className="text-slate-400 text-xs">• Prévia 60s</span>
             </div>
           </div>
         </div>
@@ -247,31 +242,62 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* CHART 1: REVENUE EVOLUTION AREA/BAR CHART (7 Cols) */}
-        <div className="lg:col-span-7 bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl space-y-6 shadow-xl">
+        <div className="lg:col-span-7 bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl space-y-6 shadow-xl relative">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-amber-400" />
                 <h3 className="text-base font-bold text-white tracking-tight">
-                  Evolução de Receita & Volume Transacionado (GMV)
+                  Evolução Financeira (GMV & MRR)
                 </h3>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Crescimento mensal das assinaturas SaaS e das autorizações fonográficas.
+                Crescimento das autorizações fonográficas e assinaturas SaaS.
               </p>
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto text-xs">
-              <span className="text-[11px] text-amber-400 font-bold px-2.5 py-1 bg-amber-500/10 rounded-lg">
-                Últimos 6 Meses
-              </span>
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto text-xs">
+              <button
+                onClick={() => setActivePeriod('6m')}
+                className={`px-3 py-1 rounded-lg font-semibold transition ${
+                  activePeriod === '6m'
+                    ? 'bg-amber-500 text-slate-950 shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                6 Meses
+              </button>
+              <button
+                onClick={() => setActivePeriod('12m')}
+                className={`px-3 py-1 rounded-lg font-semibold transition ${
+                  activePeriod === '12m'
+                    ? 'bg-amber-500 text-slate-950 shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                12 Meses
+              </button>
             </div>
           </div>
 
-          {/* SVG Visual Area & Bar Chart */}
+          {/* Interactive Chart Container */}
           <div className="space-y-4">
-            <div className="h-56 w-full flex items-end justify-between gap-2 sm:gap-4 pt-6 px-2 bg-slate-950/60 rounded-2xl border border-slate-800/80 relative">
+            <div className="h-64 w-full flex items-end justify-between gap-2 sm:gap-4 pt-8 pb-2 px-3 bg-slate-950/60 rounded-2xl border border-slate-800/80 relative">
               
+              {/* Floating Tooltip Display when active */}
+              {hoveredDataPoint && (
+                <div className="absolute top-3 left-4 right-4 bg-slate-900/95 border border-amber-500/40 px-4 py-2 rounded-xl text-xs flex items-center justify-between shadow-2xl backdrop-blur-md z-30 animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-amber-400">{hoveredDataPoint.month}:</span>
+                    <span className="text-slate-200">Volume GMV: <strong className="text-white font-mono">R$ {hoveredDataPoint.gmv.toLocaleString('pt-BR')}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-emerald-400 font-mono font-semibold">MRR: R$ {hoveredDataPoint.mrr.toLocaleString('pt-BR')}</span>
+                    <span className="text-slate-400 font-mono text-[11px]">{hoveredDataPoint.deals} autorizações</span>
+                  </div>
+                </div>
+              )}
+
               {/* Background Grid Lines */}
               <div className="absolute inset-0 flex flex-col justify-between p-4 pointer-events-none opacity-20">
                 <div className="border-b border-slate-700 w-full" />
@@ -280,29 +306,27 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                 <div className="border-b border-slate-700 w-full" />
               </div>
 
-              {revenueHistory.map((item, index) => {
-                const barHeightPercent = Math.max(15, Math.round((item.gmv / maxRevenue) * 100));
-                const mrrPercent = Math.max(10, Math.round((item.mrr / maxRevenue) * 100));
+              {revenueHistory.map((item) => {
+                const barHeightPercent = Math.max(12, Math.round((item.gmv / maxRevenue) * 100));
+                const mrrPercent = Math.max(8, Math.round((item.mrr / maxRevenue) * 100));
 
                 return (
-                  <div key={item.month} className="flex-1 flex flex-col items-center gap-2 z-10 h-full justify-end group">
-                    
-                    {/* Tooltip on Hover */}
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-2 bg-slate-900 border border-amber-500/40 px-2.5 py-1.5 rounded-xl text-[10px] text-white shadow-xl pointer-events-none whitespace-nowrap z-20">
-                      <span className="font-bold text-amber-400">{item.month}: </span>
-                      <span>GMV: R$ {item.gmv.toLocaleString('pt-BR')} • MRR: R$ {item.mrr.toLocaleString('pt-BR')}</span>
-                    </div>
-
+                  <div 
+                    key={item.month} 
+                    onMouseEnter={() => setHoveredDataPoint(item)}
+                    onMouseLeave={() => setHoveredDataPoint(null)}
+                    className="flex-1 flex flex-col items-center gap-2 z-10 h-full justify-end group cursor-pointer"
+                  >
                     {/* Dual Columns (GMV in Amber, MRR in Emerald) */}
-                    <div className="w-full max-w-[36px] flex items-end justify-center gap-1 h-full">
+                    <div className="w-full max-w-[34px] flex items-end justify-center gap-1 h-full">
                       {/* GMV Column */}
                       <div 
-                        className="w-full bg-gradient-to-t from-amber-500/40 via-amber-500/80 to-amber-400 rounded-t-lg transition-all duration-300 group-hover:brightness-125"
+                        className="w-full bg-gradient-to-t from-amber-500/40 via-amber-500/80 to-amber-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom"
                         style={{ height: `${barHeightPercent}%` }}
                       />
                       {/* MRR Column */}
                       <div 
-                        className="w-full bg-gradient-to-t from-emerald-500/40 to-emerald-400 rounded-t-lg transition-all duration-300 group-hover:brightness-125"
+                        className="w-full bg-gradient-to-t from-emerald-500/40 to-emerald-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom"
                         style={{ height: `${mrrPercent}%` }}
                       />
                     </div>
@@ -318,12 +342,12 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
             {/* Legend */}
             <div className="flex items-center justify-center gap-6 text-xs text-slate-400 pt-1">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-amber-400" />
-                <span>Volume de Negociações (GMV)</span>
+                <span className="w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50" />
+                <span className="text-slate-300 font-medium">Volume de Negociações (GMV)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-400" />
-                <span>Assinaturas SaaS (MRR)</span>
+                <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                <span className="text-slate-300 font-medium">Assinaturas Recorrentes (MRR)</span>
               </div>
             </div>
           </div>
@@ -339,7 +363,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               </h3>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Proporção das faixas cadastradas no catálogo.
+              Proporção das faixas cadastradas no catálogo público.
             </p>
           </div>
 
@@ -350,23 +374,25 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               </div>
             ) : (
               genreData.map((item, i) => (
-                <div key={item.genre} className="space-y-1.5">
+                <div key={item.genre} className="space-y-1.5 group">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-white font-semibold flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400" />
+                      <span className={`w-2 h-2 rounded-full ${
+                        i === 0 ? 'bg-amber-400' : i === 1 ? 'bg-blue-400' : i === 2 ? 'bg-purple-400' : 'bg-emerald-400'
+                      }`} />
                       {item.genre}
                     </span>
-                    <span className="text-slate-400 font-mono">
+                    <span className="text-slate-400 font-mono group-hover:text-amber-400 transition">
                       {item.count} faixas ({item.percent}%)
                     </span>
                   </div>
-                  <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                  <div className="h-2.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
                     <div 
-                      className={`h-full rounded-full transition-all duration-500 ${
+                      className={`h-full rounded-full transition-all duration-700 ${
                         i === 0 ? 'bg-gradient-to-r from-amber-500 to-amber-300' :
                         i === 1 ? 'bg-gradient-to-r from-blue-500 to-blue-300' :
                         i === 2 ? 'bg-gradient-to-r from-purple-500 to-purple-300' :
-                        'bg-slate-600'
+                        'bg-gradient-to-r from-emerald-500 to-emerald-300'
                       }`}
                       style={{ width: `${item.percent}%` }}
                     />
@@ -377,7 +403,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
           </div>
 
           <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-            <span>Total de Obras Catalogadas:</span>
+            <span>Total de Obras no Catálogo:</span>
             <strong className="text-white font-mono">{songs.length} faixas</strong>
           </div>
         </div>
@@ -398,17 +424,17 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                 </h3>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Passo a passo desde o formulário público até a emissão do termo.
+                Taxas de avanço do formulário até a liberação final emitida.
               </p>
             </div>
             <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
-              Taxa de Fechamento: ~{funnelSteps[3].percent}%
+              Conversão: ~{funnelSteps[3].percent}%
             </span>
           </div>
 
           <div className="space-y-3">
             {funnelSteps.map((step, idx) => (
-              <div key={step.label} className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-2">
+              <div key={step.label} className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-2 hover:border-slate-700 transition">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-white flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 font-mono text-[11px] flex items-center justify-center border border-slate-700">
@@ -417,7 +443,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                     {step.label}
                   </span>
                   <span className="font-mono text-slate-300 font-semibold">
-                    {step.count} ({step.percent}%)
+                    {step.count} ({step.badge})
                   </span>
                 </div>
                 <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
@@ -450,7 +476,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               const percent = Math.round((count / totalComposersCount) * 100);
 
               return (
-                <div key={plan.name} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+                <div key={plan.name} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 hover:border-slate-700 transition">
                   <div className="flex items-center justify-between text-xs">
                     <div>
                       <strong className="text-white block">{plan.name}</strong>

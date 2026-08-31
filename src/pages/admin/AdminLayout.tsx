@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
 import { AdminOverviewTab } from './AdminOverviewTab';
 import { AdminComposersTab } from './AdminComposersTab';
@@ -7,6 +7,7 @@ import { AdminSongsTab } from './AdminSongsTab';
 import { AdminTransactionsTab } from './AdminTransactionsTab';
 import { AdminSettingsTab } from './AdminSettingsTab';
 import { AdminLogsTab } from './AdminLogsTab';
+import { AdminToastProvider } from '../../components/admin/AdminToast';
 import { useApp } from '../../context/AppContext';
 import { 
   Menu, 
@@ -78,63 +79,65 @@ export const AdminLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A1128] text-slate-100 flex">
-      {/* Admin Sidebar */}
-      <AdminSidebar
-        currentTab={currentTab}
-        onSelectTab={handleSelectTab}
-        mobileOpen={mobileMenuOpen}
-        onCloseMobile={() => setMobileMenuOpen(false)}
-      />
+    <AdminToastProvider>
+      <div className="min-h-screen bg-[#0A1128] text-slate-100 flex">
+        {/* Admin Sidebar */}
+        <AdminSidebar
+          currentTab={currentTab}
+          onSelectTab={handleSelectTab}
+          mobileOpen={mobileMenuOpen}
+          onCloseMobile={() => setMobileMenuOpen(false)}
+        />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Admin Top Header */}
-        <header className="bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30 px-4 sm:px-8 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white"
-              aria-label="Abrir Menu"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+          {/* Admin Top Header */}
+          <header className="bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30 px-4 sm:px-8 py-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white"
+                aria-label="Abrir Menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-amber-400 hidden sm:inline">Mercado do Compositor</span>
-              <span className="text-slate-400 hidden sm:inline">/</span>
-              <span className="text-xs font-semibold text-white capitalize">
-                {currentTab === 'overview' ? 'Visão Geral Executiva' : currentTab}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-semibold text-[11px]">Painel Master Administrativo</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-amber-400 hidden sm:inline">Mercado do Compositor</span>
+                <span className="text-slate-400 hidden sm:inline">/</span>
+                <span className="text-xs font-semibold text-white capitalize">
+                  {currentTab === 'overview' ? 'Visão Geral Executiva' : currentTab}
+                </span>
+              </div>
             </div>
 
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center gap-1.5 transition"
-            >
-              <span>Ver App do Compositor</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </header>
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs text-slate-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-semibold text-[11px]">Painel Master Administrativo</span>
+              </div>
 
-        {/* Content Tabs */}
-        <main className="p-4 sm:p-8 max-w-7xl w-full mx-auto flex-1">
-          {currentTab === 'overview' && <AdminOverviewTab onNavigateTab={handleSelectTab} />}
-          {currentTab === 'compositores' && <AdminComposersTab />}
-          {currentTab === 'musicas' && <AdminSongsTab />}
-          {currentTab === 'transacoes' && <AdminTransactionsTab />}
-          {currentTab === 'configuracoes' && <AdminSettingsTab />}
-          {currentTab === 'logs' && <AdminLogsTab />}
-        </main>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center gap-1.5 transition"
+              >
+                <span>Ver App do Compositor</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </header>
+
+          {/* Content Tabs */}
+          <main className="p-4 sm:p-8 max-w-7xl w-full mx-auto flex-1">
+            {currentTab === 'overview' && <AdminOverviewTab onNavigateTab={handleSelectTab} />}
+            {currentTab === 'compositores' && <AdminComposersTab />}
+            {currentTab === 'musicas' && <AdminSongsTab />}
+            {currentTab === 'transacoes' && <AdminTransactionsTab />}
+            {currentTab === 'configuracoes' && <AdminSettingsTab />}
+            {currentTab === 'logs' && <AdminLogsTab />}
+          </main>
+        </div>
       </div>
-    </div>
+    </AdminToastProvider>
   );
 };

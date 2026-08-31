@@ -17,11 +17,20 @@ create table if not exists public.private_profiles (
 );
 create table if not exists public.subscriptions (
   user_id uuid primary key references public.profiles(user_id) on delete cascade,
-  status text not null default 'pending' check(status in ('active','pending','suspended','cancelled')),
+  status text not null default 'active' check(status in ('active','pending','suspended','cancelled')),
   plan_name text not null default 'Plano Bronze', monthly_price text not null default '24,90',
   next_billing_date date, payment_method text not null default 'Pix', card_last4 text, card_brand text,
   invoices jsonb not null default '[]'::jsonb, updated_at timestamptz not null default now()
 );
+
+-- Mantém bancos existentes alinhados com o fluxo atual: todo compositor entra ativo.
+alter table public.subscriptions
+  alter column status set default 'active';
+
+update public.subscriptions
+set status = 'active', updated_at = now()
+where status = 'pending';
+
 create table if not exists public.songs (
   id uuid primary key default gen_random_uuid(), composer_id uuid not null references public.profiles(user_id) on delete cascade,
   title text not null, genre text not null, subgenre text, authors text not null,

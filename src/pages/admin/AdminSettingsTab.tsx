@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAdminToast } from '../../components/admin/AdminToast';
+import { AdminConfirmDialog } from '../../components/admin/AdminConfirmDialog';
 import { 
   Settings, 
   DollarSign, 
@@ -20,6 +22,7 @@ import { DEFAULT_PLATFORM_SETTINGS } from '../../data/platformDefaults';
 
 export const AdminSettingsTab: React.FC = () => {
   const { platformSettings, updatePlatformSettings, resetPlatformSettings } = useApp();
+  const toast = useAdminToast();
 
   const [formData, setFormData] = useState({
     platformName: platformSettings.platformName,
@@ -36,7 +39,7 @@ export const AdminSettingsTab: React.FC = () => {
     termsVersion: platformSettings.termsVersion
   });
 
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,10 +50,14 @@ export const AdminSettingsTab: React.FC = () => {
       platformFeePercentage: Number(formData.platformFeePercentage)
     });
 
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-    }, 3000);
+    toast.success('Configurações Salvas!', 'As preferências globais do SaaS foram atualizadas com sucesso.');
+  };
+
+  const handleConfirmReset = () => {
+    resetPlatformSettings();
+    setFormData({ ...DEFAULT_PLATFORM_SETTINGS });
+    setIsConfirmResetOpen(false);
+    toast.info('Configurações Restauradas', 'As configurações voltaram aos parâmetros de fábrica.');
   };
 
   return (
@@ -67,13 +74,6 @@ export const AdminSettingsTab: React.FC = () => {
             Defina canais oficiais de atendimento, chave Pix master, taxa de intermediação e comunicados da plataforma.
           </p>
         </div>
-
-        {savedSuccess && (
-          <div className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Configurações Salvas!</span>
-          </div>
-        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6 text-xs">
@@ -89,7 +89,7 @@ export const AdminSettingsTab: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {APP_CONFIG.plans.map(plan => (
-              <div key={plan.name} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-1">
+              <div key={plan.name} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-1 hover:border-slate-700 transition">
                 <span className="text-white font-bold block text-sm">{plan.name}</span>
                 <span className="text-amber-400 text-xl font-black block font-mono">
                   R$ {plan.priceMonthly}<small className="text-[10px] text-slate-400 font-normal">/mês</small>
@@ -101,90 +101,77 @@ export const AdminSettingsTab: React.FC = () => {
             ))}
           </div>
 
-          <div className="max-w-xs space-y-1.5 pt-2">
-            <label className="text-slate-300 font-semibold block">Taxa sobre Liberações Fonográficas (%)</label>
-            <div className="relative">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <Percent className="w-3.5 h-3.5 text-amber-400" />
+                <span>Taxa de Intermediação sobre Liberações Fonográficas (%)</span>
+              </label>
               <input
                 type="number"
-                step="0.5"
                 min="0"
-                max="100"
-                required
+                max="50"
+                step="0.5"
                 value={formData.platformFeePercentage}
                 onChange={e => setFormData({ ...formData, platformFeePercentage: Number(e.target.value) })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-bold font-mono focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 font-mono font-bold"
               />
-              <span className="text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 font-bold">%</span>
+              <span className="text-[10px] text-slate-400 block">Percentual retido pela plataforma em cada cessão ou liberação quitada.</span>
             </div>
-            <span className="text-[10px] text-slate-400 block">
-              {formData.platformFeePercentage === 0 
-                ? '0% configurado = 100% do valor da liberação é repassado diretamente ao compositor.' 
-                : `${formData.platformFeePercentage}% retido pela plataforma por transação.`}
-            </span>
+
+            <div className="space-y-1.5">
+              <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <QrCode className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Chave Pix Master da Plataforma</span>
+              </label>
+              <input
+                type="text"
+                value={formData.pixKey}
+                onChange={e => setFormData({ ...formData, pixKey: e.target.value })}
+                placeholder="CNPJ, E-mail, Telefone ou Chave Aleatória"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 font-mono"
+              />
+              <span className="text-[10px] text-slate-400 block">Utilizada para recebimento das assinaturas e taxas administrativas.</span>
+            </div>
           </div>
         </div>
 
-        {/* SECTION 2: INSTITUTIONAL & CONTACT */}
+        {/* SECTION 2: OFFICIAL SUPPORT & BRAND */}
         <div className="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl space-y-5 shadow-xl">
           <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-            <Mail className="w-4 h-4 text-blue-400" />
+            <ShieldCheck className="w-4 h-4 text-blue-400" />
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              2. Dados Institucionais, Contato & Chave Pix Master
+              2. Canais Oficiais de Suporte & Marca
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-slate-300 font-semibold block">Nome Oficial da Plataforma</label>
+              <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                <span>WhatsApp Oficial do Suporte</span>
+              </label>
               <input
                 type="text"
-                required
-                value={formData.platformName}
-                onChange={e => setFormData({ ...formData, platformName: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-500"
+                value={formData.supportWhatsapp}
+                onChange={e => setFormData({ ...formData, supportWhatsapp: e.target.value })}
+                placeholder="Ex: 5562999999999"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 font-mono"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-slate-300 font-semibold block">Chave Pix Master (Recebimento de Assinaturas)</label>
-              <div className="relative">
-                <QrCode className="w-4 h-4 text-emerald-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required
-                  value={formData.pixKey}
-                  onChange={e => setFormData({ ...formData, pixKey: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-white font-mono focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-slate-300 font-semibold block">WhatsApp de Suporte / Atendimento aos Compositores</label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-emerald-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required
-                  value={formData.supportWhatsapp}
-                  onChange={e => setFormData({ ...formData, supportWhatsapp: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-white font-mono focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-slate-300 font-semibold block">E-mail Oficial de Atendimento</label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  required
-                  value={formData.supportEmail}
-                  onChange={e => setFormData({ ...formData, supportEmail: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-amber-400" />
+                <span>E-mail Oficial de Atendimento</span>
+              </label>
+              <input
+                type="email"
+                value={formData.supportEmail}
+                onChange={e => setFormData({ ...formData, supportEmail: e.target.value })}
+                placeholder="contato@mercadodocompositor.com.br"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+              />
             </div>
           </div>
         </div>
@@ -244,12 +231,7 @@ export const AdminSettingsTab: React.FC = () => {
         <div className="flex items-center justify-between pt-4">
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm("Deseja restaurar as configurações padrão da plataforma?")) {
-                resetPlatformSettings();
-                setFormData({ ...DEFAULT_PLATFORM_SETTINGS });
-              }
-            }}
+            onClick={() => setIsConfirmResetOpen(true)}
             className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 font-semibold flex items-center gap-2 transition"
           >
             <RotateCcw className="w-4 h-4" />
@@ -265,6 +247,18 @@ export const AdminSettingsTab: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* CONFIRM RESET DIALOG */}
+      <AdminConfirmDialog
+        isOpen={isConfirmResetOpen}
+        title="Restaurar configurações de fábrica?"
+        description="Esta ação redefinirá os preços de planos, contatos oficiais e taxas para os valores padrão."
+        confirmLabel="Sim, Restaurar"
+        cancelLabel="Cancelar"
+        variant="warning"
+        onConfirm={handleConfirmReset}
+        onCancel={() => setIsConfirmResetOpen(false)}
+      />
     </div>
   );
 };

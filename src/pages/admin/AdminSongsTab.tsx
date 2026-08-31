@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Song, SongStatus } from '../../types';
+import { useAdminToast } from '../../components/admin/AdminToast';
+import { AdminConfirmDialog } from '../../components/admin/AdminConfirmDialog';
+import { AdminDrawer } from '../../components/admin/AdminDrawer';
+import { AdminPagination } from '../../components/admin/AdminPagination';
 import { 
   Music, 
   Search, 
@@ -14,13 +18,20 @@ import {
   Globe, 
   FileText, 
   Tag, 
-  X,
-  Volume2,
-  Download,
-  Check,
-  Clock,
-  AlertCircle
+  X, 
+  Volume2, 
+  Download, 
+  Check, 
+  Clock, 
+  AlertCircle, 
+  ArrowUpDown, 
+  ArrowUp, 
+  ArrowDown, 
+  UserCheck 
 } from 'lucide-react';
+
+type SortField = 'title' | 'authors' | 'genre' | 'playCount' | 'suggestedValue' | 'status' | 'dateRegistered';
+type SortOrder = 'asc' | 'desc';
 
 export const AdminSongsTab: React.FC = () => {
   const { 
@@ -31,11 +42,22 @@ export const AdminSongsTab: React.FC = () => {
     adminComposers
   } = useApp();
 
+  const toast = useAdminToast();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [genreFilter, setGenreFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [pendingSongId, setPendingSongId] = useState<string | null>(null);
+
+  // Sorting & Pagination
+  const [sortField, setSortField] = useState<SortField>('dateRegistered');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Confirmation dialogs
+  const [songToReject, setSongToReject] = useState<Song | null>(null);
 
   // Audio Playback state
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
@@ -64,10 +86,15 @@ export const AdminSongsTab: React.FC = () => {
           }
         };
         audio.addEventListener('timeupdate', stopAtPreviewLimit);
-        audio.play().catch(e => console.log("Audio play error", e));
+        audio.play().catch(e => {
+          console.log("Audio play error", e);
+          toast.error("Erro no Áudio", "Não foi possível reproduzir a prévia da faixa.");
+        });
         audio.onended = () => setPlayingSongId(null);
         setAudioElement(audio);
         setPlayingSongId(song.id);
+      } else {
+        toast.warning("Sem Áudio", "Esta obra não possui arquivo de áudio vinculado.");
       }
     }
   };
@@ -76,47 +103,109 @@ export const AdminSongsTab: React.FC = () => {
     audioElement?.pause();
   }, [audioElement]);
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+    setCurrentPage(1);
+  };
+
   const handleFeatureToggle = (song: Song) => {
     if (song.status !== 'published' && !featuredSongIds.includes(song.id)) {
-      window.alert('Publique a música antes de colocá-la em destaque.');
+      toast.warning('Ação Necessária', 'Publique a música antes de colocá-la em destaque na Vitrine.');
       return;
     }
     toggleFeatureSong(song.id);
+    const willBeFeatured = !featuredSongIds.includes(song.id);
+    if (willBeFeatured) {
+      toast.success('Em Destaque!', `"${song.title}" foi adicionada aos destaques da Home.`);
+    } else {
+      toast.info('Destaque Removido', `"${song.title}" foi removida dos destaques.`);
+    }
   };
 
   const handlePublicationToggle = async (song: Song) => {
     if (song.status !== 'published' && (!song.previewAudioUrl || !song.lyrics.trim())) {
-      window.alert('A música precisa de prévia pública e letra antes de ser aprovada.');
+      toast.warning('Pré-requisitos Pendentes', 'A música precisa de prévia pública de áudio e letra antes de ser aprovada.');
       return;
     }
-    if (song.status === 'published' && featuredSongIds.includes(song.id)) toggleFeatureSong(song.id);
+    if (song.status === 'published' && featuredSongIds.includes(song.id)) {
+      toggleFeatureSong(song.id);
+    }
+    
     setPendingSongId(song.id);
-    await moderateSong(song.id, song.status === 'published' ? 'draft' : 'published');
+    const nextStatus = song.status === 'published' ? 'draft' : 'published';
+    await moderateSong(song.id, nextStatus);
     setPendingSongId(null);
+
+    if (nextStatus === 'published') {
+      toast.success('Música Aprovada!', `"${song.title}" agora está visível no catálogo público.`);
+    } else {
+      toast.info('Status Alterado', `"${song.title}" retornou ao modo rascunho.`);
+    }
+
+    if (selectedSong?.id === song.id) {
+      setSelectedSong(prev => prev ? { ...prev, status: nextStatus } : null);
+    }
   };
 
-  const handleReject = async (song: Song) => {
-    setPendingSongId(song.id);
-    await moderateSong(song.id, 'rejected');
+  const handleConfirmReject = async () => {
+    if (!songToReject) return;
+    setPendingSongId(songToReject.id);
+    await moderateSong(songToReject.id, 'rejected');
     setPendingSongId(null);
+    toast.error('Música Rejeitada', `"${songToReject.title}" foi marcada como rejeitada.`);
+    if (selectedSong?.id === songToReject.id) {
+      setSelectedSong(prev => prev ? { ...prev, status: 'rejected' } : null);
+    }
+    setSongToReject(null);
   };
 
-  // Filter songs
-  const filteredSongs = songs.filter(song => {
-    const matchesSearch = 
-      song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.authors.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.genre.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filter and Sort logic
+  const filteredAndSortedSongs = useMemo(() => {
+    const result = songs.filter(song => {
+      const matchesSearch = 
+        song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        song.authors.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        song.genre.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesGenre = genreFilter === 'all' || song.genre === genreFilter;
-    const matchesStatus = statusFilter === 'all' || song.status === statusFilter;
+      const matchesGenre = genreFilter === 'all' || song.genre === genreFilter;
+      const matchesStatus = statusFilter === 'all' || song.status === statusFilter;
 
-    return matchesSearch && matchesGenre && matchesStatus;
-  });
+      return matchesSearch && matchesGenre && matchesStatus;
+    });
+
+    result.sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+
+      if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = (bVal as string).toLowerCase();
+      }
+
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [songs, searchTerm, genreFilter, statusFilter, sortField, sortOrder]);
+
+  const paginatedSongs = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredAndSortedSongs.slice(start, start + pageSize);
+  }, [filteredAndSortedSongs, currentPage, pageSize]);
 
   // Export CSV
   const handleExportCsv = () => {
-    if (filteredSongs.length === 0) return;
+    if (filteredAndSortedSongs.length === 0) {
+      toast.warning('Nenhum dado', 'Não há músicas para exportar com os filtros atuais.');
+      return;
+    }
 
     const headers = [
       'ID',
@@ -125,12 +214,12 @@ export const AdminSongsTab: React.FC = () => {
       'Autores',
       'Data_Cadastro',
       'Status',
-      'Audições',
+      'Audicoes',
       'Valor_Sugerido_BRL',
       'Em_Destaque'
     ];
 
-    const rows = filteredSongs.map(s => [
+    const rows = filteredAndSortedSongs.map(s => [
       `"${s.id}"`,
       `"${s.title.replace(/"/g, '""')}"`,
       `"${s.genre}"`,
@@ -150,6 +239,16 @@ export const AdminSongsTab: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success('Relatório CSV Gerado', 'O catálogo de músicas foi exportado.');
+  };
+
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-slate-600 group-hover:text-slate-400 inline ml-1 transition" />;
+    }
+    return sortOrder === 'asc' 
+      ? <ArrowUp className="w-3 h-3 text-amber-400 inline ml-1" />
+      : <ArrowDown className="w-3 h-3 text-amber-400 inline ml-1" />;
   };
 
   return (
@@ -169,7 +268,7 @@ export const AdminSongsTab: React.FC = () => {
 
         <button
           onClick={handleExportCsv}
-          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition self-start sm:self-auto"
+          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition self-start sm:self-auto shadow-sm"
         >
           <Download className="w-4 h-4 text-amber-400" />
           <span>Exportar Acervo CSV</span>
@@ -177,14 +276,14 @@ export const AdminSongsTab: React.FC = () => {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-lg">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Buscar por título, compositor ou estilo musical..."
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition"
           />
         </div>
@@ -192,11 +291,11 @@ export const AdminSongsTab: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={genreFilter}
-            onChange={e => setGenreFilter(e.target.value)}
+            onChange={e => { setGenreFilter(e.target.value); setCurrentPage(1); }}
             aria-label="Filtrar por gênero"
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500 cursor-pointer"
           >
-            <option value="all">Todos os Gêneros</option>
+            <option value="all">Todos os Gêneros ({songs.length})</option>
             {genresList.map(g => (
               <option key={g} value={g}>{g}</option>
             ))}
@@ -204,9 +303,9 @@ export const AdminSongsTab: React.FC = () => {
 
           <select
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
+            onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
             aria-label="Filtrar por status"
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500 cursor-pointer"
           >
             <option value="all">Todos os Status</option>
             <option value="published">Publicadas (Ativas)</option>
@@ -216,219 +315,351 @@ export const AdminSongsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Songs Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+      {/* Songs DataTable */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+            <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
-                <th className="p-4">Obra / Capa</th>
-                <th className="p-4">Autoria / Gênero</th>
-                <th className="p-4">Audições</th>
-                <th className="p-4">Valor Sugerido</th>
-                <th className="p-4">Moderação / Status</th>
-                <th className="p-4">Destaque Home</th>
+                <th 
+                  onClick={() => handleSort('title')}
+                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                >
+                  <span>Obra / Capa</span>
+                  {renderSortIcon('title')}
+                </th>
+                <th 
+                  onClick={() => handleSort('authors')}
+                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                >
+                  <span>Autoria / Gênero</span>
+                  {renderSortIcon('authors')}
+                </th>
+                <th 
+                  onClick={() => handleSort('playCount')}
+                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                >
+                  <span>Audições</span>
+                  {renderSortIcon('playCount')}
+                </th>
+                <th 
+                  onClick={() => handleSort('suggestedValue')}
+                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                >
+                  <span>Valor Sugerido</span>
+                  {renderSortIcon('suggestedValue')}
+                </th>
+                <th 
+                  onClick={() => handleSort('status')}
+                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                >
+                  <span>Moderação / Status</span>
+                  {renderSortIcon('status')}
+                </th>
+                <th className="p-4 text-center">Destaque Home</th>
                 <th className="p-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
-              {filteredSongs.map(song => {
-                const isPlaying = playingSongId === song.id;
-                const isFeatured = featuredSongIds.includes(song.id);
+              {paginatedSongs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                    Nenhuma música encontrada para os filtros selecionados.
+                  </td>
+                </tr>
+              ) : (
+                paginatedSongs.map(song => {
+                  const isPlaying = playingSongId === song.id;
+                  const isFeatured = featuredSongIds.includes(song.id);
 
-                return (
-                  <tr key={song.id} className="hover:bg-slate-800/40 transition">
-                    
-                    {/* Song Cover & Play */}
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="relative group/play shrink-0">
-                          <img 
-                            src={song.coverUrl} 
-                            alt={song.title} 
-                            className="w-12 h-12 rounded-xl object-cover border border-slate-700"
-                          />
-                          <button
-                            onClick={() => handlePlayToggle(song)}
-                            aria-label={isPlaying ? 'Pausar áudio' : 'Ouvir prévia'}
-                            className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center text-white opacity-0 group-hover/play:opacity-100 transition"
-                          >
-                            {isPlaying ? <Pause className="w-5 h-5 fill-amber-400 text-amber-400" /> : <Play className="w-5 h-5 fill-white" />}
-                          </button>
+                  return (
+                    <tr key={song.id} className="hover:bg-slate-800/40 transition">
+                      
+                      {/* Song Cover & Play */}
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="relative group/play shrink-0">
+                            <img 
+                              src={song.coverUrl} 
+                              alt={song.title} 
+                              className="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-md"
+                            />
+                            <button
+                              onClick={() => handlePlayToggle(song)}
+                              aria-label={isPlaying ? 'Pausar áudio' : 'Ouvir prévia'}
+                              className={`absolute inset-0 rounded-xl flex items-center justify-center transition ${
+                                isPlaying ? 'bg-black/70 opacity-100' : 'bg-black/60 opacity-0 group-hover/play:opacity-100 text-white'
+                              }`}
+                            >
+                              {isPlaying ? (
+                                <Pause className="w-5 h-5 fill-amber-400 text-amber-400" />
+                              ) : (
+                                <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                              )}
+                            </button>
+                          </div>
+                          <div>
+                            <strong className="text-white text-sm block">“{song.title}”</strong>
+                            <span className="text-[11px] text-slate-500 font-mono">Cadastrada em {song.dateRegistered}</span>
+                          </div>
                         </div>
-                        <div>
-                          <strong className="text-white text-sm block">“{song.title}”</strong>
-                          <span className="text-[11px] text-slate-500 font-mono">Cadastrada em {song.dateRegistered}</span>
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Authors & Genre */}
-                    <td className="p-4 space-y-1">
-                      <span className="text-slate-200 block">{song.authors}</span>
-                      <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full inline-block">
-                        {song.genre}
-                      </span>
-                    </td>
+                      {/* Authors & Genre */}
+                      <td className="p-4 space-y-1">
+                        <span className="text-slate-200 block truncate max-w-xs">{song.authors}</span>
+                        <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full inline-block">
+                          {song.genre}
+                        </span>
+                      </td>
 
-                    {/* Plays */}
-                    <td className="p-4">
-                      <span className="text-white font-bold block">{song.playCount}</span>
-                      <span className="text-[10px] text-slate-500">audições</span>
-                    </td>
+                      {/* Plays */}
+                      <td className="p-4">
+                        <span className="text-white font-bold block">{song.playCount}</span>
+                        <span className="text-[10px] text-slate-500">audições</span>
+                      </td>
 
-                    {/* Price */}
-                    <td className="p-4 font-mono font-bold text-emerald-400">
-                      {song.valueType === 'suggested' && song.suggestedValue 
-                        ? `R$ ${song.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
-                        : 'Sob Consulta'}
-                    </td>
+                      {/* Price */}
+                      <td className="p-4 font-mono font-bold text-emerald-400">
+                        {song.valueType === 'suggested' && song.suggestedValue 
+                          ? `R$ ${song.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+                          : 'Sob Consulta'}
+                      </td>
 
-                    {/* Status Toggle */}
-                    <td className="p-4">
-                      <button
-                        onClick={() => handlePublicationToggle(song)}
-                        disabled={pendingSongId === song.id}
-                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border transition flex items-center gap-1.5 ${
-                          song.status === 'published'
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                            : song.status === 'rejected'
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                        }`}
-                      >
-                        {song.status === 'published' ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span>Aprovada</span>
-                          </>
-                        ) : song.status === 'rejected' ? (
-                          <>
-                            <X className="w-3 h-3 text-rose-400" />
-                            <span>Rejeitada</span>
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="w-3 h-3 text-amber-400" />
-                            <span>Rascunho</span>
-                          </>
-                        )}
-                      </button>
-                    </td>
+                      {/* Status Toggle */}
+                      <td className="p-4">
+                        <button
+                          onClick={() => handlePublicationToggle(song)}
+                          disabled={pendingSongId === song.id}
+                          className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border transition flex items-center gap-1.5 cursor-pointer ${
+                            song.status === 'published'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                              : song.status === 'rejected'
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                          }`}
+                        >
+                          {song.status === 'published' ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span>Publicada</span>
+                            </>
+                          ) : song.status === 'rejected' ? (
+                            <>
+                              <X className="w-3 h-3 text-rose-400" />
+                              <span>Rejeitada</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3 h-3 text-amber-400" />
+                              <span>Rascunho</span>
+                            </>
+                          )}
+                        </button>
+                      </td>
 
-                    {/* Featured Toggle */}
-                    <td className="p-4">
-                      <button
-                        onClick={() => handleFeatureToggle(song)}
-                        className={`p-2 rounded-xl border transition ${
-                          isFeatured 
-                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-bold' 
-                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                        }`}
-                        title={isFeatured ? 'Remover dos destaques da Home' : 'Colocar em destaque na Home'}
-                      >
-                        <Sparkles className="w-4 h-4" />
-                      </button>
-                    </td>
+                      {/* Featured Toggle */}
+                      <td className="p-4 text-center">
+                        <button
+                          onClick={() => handleFeatureToggle(song)}
+                          className={`p-2 rounded-xl border transition cursor-pointer ${
+                            isFeatured 
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-bold' 
+                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'
+                          }`}
+                          title={isFeatured ? 'Remover dos destaques da Home' : 'Colocar em destaque na Home'}
+                        >
+                          <Sparkles className="w-4 h-4" />
+                        </button>
+                      </td>
 
-                    {/* Actions */}
-                    <td className="p-4 text-right space-x-1 whitespace-nowrap">
-                      <button
-                        onClick={() => setSelectedSong(song)}
-                        className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
-                        title="Ver letra e detalhes"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
+                      {/* Actions */}
+                      <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          onClick={() => setSelectedSong(song)}
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                          title="Abrir gaveta de moderação"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setSongToReject(song)}
+                          className="p-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 transition"
+                          title="Rejeitar obra"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </td>
 
-                  </tr>
-                );
-              })}
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Dynamic Pagination */}
+        <AdminPagination
+          currentPage={currentPage}
+          totalItems={filteredAndSortedSongs.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }}
+        />
       </div>
 
-      {/* SONG INSPECTION MODAL */}
-      {selectedSong && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-fadeIn">
-            
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-4">
-                <img 
-                  src={selectedSong.coverUrl} 
-                  alt={selectedSong.title} 
-                  className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-400"
-                />
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                    {selectedSong.genre}
-                  </span>
-                  <h3 className="text-xl font-bold text-white mt-1">“{selectedSong.title}”</h3>
-                  <p className="text-xs text-slate-400">Autores: {selectedSong.authors}</p>
-                </div>
-              </div>
-
-              <button 
-                onClick={() => setSelectedSong(null)}
-                className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Lyrics viewer */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-300 block uppercase tracking-wider">
-                Letra Completa da Obra:
-              </span>
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 font-mono whitespace-pre-line leading-relaxed max-h-60 overflow-y-auto">
-                {selectedSong.lyrics || 'Letra não informada pelo compositor.'}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-              <span className="text-xs text-slate-400">
-                Status Atual: <strong className="text-white capitalize">{selectedSong.status}</strong>
+      {/* SONG MODERATION SIDE DRAWER */}
+      <AdminDrawer
+        isOpen={!!selectedSong}
+        onClose={() => setSelectedSong(null)}
+        title={selectedSong ? `“${selectedSong.title}”` : 'Moderação de Música'}
+        subtitle={selectedSong?.authors}
+        icon={<Music className="w-5 h-5" />}
+        footer={
+          selectedSong && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-400 hidden sm:inline">
+                Status: <strong className="text-white capitalize font-semibold">{selectedSong.status}</strong>
               </span>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                 {selectedSong.status !== 'published' ? (
                   <button
-                    onClick={() => {
-                      handlePublicationToggle(selectedSong);
-                      setSelectedSong(null);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs shadow-md transition"
+                    onClick={() => handlePublicationToggle(selectedSong)}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition"
                   >
-                    Aprovar e Publicar Obra
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Aprovar & Publicar Obra</span>
                   </button>
                 ) : (
                   <button
-                    onClick={() => {
-                      handleReject(selectedSong);
-                      setSelectedSong(null);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-md transition"
+                    onClick={() => setSongToReject(selectedSong)}
+                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/20 flex items-center gap-2 transition"
                   >
-                    Rejeitar / Despublicar
+                    <X className="w-4 h-4" />
+                    <span>Rejeitar Obra</span>
                   </button>
                 )}
 
                 <button
                   onClick={() => setSelectedSong(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
                 >
                   Fechar
                 </button>
               </div>
             </div>
+          )
+        }
+      >
+        {selectedSong && (
+          <div className="space-y-6 text-xs">
+            {/* Song Header Card */}
+            <div className="flex items-center gap-4 bg-slate-950 p-4 rounded-2xl border border-slate-800">
+              <img 
+                src={selectedSong.coverUrl} 
+                alt={selectedSong.title} 
+                className="w-20 h-20 rounded-2xl object-cover border-2 border-amber-400 shrink-0"
+              />
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 inline-block mb-1">
+                  {selectedSong.genre}
+                </span>
+                <h4 className="font-bold text-white text-base truncate">“{selectedSong.title}”</h4>
+                <p className="text-slate-400 mt-0.5 truncate">Autores: {selectedSong.authors}</p>
+                <p className="text-slate-500 text-[11px] font-mono mt-1">Registrada em {selectedSong.dateRegistered}</p>
+              </div>
+            </div>
 
+            {/* Audio Player Box */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white flex items-center gap-2">
+                  <Volume2 className="w-4 h-4 text-amber-400" />
+                  <span>Áudio de Prévia (Até 60s)</span>
+                </span>
+                <button
+                  onClick={() => handlePlayToggle(selectedSong)}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl flex items-center gap-1.5 transition text-[11px]"
+                >
+                  {playingSongId === selectedSong.id ? (
+                    <>
+                      <Pause className="w-3.5 h-3.5 fill-current" />
+                      <span>Pausar</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                      <span>Ouvir Prévia</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                A prévia pública protege o fonograma original cortando automaticamente em 60 segundos para audição no catálogo.
+              </p>
+            </div>
+
+            {/* Quick Financial & Performance Stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                <span className="text-slate-400 text-[11px] block">Audições Acumuladas</span>
+                <strong className="text-purple-400 text-base font-bold">{selectedSong.playCount} plays</strong>
+              </div>
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                <span className="text-slate-400 text-[11px] block">Valor Sugerido</span>
+                <strong className="text-emerald-400 text-base font-mono font-bold">
+                  {selectedSong.valueType === 'suggested' && selectedSong.suggestedValue 
+                    ? `R$ ${selectedSong.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+                    : 'Sob Consulta'}
+                </strong>
+              </div>
+            </div>
+
+            {/* Full Lyrics View */}
+            <div className="space-y-2">
+              <span className="font-bold text-white uppercase tracking-wider text-slate-400 text-[11px] flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-amber-400" />
+                <span>Letra Completa da Obra</span>
+              </span>
+              <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 text-xs text-slate-300 font-mono whitespace-pre-line leading-relaxed max-h-72 overflow-y-auto">
+                {selectedSong.lyrics || 'Letra não informada pelo compositor.'}
+              </div>
+            </div>
+
+            {/* Destaque Home Shortcut */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-950 border border-slate-800">
+              <div>
+                <strong className="text-white block">Destaque na Vitrine Home</strong>
+                <span className="text-slate-400 text-[11px]">Exibir esta música na seção VIP da página principal.</span>
+              </div>
+              <button
+                onClick={() => handleFeatureToggle(selectedSong)}
+                className={`p-2.5 rounded-xl border transition ${
+                  featuredSongIds.includes(selectedSong.id)
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AdminDrawer>
+
+      {/* CONFIRM REJECT DIALOG */}
+      <AdminConfirmDialog
+        isOpen={!!songToReject}
+        title={`Rejeitar a música “${songToReject?.title}”?`}
+        description="Esta obra será ocultada da vitrine pública e marcada com status de rejeitada para revisão pelo autor."
+        confirmLabel="Sim, Rejeitar Obra"
+        cancelLabel="Cancelar"
+        variant="warning"
+        onConfirm={handleConfirmReject}
+        onCancel={() => setSongToReject(null)}
+      />
 
     </div>
   );
