@@ -22,14 +22,21 @@ declare
 begin
   admin_actor := public.is_admin();
 
-  select
-    greatest(1, plan_max_songs),
-    require_approval_for_new_songs
-  into max_songs, approval_required
-  from public.platform_settings
-  where id = true;
+  select sp.max_songs
+    into max_songs
+    from public.subscriptions sub
+    join public.subscription_plans sp on sp.name = sub.plan_name and sp.is_active
+    where sub.user_id = new.composer_id;
 
-  max_songs := coalesce(max_songs, 100);
+  if not found then
+    raise exception using errcode = '23514', message = 'A conta não possui um plano de assinatura válido.';
+  end if;
+
+  select require_approval_for_new_songs
+    into approval_required
+    from public.platform_settings
+    where id = true;
+
   approval_required := coalesce(approval_required, true);
 
   if tg_op = 'INSERT' then
@@ -43,7 +50,7 @@ begin
       from public.songs
       where composer_id = new.composer_id;
 
-    if current_song_count >= max_songs then
+    if max_songs is not null and current_song_count >= max_songs then
       raise exception using
         errcode = 'P0001',
         message = format('Limite de %s músicas atingido para esta conta.', max_songs),
@@ -78,6 +85,27 @@ begin
         errcode = '42501',
         message = 'Esta música precisa ser enviada para aprovação antes da publicação.',
         hint = 'Use o status pending_approval.';
+    end if;
+
+    if approval_required
+       and tg_op = 'UPDATE'
+       and old.status = 'published'
+       and new.status = 'published'
+       and (
+         new.title, new.genre, new.subgenre, new.authors, new.date_composed,
+         new.lyrics, new.cover_url, new.registry_code, new.value_type,
+         new.suggested_value, new.summary, new.original_audio_path,
+         new.preview_audio_url
+       ) is distinct from (
+         old.title, old.genre, old.subgenre, old.authors, old.date_composed,
+         old.lyrics, old.cover_url, old.registry_code, old.value_type,
+         old.suggested_value, old.summary, old.original_audio_path,
+         old.preview_audio_url
+       ) then
+      raise exception using
+        errcode = '42501',
+        message = 'Alterações em uma música publicada exigem nova aprovação.',
+        hint = 'Salve a alteração com o status pending_approval.';
     end if;
 
     if not approval_required and new.status = 'pending_approval' then
@@ -121,4 +149,3 @@ for each row execute function public.enforce_song_write_rules();
 
 revoke execute on function public.enforce_song_write_rules()
 from public, anon, authenticated;
-

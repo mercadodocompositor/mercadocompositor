@@ -2,6 +2,7 @@ import type { SongStatus } from '../types';
 
 export const getSongSaveStatus = (selectedStatus: SongStatus, existingStatus: SongStatus | undefined, approvalRequired: boolean, isAdmin: boolean): SongStatus => {
   if (selectedStatus === 'draft') return 'draft';
+  if (existingStatus === 'published' && approvalRequired && !isAdmin) return 'pending_approval';
   if (existingStatus === 'published') return 'published';
   return approvalRequired && !isAdmin ? 'pending_approval' : 'published';
 };

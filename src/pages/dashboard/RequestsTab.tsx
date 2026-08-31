@@ -158,19 +158,19 @@ export const RequestsTab: React.FC = () => {
     showToast(`Status alterado para "${statusLabels[newStatus]}"`);
   };
 
-  const handleMarkPaymentReceived = () => {
+  const handleMarkPaymentReceived = async () => {
     if (!activeRequest) return;
     if (!agreedValueInput || Number(agreedValueInput) <= 0) {
       showToast('Informe um valor acordado maior que zero antes de confirmar o pagamento.');
       return;
     }
     if (!window.confirm(`Confirmar o recebimento de R$ ${Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}?`)) return;
-    updateRequestStatus(activeRequest.id, 'pagamento_confirmado', {
+    const saved = await updateRequestStatus(activeRequest.id, 'pagamento_confirmado', {
       agreedValue: Number(agreedValueInput),
       notes: notesInput,
       paymentReceivedAt: new Date().toISOString()
     });
-    showToast("Pagamento marcado como recebido! O botão de Emitir Liberação está disponível.");
+    showToast(saved ? "Pagamento marcado como recebido! O botão de Emitir Liberação está disponível." : 'Não foi possível confirmar o pagamento.');
   };
 
   const handleCreateRelease = async () => {
@@ -197,7 +197,9 @@ export const RequestsTab: React.FC = () => {
 
     const isExclusive = releaseTypeInput.toLowerCase().includes('exclusiv');
 
-    const newDoc = issueRelease(activeRequest.id, {
+    let newDoc;
+    try {
+      newDoc = await issueRelease(activeRequest.id, {
       requestId: activeRequest.id,
       songId: activeRequest.songId,
       songTitle: activeRequest.songTitle,
@@ -216,7 +218,11 @@ export const RequestsTab: React.FC = () => {
         ? "Liberação com cláusula de exclusividade. Créditos de autoria obrigatórios em todos os fonogramas e sistemas de arrecadação ECAD."
         : "Créditos de autoria obrigatórios em todos os fonogramas e sistemas de arrecadação ECAD.",
       digitalSignature: `${profile.name} (declaração eletrônica emitida pela conta autenticada)`
-    });
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Não foi possível emitir a liberação.');
+      return;
+    }
 
     if (closeSongForRelease) {
       await updateSong(requestedSong.id, { isAvailableForRelease: false });

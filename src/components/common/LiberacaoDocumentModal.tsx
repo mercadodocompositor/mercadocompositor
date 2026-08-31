@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ReleaseDocument } from '../../types';
-import { X, FileCheck, Copy, CheckCircle, ShieldCheck, Printer, Phone, QrCode, ExternalLink } from 'lucide-react';
+import { X, FileCheck, Copy, CheckCircle, ShieldCheck, Printer, Phone, Download, Loader2, ExternalLink } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
+import { downloadReleasePdf } from '../../lib/pdfGenerator';
 
 interface LiberacaoDocumentModalProps {
   document: ReleaseDocument;
@@ -17,7 +18,21 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   onCompleteNegotiation
 }) => {
   const [summaryCopied, setSummaryCopied] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const validationUrl = `${window.location.origin}/validar-documento?codigo=${document.documentCode}`;
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloadingPdf(true);
+      // Allow slight tick for UI update
+      await new Promise(resolve => setTimeout(resolve, 50));
+      downloadReleasePdf(document);
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   const handleCopySummary = async () => {
     const summary = [
@@ -240,6 +255,25 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={handleDownloadPdf}
+              disabled={isDownloadingPdf}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition disabled:opacity-50"
+            >
+              {isDownloadingPdf ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Gerando PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Baixar PDF Oficial</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={handleSendWhatsApp}
               className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition"
             >
@@ -253,7 +287,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs flex items-center gap-1.5 transition"
             >
               <Printer className="w-4 h-4 text-amber-400" />
-              <span>Imprimir / Salvar PDF</span>
+              <span>Imprimir</span>
             </button>
 
             <button

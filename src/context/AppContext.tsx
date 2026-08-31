@@ -15,7 +15,7 @@ import {
 import { DEFAULT_PLATFORM_SETTINGS } from '../data/platformDefaults';
 import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertRelease, insertSong, insertSystemLog, loadAdminComposers, loadAdminSongs, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, saveSubscription, type SongCatalogStats, type SongPageQuery } from '../lib/database';
+import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertSong, insertSystemLog, issueReleaseRequest, loadAdminComposers, loadAdminSongs, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, type SongCatalogStats, type SongPageQuery } from '../lib/database';
 
 type RegistrationResult = { success: boolean; needsEmailConfirmation: boolean };
 
@@ -33,7 +33,7 @@ const EMPTY_SUBSCRIPTION: Subscription = {
 
 interface AppContextType {
   profile: ComposerProfile;
-  updateProfile: (data: Partial<ComposerProfile>) => void;
+  updateProfile: (data: Partial<ComposerProfile>) => Promise<void>;
   
   songs: Song[];
   addSong: (song: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>) => Promise<Song>;
@@ -44,14 +44,12 @@ interface AppContextType {
   
   requests: InterestRequest[];
   addInterestRequest: (req: Omit<InterestRequest, 'id' | 'createdAt' | 'status'>) => Promise<InterestRequest | null>;
-  updateRequestStatus: (requestId: string, status: RequestStatus, extra?: Partial<InterestRequest>) => void;
+  updateRequestStatus: (requestId: string, status: RequestStatus, extra?: Partial<InterestRequest>) => Promise<boolean>;
   
   releases: ReleaseDocument[];
-  issueRelease: (requestId: string, releaseData: Omit<ReleaseDocument, 'id' | 'documentCode' | 'isDemonstrative'>) => ReleaseDocument;
+  issueRelease: (requestId: string, releaseData: Omit<ReleaseDocument, 'id' | 'documentCode' | 'isDemonstrative'>) => Promise<ReleaseDocument>;
   
   subscription: Subscription;
-  updateSubscriptionPlan: (planName: string, monthlyPrice: string) => void;
-  updateSubscriptionPaymentMethod: (method: 'Cartão de Crédito' | 'Pix', cardLast4?: string) => void;
   
   isAuthenticated: boolean;
   authLoading: boolean;
@@ -74,21 +72,21 @@ interface AppContextType {
   adminComposers: AdminComposer[];
   adminSongs: Song[];
   moderateSong: (songId: string, status: Extract<SongStatus, 'published' | 'rejected' | 'draft'>) => Promise<boolean>;
-  updateAdminComposerStatus: (composerId: string, status: SubscriptionStatus) => void;
-  toggleComposerVerified: (composerId: string) => void;
+  updateAdminComposerStatus: (composerId: string, status: SubscriptionStatus) => Promise<boolean>;
+  toggleComposerVerified: (composerId: string) => Promise<boolean>;
   deleteAdminComposer: (composerId: string) => void;
   addAdminComposer: (composer: Omit<AdminComposer, 'id' | 'registeredAt' | 'songCount' | 'totalPlays' | 'totalReleases' | 'revenueGenerated'>) => void;
 
   platformSettings: PlatformSettings;
-  updatePlatformSettings: (settings: Partial<PlatformSettings>) => void;
-  resetPlatformSettings: () => void;
+  updatePlatformSettings: (settings: Partial<PlatformSettings>) => Promise<boolean>;
+  resetPlatformSettings: () => Promise<boolean>;
 
   systemLogs: SystemLog[];
   addSystemLog: (log: Omit<SystemLog, 'id' | 'timestamp'>) => void;
   clearSystemLogs: () => void;
 
   featuredSongIds: string[];
-  toggleFeatureSong: (songId: string) => void;
+  toggleFeatureSong: (songId: string) => Promise<boolean>;
 
 }
 
@@ -189,8 +187,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
 
-  const updateProfile = (data: Partial<ComposerProfile>) => {
-    setProfile(prev => { const next={...prev,...data}; if(userId) void saveProfile(userId,next).catch(e=>setAuthError(e.message)); return next; });
+  const updateProfile = async (data: Partial<ComposerProfile>) => {
+    if (!userId) throw new Error('Sua sessão expirou. Entre novamente.');
+    const next={...profile,...data};
+    try {
+      await saveProfile(userId,next);
+      setProfile(next);
+    } catch (error) {
+      const message=error instanceof Error?error.message:'Não foi possível atualizar o perfil.';
+      setAuthError(message);
+      throw new Error(message);
+    }
   };
 
   const addSong = async (songData: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>): Promise<Song> => {
@@ -294,8 +301,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [userId]);
 
   const incrementPlayCount = (songId: string) => {
-    setSongs(prev => prev.map(s => s.id === songId ? { ...s, playCount: s.playCount + 1 } : s));
-    void incrementPlay(songId).catch(()=>undefined);
+    void incrementPlay(songId).then(counted => {
+      if (counted) setSongs(prev => prev.map(s => s.id === songId ? { ...s, playCount: s.playCount + 1 } : s));
+    }).catch(()=>undefined);
   };
 
   const addInterestRequest = async (reqData: Omit<InterestRequest, 'id' | 'createdAt' | 'status'>): Promise<InterestRequest | null> => {
@@ -317,7 +325,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateRequestStatus = (requestId: string, status: RequestStatus, extra?: Partial<InterestRequest>) => {
+  const updateRequestStatus = async (requestId: string, status: RequestStatus, extra?: Partial<InterestRequest>) => {
+    const previous = requests.find(req => req.id === requestId);
     setRequests(prev => prev.map(req => {
       if (req.id === requestId) {
         return {
@@ -328,24 +337,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return req;
     }));
-    void saveRequest(requestId,status,extra).catch(e=>setAuthError(e.message));
+    try {
+      await saveRequest(requestId,status,extra);
+      return true;
+    } catch (error) {
+      if (previous) setRequests(prev => prev.map(req => req.id === requestId ? previous : req));
+      setAuthError(error instanceof Error ? error.message : 'Não foi possível atualizar a solicitação.');
+      return false;
+    }
   };
 
-  const issueRelease = (
+  const issueRelease = async (
     requestId: string, 
     releaseData: Omit<ReleaseDocument, 'id' | 'documentCode' | 'isDemonstrative'>
-  ): ReleaseDocument => {
-    const codeNumber = Math.floor(10000 + Math.random() * 90000);
-    const newDoc: ReleaseDocument = {
-      ...releaseData,
-      id: crypto.randomUUID(),
-      documentCode: `LIB-2026-${codeNumber}`,
-      isDemonstrative: false
-    };
-
+  ): Promise<ReleaseDocument> => {
+    const newDoc = await issueReleaseRequest(requestId, releaseData);
     setReleases(prev => [newDoc, ...prev]);
-    if(userId) void insertRelease(userId,newDoc).catch(e=>setAuthError(e.message));
-    updateRequestStatus(requestId, 'liberacao_enviada', { releaseId: newDoc.id });
+    setRequests(prev => prev.map(req => req.id === requestId ? { ...req, status: 'liberacao_enviada', releaseId: newDoc.id } : req));
 
     addSystemLog({
       category: 'moderation',
@@ -357,14 +365,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return newDoc;
-  };
-
-  const updateSubscriptionPlan = (planName: string, monthlyPrice: string) => {
-    setSubscription(prev => {const next={...prev,planName,monthlyPrice};void saveSubscription(next).catch(e=>setAuthError(e.message));return next;});
-  };
-
-  const updateSubscriptionPaymentMethod = (method: 'Cartão de Crédito' | 'Pix', cardLast4?: string) => {
-    setSubscription(prev => {const next={...prev,paymentMethod:method,cardLast4:cardLast4||prev.cardLast4};void saveSubscription(next).catch(e=>setAuthError(e.message));return next;});
   };
 
   const login = async (email?: string, password?: string) => {
@@ -481,14 +481,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsAdminAuthenticated(false);
   };
 
-  const updateAdminComposerStatus = (composerId: string, status: SubscriptionStatus) => {
-    setAdminComposers(prev => prev.map(c => {
-      if (c.id === composerId) {
-        return { ...c, subscriptionStatus: status };
-      }
-      return c;
-    }));
-    void adminSetSubscription(composerId,status).catch(e=>setAuthError(e.message));
+  const updateAdminComposerStatus = async (composerId: string, status: SubscriptionStatus) => {
+    try { await adminSetSubscription(composerId,status); }
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao atualizar assinatura.');return false;}
+    setAdminComposers(prev => prev.map(c => c.id===composerId?{...c,subscriptionStatus:status}:c));
 
     addSystemLog({
       category: 'financial',
@@ -498,17 +494,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ip: '201.55.190.8',
       status: 'warning'
     });
+    return true;
   };
 
-  const toggleComposerVerified = (composerId: string) => {
+  const toggleComposerVerified = async (composerId: string) => {
     const target=adminComposers.find(c=>c.id===composerId);
-    setAdminComposers(prev => prev.map(c => {
-      if (c.id === composerId) {
-        return { ...c, isVerified: !c.isVerified };
-      }
-      return c;
-    }));
-    if(target)void adminSetVerified(composerId,!target.isVerified).catch(e=>setAuthError(e.message));
+    if(!target)return false;
+    try{await adminSetVerified(composerId,!target.isVerified);}
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao alterar verificação.');return false;}
+    setAdminComposers(prev=>prev.map(c=>c.id===composerId?{...c,isVerified:!target.isVerified}:c));
+    return true;
   };
 
   const deleteAdminComposer = (composerId: string) => {
@@ -519,8 +514,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthError('Crie novas contas pelo fluxo de cadastro para preservar confirmação de e-mail e senha segura.');
   };
 
-  const updatePlatformSettings = (settings: Partial<PlatformSettings>) => {
-    setPlatformSettings(prev => {const next={...prev,...settings};void savePlatformSettings(next).catch(e=>setAuthError(e.message));return next;});
+  const updatePlatformSettings = async (settings: Partial<PlatformSettings>) => {
+    const next={...platformSettings,...settings};
+    try{await savePlatformSettings(next);}
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao salvar configurações.');return false;}
+    setPlatformSettings(next);
     addSystemLog({
       category: 'system',
       title: 'Configurações da Plataforma Atualizadas',
@@ -529,11 +527,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ip: '201.55.190.8',
       status: 'info'
     });
+    return true;
   };
 
-  const resetPlatformSettings = () => {
+  const resetPlatformSettings = async () => {
+    try{await savePlatformSettings(DEFAULT_PLATFORM_SETTINGS);}
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao restaurar configurações.');return false;}
     setPlatformSettings(DEFAULT_PLATFORM_SETTINGS);
-    void savePlatformSettings(DEFAULT_PLATFORM_SETTINGS).catch(e=>setAuthError(e.message));
+    return true;
   };
 
   const addSystemLog = (logData: Omit<SystemLog, 'id' | 'timestamp'>) => {
@@ -548,13 +549,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if(isAdminAuthenticated)void insertSystemLog(newLog).catch(e=>setAuthError(e.message));
   };
 
-  const clearSystemLogs = () => {
-    setSystemLogs([]);
-    void deleteSystemLogs().catch(e=>setAuthError(e.message));
+  const clearSystemLogs = async () => {
+    try{await deleteSystemLogs();setSystemLogs([]);}
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao limpar logs.');}
   };
 
-  const toggleFeatureSong = (songId: string) => {
+  const toggleFeatureSong = async (songId: string) => {
     const nextValue=!featuredSongIds.includes(songId);
+    try{await adminFeatureSong(songId,nextValue);}
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao alterar destaque.');return false;}
     setFeaturedSongIds(prev => 
       prev.includes(songId) 
         ? prev.filter(id => id !== songId) 
@@ -562,7 +565,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     setAdminSongs(prev => prev.map(s => s.id === songId ? { ...s, isFeatured: nextValue } : s));
     setSongs(prev => prev.map(s => s.id === songId ? { ...s, isFeatured: nextValue } : s));
-    void adminFeatureSong(songId,nextValue).catch(e=>setAuthError(e.message));
+    return true;
   };
 
   const moderateSong = async (songId: string, status: Extract<SongStatus, 'published' | 'rejected' | 'draft'>) => {
@@ -611,8 +614,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       releases,
       issueRelease,
       subscription,
-      updateSubscriptionPlan,
-      updateSubscriptionPaymentMethod,
       isAuthenticated,
       authLoading,
       authError,

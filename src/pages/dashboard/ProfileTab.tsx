@@ -175,7 +175,7 @@ export const ProfileTab: React.FC = () => {
         website: sanitizeWeb(form.website)
       };
 
-      updateProfile(normalized);
+      await updateProfile(normalized);
       setForm(normalized);
       setImageFiles({});
       setMessage({ type: 'success', text: 'Perfil artístico e dados cadastrais atualizados com sucesso!' });

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { ReleaseDocument } from '../../types';
 import { LiberacaoDocumentModal } from '../../components/common/LiberacaoDocumentModal';
+import { downloadReleasePdf } from '../../lib/pdfGenerator';
 import { 
   FileCheck, 
   Search, 
@@ -22,7 +23,8 @@ import {
   Filter,
   Calendar,
   ChevronRight,
-  Music
+  Music,
+  Loader2
 } from 'lucide-react';
 
 export const ReleasesTab: React.FC = () => {
@@ -37,6 +39,19 @@ export const ReleasesTab: React.FC = () => {
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'value_high' | 'value_low' | 'title'>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [copiedDocCode, setCopiedDocCode] = useState<string | null>(null);
+  const [downloadingDocCode, setDownloadingDocCode] = useState<string | null>(null);
+
+  const handleDownloadDocPdf = async (doc: ReleaseDocument) => {
+    try {
+      setDownloadingDocCode(doc.documentCode);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      downloadReleasePdf(doc);
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err);
+    } finally {
+      setDownloadingDocCode(null);
+    }
+  };
 
   // Helper normalize
   const normalize = (value: string) => value
@@ -513,6 +528,22 @@ export const ReleasesTab: React.FC = () => {
                 {/* Bottom Action Buttons */}
                 <div className="pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
+                    {/* Baixar PDF */}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadDocPdf(doc)}
+                      disabled={downloadingDocCode === doc.documentCode}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 font-semibold text-xs border border-slate-700 transition flex items-center gap-1.5 disabled:opacity-50"
+                      title="Baixar Termo Oficial em PDF"
+                    >
+                      {downloadingDocCode === doc.documentCode ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      <span>PDF</span>
+                    </button>
+
                     {/* Send WhatsApp */}
                     <button
                       type="button"
@@ -615,6 +646,21 @@ export const ReleasesTab: React.FC = () => {
                       </td>
 
                       <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadDocPdf(doc)}
+                          disabled={downloadingDocCode === doc.documentCode}
+                          aria-label="Baixar termo em PDF"
+                          className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 transition disabled:opacity-50"
+                          title="Baixar PDF Oficial"
+                        >
+                          {downloadingDocCode === doc.documentCode ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => handleSendWhatsApp(doc)}

@@ -163,28 +163,33 @@ export const AdminComposersTab: React.FC = () => {
   };
 
   // Bulk Execution
-  const handleBulkActivate = () => {
-    selectedComposerIds.forEach(id => updateAdminComposerStatus(id, 'active'));
-    toast.success('Assinaturas Ativadas!', `${selectedComposerIds.length} compositores agora estão com status ativo.`);
+  const handleBulkActivate = async () => {
+    const results=await Promise.all(selectedComposerIds.map(id=>updateAdminComposerStatus(id,'active')));
+    const saved=results.filter(Boolean).length;
+    if(saved)toast.success('Assinaturas Ativadas!', `${saved} compositores agora estão com status ativo.`);
+    if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} assinaturas mantiveram o status anterior.`);
     setSelectedComposerIds([]);
     setBulkActionType(null);
   };
 
-  const handleBulkSuspend = () => {
-    selectedComposerIds.forEach(id => updateAdminComposerStatus(id, 'suspended'));
-    toast.warning('Assinaturas Suspensas', `${selectedComposerIds.length} compositores foram suspensos.`);
+  const handleBulkSuspend = async () => {
+    const results=await Promise.all(selectedComposerIds.map(id=>updateAdminComposerStatus(id,'suspended')));
+    const saved=results.filter(Boolean).length;
+    if(saved)toast.warning('Assinaturas Suspensas', `${saved} compositores foram suspensos.`);
+    if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} assinaturas mantiveram o status anterior.`);
     setSelectedComposerIds([]);
     setBulkActionType(null);
   };
 
-  const handleBulkVerify = () => {
-    selectedComposerIds.forEach(id => {
+  const handleBulkVerify = async () => {
+    const targets=selectedComposerIds.filter(id => {
       const comp = adminComposers.find(c => c.id === id);
-      if (comp && !comp.isVerified) {
-        toggleComposerVerified(id);
-      }
+      return comp && !comp.isVerified;
     });
-    toast.success('Selo Verificado em Lote!', `${selectedComposerIds.length} perfis foram verificados.`);
+    const results=await Promise.all(targets.map(id=>toggleComposerVerified(id)));
+    const saved=results.filter(Boolean).length;
+    if(saved)toast.success('Selo Verificado em Lote!', `${saved} perfis foram verificados.`);
+    if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} perfis mantiveram o estado anterior.`);
     setSelectedComposerIds([]);
     setBulkActionType(null);
   };
@@ -248,13 +253,15 @@ export const AdminComposersTab: React.FC = () => {
     setComposerToDelete(null);
   };
 
-  const handleStatusChange = (composer: AdminComposer, newStatus: SubscriptionStatus) => {
-    updateAdminComposerStatus(composer.id, newStatus);
-    toast.info('Status atualizado', `Assinatura de ${composer.stageName} alterada para "${newStatus.toUpperCase()}".`);
+  const handleStatusChange = async (composer: AdminComposer, newStatus: SubscriptionStatus) => {
+    const saved=await updateAdminComposerStatus(composer.id, newStatus);
+    if(saved)toast.info('Status atualizado', `Assinatura de ${composer.stageName} alterada para "${newStatus.toUpperCase()}".`);
+    else toast.error('Falha ao atualizar', 'O status anterior foi mantido.');
   };
 
-  const handleToggleVerified = (composer: AdminComposer) => {
-    toggleComposerVerified(composer.id);
+  const handleToggleVerified = async (composer: AdminComposer) => {
+    const saved=await toggleComposerVerified(composer.id);
+    if(!saved){toast.error('Falha ao atualizar', 'O selo anterior foi mantido.');return;}
     const willBeVerified = !composer.isVerified;
     if (willBeVerified) {
       toast.success('Selo Concedido!', `${composer.stageName} agora possui selo de verificado.`);

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AudioPlayer } from '../components/common/AudioPlayer';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
-import { getPublicComposer } from '../lib/database';
+import { getPublicComposer, incrementProfileView } from '../lib/database';
 import { getInterestRequestUrl } from '../lib/urls';
 import { 
   Music,
@@ -56,7 +56,16 @@ export const PublicProfilePage: React.FC = () => {
   useEffect(() => {
     let active=true; setCatalogLoading(true);
     if (!requestedUsername) { setCatalog(null); setCatalogLoading(false); return; }
-    getPublicComposer(requestedUsername).then(data=>{if(active)setCatalog(data);}).catch(()=>{if(active)setCatalog(null);}).finally(()=>{if(active)setCatalogLoading(false);});
+    getPublicComposer(requestedUsername).then(async data=>{
+      if (!active) return;
+      setCatalog(data);
+      if (data) {
+        try {
+          const counted=await incrementProfileView(requestedUsername);
+          if (active && counted) setCatalog(current=>current ? {...current,profile:{...current.profile,viewsCount:current.profile.viewsCount+1}} : current);
+        } catch { /* A métrica não impede a exibição do perfil. */ }
+      }
+    }).catch(()=>{if(active)setCatalog(null);}).finally(()=>{if(active)setCatalogLoading(false);});
     return()=>{active=false;};
   },[requestedUsername]);
 

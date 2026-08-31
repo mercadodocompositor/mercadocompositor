@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
-import { useApp } from '../context/AppContext';
+import { validateReleaseDocument, type PublicReleaseValidation } from '../lib/database';
+import { downloadReleasePdf } from '../lib/pdfGenerator';
 import { 
   ShieldCheck, 
   Search, 
@@ -14,39 +15,67 @@ import {
   Calendar, 
   DollarSign, 
   ArrowLeft,
-  Lock
+  Lock,
+  Download,
+  Loader2
 } from 'lucide-react';
 import { APP_CONFIG } from '../config/appConfig';
 
 export const ValidarDocumentoPage: React.FC = () => {
   const { code } = useParams<{ code?: string }>();
   const [searchParams] = useSearchParams();
-  const { releases } = useApp();
-
   const queryCode = searchParams.get('codigo') || code || '';
   const [inputCode, setInputCode] = useState(queryCode);
   const [searchedCode, setSearchedCode] = useState(queryCode.trim().toUpperCase());
+  const [matchedDocument, setMatchedDocument] = useState<PublicReleaseValidation | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!matchedDocument) return;
+    try {
+      setIsDownloadingPdf(true);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      downloadReleasePdf(matchedDocument);
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   useEffect(() => {
     if (queryCode) {
       setInputCode(queryCode);
-      setSearchedCode(queryCode.trim().toUpperCase());
+      const normalized = queryCode.trim().toUpperCase();
+      setSearchedCode(normalized);
+      setIsSearching(true);
+      setSearchError(null);
+      validateReleaseDocument(normalized)
+        .then(setMatchedDocument)
+        .catch(() => { setMatchedDocument(null); setSearchError('Não foi possível consultar o documento. Tente novamente.'); })
+        .finally(() => setIsSearching(false));
     }
   }, [queryCode]);
 
-  const matchedDocument = searchedCode
-    ? releases.find(
-        doc => doc.documentCode.toUpperCase() === searchedCode ||
-               doc.id.toUpperCase() === searchedCode ||
-               doc.requestId.toUpperCase() === searchedCode
-      )
-    : null;
-
   const hasSearched = Boolean(searchedCode);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSearchedCode(inputCode.trim().toUpperCase());
+    const normalized = inputCode.trim().toUpperCase();
+    setSearchedCode(normalized);
+    setMatchedDocument(null);
+    setSearchError(null);
+    if (!normalized) return;
+    setIsSearching(true);
+    try {
+      setMatchedDocument(await validateReleaseDocument(normalized));
+    } catch {
+      setSearchError('Não foi possível consultar o documento. Tente novamente.');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const formatDate = (date: string) => {
@@ -54,11 +83,7 @@ export const ValidarDocumentoPage: React.FC = () => {
     return year && month && day ? `${day}/${month}/${year}` : date;
   };
 
-  const maskDocument = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length <= 4) return '••••';
-    return `${'•'.repeat(Math.max(3, digits.length - 4))}${digits.slice(-4)}`;
-  };
+  const maskDocument = (last4: string) => `••••${last4.replace(/\D/g, '').slice(-4)}`;
 
   return (
     <div className="min-h-screen bg-[#060B18] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
@@ -107,7 +132,11 @@ export const ValidarDocumentoPage: React.FC = () => {
           {/* Search Results */}
           {hasSearched && (
             <div className="max-w-2xl mx-auto animate-fadeIn">
-              {matchedDocument ? (
+              {isSearching ? (
+                <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-8 text-center shadow-2xl"><p className="text-sm text-amber-300">Consultando documento...</p></div>
+              ) : searchError ? (
+                <div role="alert" className="bg-slate-900 border border-red-500/30 rounded-3xl p-8 text-center shadow-2xl"><AlertCircle className="w-8 h-8 mx-auto text-red-400" /><p className="mt-3 text-sm text-red-200">{searchError}</p></div>
+              ) : matchedDocument ? (
                 <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
                   
                   {/* Verified Badge */}
@@ -143,14 +172,14 @@ export const ValidarDocumentoPage: React.FC = () => {
                       <div className="space-y-1">
                         <span className="text-slate-400 block text-[10px] uppercase font-semibold">Compositor (Outorgante)</span>
                         <p className="text-white font-bold">{matchedDocument.composerName}</p>
-                        <p className="text-slate-400">CPF: {maskDocument(matchedDocument.composerCpf)}</p>
+                         <p className="text-slate-400">CPF: {maskDocument(matchedDocument.composerDocumentLast4)}</p>
                         <p className="text-slate-400">{matchedDocument.composerCityState}</p>
                       </div>
 
                       <div className="space-y-1">
                         <span className="text-slate-400 block text-[10px] uppercase font-semibold">Intérprete (Outorgado)</span>
                         <p className="text-white font-bold">{matchedDocument.buyerName}</p>
-                        <p className="text-slate-400">Doc: {maskDocument(matchedDocument.buyerDocument)}</p>
+                         <p className="text-slate-400">Doc: {maskDocument(matchedDocument.buyerDocumentLast4)}</p>
                         <p className="text-slate-400">{matchedDocument.buyerCityState}</p>
                       </div>
                     </div>
@@ -181,6 +210,31 @@ export const ValidarDocumentoPage: React.FC = () => {
                       <span>{matchedDocument.digitalSignature}</span>
                     </div>
 
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-800/80">
+                    <p className="text-[11px] text-slate-400 text-center sm:text-left">
+                      Baixe o termo original registrado em formato PDF com certificado de autenticidade.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleDownloadPdf}
+                      disabled={isDownloadingPdf}
+                      className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition shrink-0 disabled:opacity-50"
+                    >
+                      {isDownloadingPdf ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Gerando PDF Oficial...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          <span>Baixar Termo Oficial em PDF</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
                 </div>

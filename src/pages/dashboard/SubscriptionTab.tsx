@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { APP_CONFIG } from '../../config/appConfig';
 import { 
@@ -15,37 +15,12 @@ import {
 } from 'lucide-react';
 
 export const SubscriptionTab: React.FC = () => {
-  const { subscription, updateSubscriptionPlan, updateSubscriptionPaymentMethod } = useApp();
+  const { subscription } = useApp();
   const currentPlan = APP_CONFIG.plans.find(plan => plan.name === subscription.planName) || APP_CONFIG.plans[0];
-
-  const [methodModalOpen, setMethodModalOpen] = useState(false);
-  const [selectedMethod, setSelectedMethod] = useState<'Cartão de Crédito' | 'Pix'>(subscription.paymentMethod);
-  const [cardLast4, setCardLast4] = useState(subscription.cardLast4 || '8842');
-
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  const handleSavePaymentMethod = () => {
-    updateSubscriptionPaymentMethod(selectedMethod, cardLast4);
-    setMethodModalOpen(false);
-    showToast("Forma de pagamento atualizada com sucesso!");
-  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
       
-      {/* Toast */}
-      {toastMessage && (
-        <div className="fixed top-20 right-5 z-50 bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn">
-          <CheckCircle2 className="w-5 h-5" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {/* Header */}
       <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -70,19 +45,13 @@ export const SubscriptionTab: React.FC = () => {
       </div>
 
       <div className="space-y-3">
-        <div><h2 className="font-bold text-white text-lg">Planos disponíveis</h2><p className="text-xs text-slate-400">Escolha o limite ideal para o seu catálogo.</p></div>
+        <div><h2 className="font-bold text-white text-lg">Planos disponíveis</h2><p className="text-xs text-slate-400">Conheça os limites. Alterações são efetivadas somente após confirmação financeira.</p></div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {APP_CONFIG.plans.map(plan => {
             const selected = subscription.planName === plan.name;
             return (
-              <button
-                type="button"
+              <div
                 key={plan.name}
-                onClick={() => {
-                  updateSubscriptionPlan(plan.name, plan.priceMonthly);
-                  showToast(`Plano alterado para ${plan.name}.`);
-                }}
-                aria-pressed={selected}
                 className={`relative text-left p-5 rounded-2xl border transition-all ${
                   selected
                     ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-500/25 shadow-xl shadow-amber-500/10'
@@ -106,7 +75,7 @@ export const SubscriptionTab: React.FC = () => {
                   ))}
                 </ul>
                 {selected && <span className="text-[11px] text-emerald-700 font-extrabold block mt-4">✓ Plano selecionado</span>}
-              </button>
+              </div>
             );
           })}
         </div>
@@ -169,13 +138,13 @@ export const SubscriptionTab: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-          <button
-            onClick={() => setMethodModalOpen(true)}
+          <a
+            href={`mailto:${APP_CONFIG.contact.email}?subject=Alteração de plano ou pagamento`}
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition flex items-center gap-2"
           >
             <CreditCard className="w-4 h-4 text-amber-400" />
-            <span>Alterar Forma de Pagamento</span>
-          </button>
+            <span>Solicitar alteração de plano ou pagamento</span>
+          </a>
 
           <a href={`mailto:${APP_CONFIG.contact.email}?subject=Assinatura`} className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition">Falar sobre cancelamento ou reativação</a>
         </div>
@@ -211,68 +180,6 @@ export const SubscriptionTab: React.FC = () => {
           ))}
         </div>
       </div>
-
-      {/* Change Payment Method Modal */}
-      {methodModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-slate-100">
-            <h3 className="font-bold text-lg text-white">Alterar Forma de Pagamento</h3>
-
-            <div className="space-y-3 text-xs">
-              <label className="block text-slate-300">Escolha o método:</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedMethod('Cartão de Crédito')}
-                  className={`p-3 rounded-xl border text-center font-bold ${
-                    selectedMethod === 'Cartão de Crédito' ? 'bg-amber-500/10 border-amber-500 text-amber-400' : 'bg-slate-950 border-slate-800'
-                  }`}
-                >
-                  Cartão
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedMethod('Pix')}
-                  className={`p-3 rounded-xl border text-center font-bold ${
-                    selectedMethod === 'Pix' ? 'bg-amber-500/10 border-amber-500 text-amber-400' : 'bg-slate-950 border-slate-800'
-                  }`}
-                >
-                  Pix
-                </button>
-              </div>
-
-              {selectedMethod === 'Cartão de Crédito' && (
-                <div className="pt-2">
-                  <label className="block text-slate-400 mb-1">Últimos 4 dígitos do Cartão</label>
-                  <input
-                    type="text"
-                    value={cardLast4}
-                    onChange={e => setCardLast4(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setMethodModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSavePaymentMethod}
-                className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
-              >
-                Salvar Alteração
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

@@ -60,23 +60,25 @@ export const AdminSettingsTab: React.FC = () => {
     }
   };
 
-  const applySettings = () => {
-    updatePlatformSettings({
+  const applySettings = async () => {
+    const saved=await updatePlatformSettings({
       ...formData,
       planMonthlyPrice: Number(formData.planMonthlyPrice),
       planMaxSongs: Number(formData.planMaxSongs),
       platformFeePercentage: Number(formData.platformFeePercentage)
     });
 
-    toast.success('Configurações Salvas!', 'As preferências globais do SaaS foram atualizadas com sucesso.');
+    if(saved)toast.success('Configurações Salvas!', 'As preferências globais do SaaS foram atualizadas com sucesso.');
+    else toast.error('Falha ao salvar', 'As configurações anteriores foram mantidas.');
     setIsPinDialogOpen(false);
   };
 
-  const handleConfirmReset = () => {
-    resetPlatformSettings();
-    setFormData({ ...DEFAULT_PLATFORM_SETTINGS });
+  const handleConfirmReset = async () => {
+    const saved=await resetPlatformSettings();
+    if(saved)setFormData({ ...DEFAULT_PLATFORM_SETTINGS });
     setIsConfirmResetOpen(false);
-    toast.info('Configurações Restauradas', 'As configurações voltaram aos parâmetros de fábrica.');
+    if(saved)toast.info('Configurações Restauradas', 'As configurações voltaram aos parâmetros de fábrica.');
+    else toast.error('Falha ao restaurar', 'As configurações atuais foram mantidas.');
   };
 
   return (

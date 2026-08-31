@@ -18,19 +18,22 @@ begin
       where user_id = new.composer_id
       for update;
 
-    select greatest(1, plan_max_songs)
+    select sp.max_songs
       into max_songs
-      from public.platform_settings
-      where id = true;
+      from public.subscriptions sub
+      join public.subscription_plans sp on sp.name = sub.plan_name and sp.is_active
+      where sub.user_id = new.composer_id;
 
-    max_songs := coalesce(max_songs, 100);
+    if not found then
+      raise exception using errcode = '23514', message = 'A conta não possui um plano de assinatura válido.';
+    end if;
 
     select count(*)
       into current_song_count
       from public.songs
       where composer_id = new.composer_id;
 
-    if current_song_count >= max_songs then
+    if max_songs is not null and current_song_count >= max_songs then
       raise exception using
         errcode = 'P0001',
         message = format('Limite de %s músicas atingido para esta conta.', max_songs),
@@ -195,4 +198,3 @@ using (
 revoke execute on function public.enforce_song_write_rules() from public, anon, authenticated;
 revoke execute on function public.preserve_song_history() from public, anon, authenticated;
 grant execute on function public.is_valid_storage_object(text, text, jsonb) to authenticated;
-

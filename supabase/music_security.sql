@@ -78,9 +78,12 @@ revoke execute on function public.get_public_composer(text) from public;
 revoke execute on function public.get_featured_composers(integer) from public;
 revoke execute on function public.create_interest_request(uuid, jsonb) from public;
 revoke execute on function public.increment_song_play(uuid) from public;
+revoke execute on function public.increment_song_play(uuid, text) from public;
+revoke execute on function public.increment_profile_view(text, text) from public;
 
 grant execute on function public.get_public_composer(text) to anon, authenticated;
 grant execute on function public.get_featured_composers(integer) to anon, authenticated;
 grant execute on function public.create_interest_request(uuid, jsonb) to anon, authenticated;
-grant execute on function public.increment_song_play(uuid) to anon, authenticated;
-
+revoke execute on function public.increment_song_play(uuid) from anon, authenticated;
+grant execute on function public.increment_song_play(uuid, text) to anon, authenticated;
+grant execute on function public.increment_profile_view(text, text) to anon, authenticated;

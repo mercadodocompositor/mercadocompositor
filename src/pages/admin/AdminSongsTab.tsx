@@ -125,12 +125,13 @@ export const AdminSongsTab: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const handleFeatureToggle = (song: Song) => {
+  const handleFeatureToggle = async (song: Song) => {
     if (song.status !== 'published' && !featuredSongIds.includes(song.id)) {
       toast.warning('Ação Necessária', 'Publique a música antes de colocá-la em destaque na Vitrine.');
       return;
     }
-    toggleFeatureSong(song.id);
+    const saved=await toggleFeatureSong(song.id);
+    if(!saved){toast.error('Falha ao atualizar', 'O estado anterior do destaque foi mantido.');return;}
     const willBeFeatured = !featuredSongIds.includes(song.id);
     if (willBeFeatured) {
       toast.success('Em Destaque!', `"${song.title}" foi adicionada aos destaques da Home.`);
@@ -145,7 +146,7 @@ export const AdminSongsTab: React.FC = () => {
       return;
     }
     if (song.status === 'published' && featuredSongIds.includes(song.id)) {
-      toggleFeatureSong(song.id);
+      await toggleFeatureSong(song.id);
     }
     
     setPendingSongId(song.id);
