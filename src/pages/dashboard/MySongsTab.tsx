@@ -57,11 +57,13 @@ export const MySongsTab: React.FC = () => {
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
   const [page, setPage] = useState(1);
   const [pageSongs, setPageSongs] = useState<Song[]>(songs.slice(0, 12));
+  const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
   const [totalSongs, setTotalSongs] = useState(0);
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [catalogStats, setCatalogStats] = useState({ published: 0, drafts: 0, pending: 0, rejected: 0, plays: 0, interests: 0, genres: [] as string[] });
   const pageSize = 12;
+  const STORAGE_KEY = 'compositor-my-songs-filters-v1';
 
   // Available genres from current songs
   const genresList = useMemo(() => [...catalogStats.genres].sort((a, b) => a.localeCompare(b, 'pt-BR')), [catalogStats.genres]);
@@ -88,11 +90,92 @@ export const MySongsTab: React.FC = () => {
 
   const hasActiveFilters = Boolean(searchTerm) || genreFilter !== 'all' || statusFilter !== 'all';
 
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { searchTerm?: string; genreFilter?: string; statusFilter?: string; sortBy?: typeof sortBy; viewMode?: 'grid' | 'table' };
+      if (typeof parsed.searchTerm === 'string') setSearchTerm(parsed.searchTerm);
+      if (typeof parsed.genreFilter === 'string') setGenreFilter(parsed.genreFilter);
+      if (typeof parsed.statusFilter === 'string') setStatusFilter(parsed.statusFilter);
+      if (parsed.sortBy === 'recent' || parsed.sortBy === 'plays' || parsed.sortBy === 'interest' || parsed.sortBy === 'title') setSortBy(parsed.sortBy);
+      if (parsed.viewMode === 'grid' || parsed.viewMode === 'table') setViewMode(parsed.viewMode);
+    } catch {
+      // Ignora estado salvo inválido e usa valores padrões.
+    }
+  }, []);
+
+  useEffect(() => {
+    const payload = { searchTerm, genreFilter, statusFilter, sortBy, viewMode };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }, [genreFilter, searchTerm, sortBy, statusFilter, viewMode]);
+
+  useEffect(() => {
+    setSelectedSongIds(current => current.filter(id => pageSongs.some(song => song.id === id)));
+  }, [pageSongs]);
+
   const clearFilters = () => {
     setSearchTerm('');
     setGenreFilter('all');
     setStatusFilter('all');
     setPage(1);
+  };
+
+  const toggleSongSelection = (songId: string) => {
+    setSelectedSongIds(current => current.includes(songId) ? current.filter(id => id !== songId) : [...current, songId]);
+  };
+
+  const selectVisibleSongs = () => {
+    setSelectedSongIds(Array.from(new Set([...selectedSongIds, ...filteredSongs.map(song => song.id)])));
+  };
+
+  const clearSelection = () => setSelectedSongIds([]);
+
+  const handleBulkStatusChange = async (nextStatus: SongStatus) => {
+    if (selectedSongIds.length === 0) {
+      showNotice('Selecione ao menos uma música para aplicar a ação.', 'error');
+      return;
+    }
+
+    const selectedSongs = selectedSongIds
+      .map(id => pageSongs.find(song => song.id === id))
+      .filter((song): song is Song => Boolean(song));
+
+    if (selectedSongs.length === 0) {
+      showNotice('Músicas selecionadas não estão mais disponíveis nesta página.', 'error');
+      return;
+    }
+
+    if (nextStatus === 'published') {
+      const blocked = selectedSongs.filter(song => !getSongReadiness(song).isReady);
+      if (blocked.length > 0) {
+        showNotice(`Algumas músicas não estão prontas: ${blocked.map(song => song.title).join(', ')}`, 'error');
+        return;
+      }
+    }
+
+    let updatedCount = 0;
+    for (const song of selectedSongs) {
+      const targetStatus = nextStatus === 'published'
+        ? getSongToggleStatus(song.status, platformSettings.requireApprovalForNewSongs, isAdminAuthenticated)
+        : 'draft';
+
+      if (targetStatus === song.status) continue;
+      const success = await updateSong(song.id, { status: targetStatus });
+      if (success) updatedCount += 1;
+    }
+
+    setSelectedSongIds([]);
+    setRefreshVersion(value => value + 1);
+
+    if (updatedCount > 0) {
+      showNotice(nextStatus === 'published'
+        ? `${updatedCount} música(s) foram publicadas.`
+        : `${updatedCount} música(s) foram movidas para rascunho.`, 'success');
+      return;
+    }
+
+    showNotice('Nenhuma música foi atualizada.', 'error');
   };
 
   const showNotice = (message: string, type: 'success' | 'error' = 'success') => {
@@ -137,9 +220,13 @@ export const MySongsTab: React.FC = () => {
   };
 
   const toggleStatus = async (song: Song) => {
-    if (song.status !== 'published' && song.status !== 'pending_approval' && (!song.title.trim() || !song.lyrics.trim() || (!song.audioUrl && !song.originalAudioPath) || !song.previewAudioUrl)) {
-      showNotice('Complete título, letra, áudio original e prévia pública antes de publicar.', 'error');
-      return;
+    if (song.status !== 'published' && song.status !== 'pending_approval') {
+      const readiness = getSongReadiness(song);
+      if (!readiness.isReady) {
+        const missingText = readiness.missing.map(item => item).join(', ');
+        showNotice(`Não foi possível publicar “${song.title}”: faltam ${missingText}.`, 'error');
+        return;
+      }
     }
     const newStatus = getSongToggleStatus(song.status, platformSettings.requireApprovalForNewSongs, isAdminAuthenticated);
     setPendingSongId(song.id);
@@ -156,6 +243,23 @@ export const MySongsTab: React.FC = () => {
     const [year, month, day] = date.split('-');
     return year && month && day ? `${day}/${month}/${year}` : date;
   };
+
+  const getSongReadiness = (song: Song) => {
+    const missing: string[] = [];
+    if (!song.title.trim()) missing.push('título');
+    if (!song.lyrics.trim()) missing.push('letra');
+    if (!song.audioUrl && !song.originalAudioPath) missing.push('áudio original');
+    if (!song.previewAudioUrl) missing.push('prévia pública');
+    return {
+      isReady: missing.length === 0,
+      missing
+    };
+  };
+
+  const readyToPublishCount = useMemo(
+    () => pageSongs.filter(song => getSongReadiness(song).isReady).length,
+    [pageSongs]
+  );
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -204,15 +308,24 @@ export const MySongsTab: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
           ['Publicadas', catalogStats.published.toLocaleString('pt-BR')],
           ['Rascunhos', catalogStats.drafts.toLocaleString('pt-BR')],
           ['Em análise', catalogStats.pending.toLocaleString('pt-BR')],
           ['Reproduções', catalogStats.plays.toLocaleString('pt-BR')],
-          ['Interessados', catalogStats.interests.toLocaleString('pt-BR')]
+          ['Prontas p/ publicar', readyToPublishCount.toLocaleString('pt-BR')]
         ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3"><span className="block text-[11px] uppercase tracking-wider text-slate-500">{label}</span><strong className="mt-1 block text-xl text-white">{value}</strong></div>)}
       </div>
+
+      {pageSongs.some(song => !getSongReadiness(song).isReady) && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <strong className="block">Checklist de publicação:</strong>
+          <span className="text-xs text-amber-200/80">
+            {pageSongs.filter(song => !getSongReadiness(song).isReady).length} música(s) ainda precisam de dados antes de entrar no perfil público.
+          </span>
+        </div>
+      )}
 
       {notice && (
         <div role={notice.type === 'error' ? 'alert' : 'status'} className={`rounded-2xl border px-4 py-3 text-sm flex items-center justify-between gap-3 ${notice.type === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'}`}>
@@ -317,6 +430,26 @@ export const MySongsTab: React.FC = () => {
 
       </div>
 
+      {selectedSongIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-3">
+          <span className="text-xs text-slate-300">
+            {selectedSongIds.length} selecionada{selectedSongIds.length > 1 ? 's' : ''}
+          </span>
+          <button type="button" onClick={selectVisibleSongs} className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] font-bold text-slate-200 hover:bg-slate-800">
+            Selecionar visíveis
+          </button>
+          <button type="button" onClick={() => void handleBulkStatusChange('published')} className="rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-500">
+            Publicar seleção
+          </button>
+          <button type="button" onClick={() => void handleBulkStatusChange('draft')} className="rounded-xl bg-slate-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-slate-600">
+            Mover para rascunho
+          </button>
+          <button type="button" onClick={clearSelection} className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-800">
+            Limpar seleção
+          </button>
+        </div>
+      )}
+
       {/* Songs Display */}
       {isPageLoading ? (
         <div className="flex min-h-64 items-center justify-center rounded-3xl border border-slate-800 bg-slate-900"><LoaderCircle className="h-7 w-7 animate-spin text-amber-400" /></div>
@@ -348,7 +481,18 @@ export const MySongsTab: React.FC = () => {
               className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl hover:border-slate-700 transition flex flex-col justify-between space-y-4"
             >
               <div className="space-y-3">
-                
+                <div className="flex items-center justify-between">
+                  <label className="inline-flex items-center gap-2 text-[11px] text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={selectedSongIds.includes(song.id)}
+                      onChange={() => toggleSongSelection(song.id)}
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500"
+                    />
+                    Selecionar
+                  </label>
+                </div>
+
                 {/* Top Card Image & Badge */}
                 <div className="relative rounded-2xl overflow-hidden h-40 bg-slate-950 border border-slate-800">
                   <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
@@ -394,6 +538,21 @@ export const MySongsTab: React.FC = () => {
                         : 'Valor sob consulta'}
                     </span>
                   </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-[11px]">
+                  <span className={getSongReadiness(song).isReady ? 'text-emerald-300 font-semibold' : 'text-amber-300 font-semibold'}>
+                    {getSongReadiness(song).isReady ? 'Pronta para publicar' : `Falta: ${getSongReadiness(song).missing.slice(0, 2).join(', ')}`}
+                  </span>
+                  {!getSongReadiness(song).isReady && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/dashboard/musicas/${song.id}/editar`)}
+                      className="text-[10px] uppercase tracking-wide text-amber-300 hover:text-amber-200"
+                    >
+                      Completar
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -480,11 +639,19 @@ export const MySongsTab: React.FC = () => {
               <tbody className="divide-y divide-slate-800/80">
                 {filteredSongs.map(song => (
                   <tr key={song.id} className="hover:bg-slate-800/40 transition">
-                    <td className="p-4 flex items-center gap-3">
-                      <img src={song.coverUrl} alt={song.title} className="w-10 h-10 rounded-xl object-cover" />
-                      <div>
-                        <strong className="text-white text-sm block">{song.title}</strong>
-                        <span className="text-[11px] text-slate-400">{song.authors}</span>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedSongIds.includes(song.id)}
+                          onChange={() => toggleSongSelection(song.id)}
+                          className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500"
+                        />
+                        <img src={song.coverUrl} alt={song.title} className="w-10 h-10 rounded-xl object-cover" />
+                        <div>
+                          <strong className="text-white text-sm block">{song.title}</strong>
+                          <span className="text-[11px] text-slate-400">{song.authors}</span>
+                        </div>
                       </div>
                     </td>
                     <td className="p-4 font-semibold text-amber-400">{song.genre}</td>
