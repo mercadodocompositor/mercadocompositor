@@ -24,11 +24,20 @@ View your app in AI Studio: https://ai.studio/apps/2702b530-9daa-42bc-8ac3-934f3
 1. Abra **Project Settings > API** no seu projeto Supabase.
 2. Copie `.env.example` para `.env.local` e configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
 3. Execute [`supabase/schema.sql`](supabase/schema.sql) integralmente no SQL Editor. Ele cria tabelas relacionais, RLS, funções públicas seguras e buckets de Storage.
-4. Em **Authentication > URL Configuration**, adicione a URL local (`http://localhost:3000`) e a URL de produção aos Redirect URLs.
+4. Execute [`supabase/dashboard_metrics.sql`](supabase/dashboard_metrics.sql) para iniciar as métricas históricas agregadas do dashboard. A série começa no dia da aplicação; contadores antigos não são distribuídos artificialmente no passado.
+5. Em **Authentication > URL Configuration**, adicione a URL local (`http://localhost:3000`) e a URL de produção aos Redirect URLs.
 
 Use como **Site URL** o domínio de produção e autorize também os callbacks `/autenticacao` dos ambientes local e publicado. O cadastro suporta confirmação de e-mail e a recuperação redireciona para `/autenticacao?modo=new-password`.
 
 O frontend usa somente a chave pública `anon`/publishable. Nunca coloque a `service_role` em variáveis `VITE_*`.
+
+## Qualidade e observabilidade
+
+- `npm run check`: testes unitários, TypeScript e build de produção.
+- `npm run test:e2e`: cenários públicos e responsivos no Chrome com Playwright. Defina `E2E_EMAIL` e `E2E_PASSWORD` apenas no ambiente de CI para habilitar também o cenário autenticado.
+- `npm run test:smoke`: verifica site e RPCs críticas já publicadas.
+- `VITE_OBSERVABILITY_ENDPOINT`: endpoint opcional que recebe erros e Web Vitals sanitizados. Nenhum CPF, documento, e-mail, token ou WhatsApp é enviado.
+- `VITE_APP_RELEASE`: identificador do deploy usado para correlacionar falhas com uma versão.
 
 Para liberar o painel administrativo, crie primeiro a conta do proprietário e execute a instrução comentada no final do schema usando o UUID dessa conta. A chave administrativa nunca fica no frontend.
 

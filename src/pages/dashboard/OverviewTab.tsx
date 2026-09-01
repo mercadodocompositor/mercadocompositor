@@ -3,26 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { APP_CONFIG } from '../../config/appConfig';
 import { MusicPlayer } from '../../components/dashboard/MusicPlayer';
+import { SUBSCRIPTION_STATUS_META } from '../../lib/subscriptionStatus';
+import { DashboardCard, DashboardSectionHeader } from '../../components/dashboard/DashboardUI';
+import { MetricsHistory } from '../../components/dashboard/MetricsHistory';
 import { 
   Music2, 
   Eye, 
   Headphones, 
   MessageSquare, 
   FileCheck, 
-  ShieldCheck, 
   TrendingUp, 
   ArrowUpRight, 
-  Clock, 
   AlertCircle,
   PlusCircle,
-  ChevronRight,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Circle,
+  CreditCard,
+  UserRound,
+  ListTodo,
+  PenLine
 } from 'lucide-react';
 
 export const OverviewTab: React.FC = () => {
   const navigate = useNavigate();
-  const { profile, songs, requests, releases, subscription } = useApp();
+  const { profile, songs, requests, releases, subscription, dashboardMetrics } = useApp();
 
   const totalPlays = songs.reduce((acc, song) => acc + song.playCount, 0);
   const pendingRequests = requests.filter(r => r.status === 'nova' || r.status === 'em_negociacao');
@@ -30,6 +35,85 @@ export const OverviewTab: React.FC = () => {
 
   // Top songs
   const topSongs = [...songs].sort((a, b) => b.playCount - a.playCount).slice(0, 3);
+  const featuredSong = topSongs[0];
+  const subscriptionMeta = SUBSCRIPTION_STATUS_META[subscription.status];
+  const rejectedSongs = songs.filter(song => song.status === 'rejected');
+  const draftSongs = songs.filter(song => song.status === 'draft');
+
+  const onboardingItems = [
+    { label: 'Dados de contato e identificação', complete: Boolean(profile.name && profile.email && profile.whatsapp && profile.cpf), path: '/dashboard/perfil' },
+    { label: 'Foto e apresentação artística', complete: Boolean(profile.photo && profile.bio.trim().length >= 40), path: '/dashboard/perfil' },
+    { label: 'Localização e gêneros musicais', complete: Boolean(profile.city && profile.state && profile.genres.length), path: '/dashboard/perfil' },
+    { label: 'Primeira música cadastrada', complete: songs.length > 0, path: '/dashboard/musicas/nova' },
+    { label: 'Prévia de áudio adicionada', complete: songs.some(song => Boolean(song.previewAudioUrl)), path: '/dashboard/musicas' },
+    { label: 'Música publicada no catálogo', complete: songs.some(song => song.status === 'published'), path: '/dashboard/musicas' },
+  ];
+  const completedOnboarding = onboardingItems.filter(item => item.complete).length;
+  const onboardingPercent = Math.round((completedOnboarding / onboardingItems.length) * 100);
+
+  const pendingActions = [
+    ...(subscription.status !== 'active' ? [{
+      id: 'subscription',
+      title: subscriptionMeta.label,
+      description: subscriptionMeta.nextStep,
+      action: subscription.status === 'pending' ? 'Acompanhar' : 'Regularizar',
+      path: '/dashboard/assinatura',
+      tone: subscription.status === 'suspended' ? 'red' : 'amber',
+      icon: CreditCard,
+    }] : []),
+    ...(confirmedPaymentRequests.length ? [{
+      id: 'release',
+      title: `${confirmedPaymentRequests.length} ${confirmedPaymentRequests.length === 1 ? 'liberação pronta para emitir' : 'liberações prontas para emitir'}`,
+      description: 'O pagamento foi confirmado e o documento pode ser gerado.',
+      action: 'Emitir agora',
+      path: `/dashboard/solicitacoes/${confirmedPaymentRequests[0].id}`,
+      tone: 'emerald',
+      icon: FileCheck,
+    }] : []),
+    ...(pendingRequests.length ? [{
+      id: 'requests',
+      title: `${pendingRequests.length} ${pendingRequests.length === 1 ? 'solicitação precisa' : 'solicitações precisam'} de atenção`,
+      description: 'Responda os interessados e mantenha as negociações atualizadas.',
+      action: 'Responder',
+      path: `/dashboard/solicitacoes/${pendingRequests[0].id}`,
+      tone: 'amber',
+      icon: MessageSquare,
+    }] : []),
+    ...(rejectedSongs.length ? [{
+      id: 'rejected',
+      title: `${rejectedSongs.length} ${rejectedSongs.length === 1 ? 'música rejeitada' : 'músicas rejeitadas'}`,
+      description: 'Revise os dados da obra antes de enviá-la novamente para análise.',
+      action: 'Corrigir',
+      path: `/dashboard/musicas/${rejectedSongs[0].id}/editar`,
+      tone: 'red',
+      icon: AlertCircle,
+    }] : []),
+    ...(onboardingPercent < 100 ? [{
+      id: 'profile',
+      title: `Configuração da conta em ${onboardingPercent}%`,
+      description: 'Conclua as etapas essenciais para apresentar um catálogo profissional.',
+      action: 'Continuar',
+      path: onboardingItems.find(item => !item.complete)?.path || '/dashboard/perfil',
+      tone: 'slate',
+      icon: UserRound,
+    }] : []),
+    ...(draftSongs.length ? [{
+      id: 'drafts',
+      title: `${draftSongs.length} ${draftSongs.length === 1 ? 'rascunho não publicado' : 'rascunhos não publicados'}`,
+      description: 'Continue a edição quando estiver pronto para enviar as obras à análise.',
+      action: 'Revisar',
+      path: `/dashboard/musicas/${draftSongs[0].id}/editar`,
+      tone: 'slate',
+      icon: PenLine,
+    }] : []),
+  ];
+
+  const actionToneClasses: Record<string, string> = {
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    amber: 'border-amber-200 bg-amber-50 text-amber-700',
+    red: 'border-red-200 bg-red-50 text-red-700',
+    slate: 'border-slate-200 bg-slate-50 text-slate-700',
+  };
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -59,30 +143,74 @@ export const OverviewTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Action Alerts / Notices */}
-      {confirmedPaymentRequests.length > 0 && (
-        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-start sm:items-center justify-between gap-4 text-xs text-emerald-800">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-100 rounded-xl text-emerald-700">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="font-bold text-slate-900 text-sm">
-                {confirmedPaymentRequests.length} Pagamento(s) Confirmado(s) Aguardando Liberação!
-              </p>
-              <p className="text-slate-600 text-xs">
-                O comprador efetuou o pagamento direto. Emita o termo de liberação agora.
-              </p>
-            </div>
+      {/* Subscription status */}
+      <section className={`rounded-2xl border p-4 ${subscriptionMeta.panelClass}`} aria-labelledby="subscription-status-title">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <CreditCard className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <div className="flex-1">
+            <h2 id="subscription-status-title" className="text-sm font-bold">{subscriptionMeta.label} · {subscription.planName}</h2>
+            <p className="mt-0.5 text-xs opacity-80">{subscriptionMeta.description}</p>
           </div>
-          <button
-            onClick={() => navigate('/dashboard/solicitacoes')}
-            className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs shrink-0 hover:bg-emerald-700 transition"
-          >
-            Emitir Liberação
+          <button type="button" onClick={() => navigate('/dashboard/assinatura')} className="min-h-11 rounded-xl border border-current/20 px-4 py-2 text-xs font-bold hover:bg-white/50">
+            Ver assinatura
           </button>
         </div>
-      )}
+      </section>
+
+      {/* Prioritized work queue and onboarding */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <DashboardCard className="xl:col-span-3" aria-labelledby="pending-actions-title">
+          <div className="flex items-center justify-between border-b border-slate-100 p-5">
+            <div>
+              <h2 id="pending-actions-title" className="flex items-center gap-2 font-serif text-lg font-bold text-[#0A1128]"><ListTodo className="h-5 w-5 text-amber-600" /> Central de pendências</h2>
+              <p className="mt-0.5 text-xs text-slate-500">Ações organizadas por impacto no seu catálogo.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{pendingActions.length} {pendingActions.length === 1 ? 'ação' : 'ações'}</span>
+          </div>
+          <div className="divide-y divide-slate-100 px-5">
+            {pendingActions.slice(0, 5).map(item => {
+              const Icon = item.icon;
+              return (
+                <div key={item.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${actionToneClasses[item.tone]}`}><Icon className="h-5 w-5" aria-hidden="true" /></div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
+                    <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{item.description}</p>
+                  </div>
+                  <button type="button" onClick={() => navigate(item.path)} className="min-h-11 shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800">{item.action}</button>
+                </div>
+              );
+            })}
+            {pendingActions.length === 0 && (
+              <div className="py-10 text-center">
+                <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-500" aria-hidden="true" />
+                <p className="mt-3 text-sm font-bold text-slate-800">Tudo em dia por aqui</p>
+                <p className="mt-1 text-xs text-slate-500">Não há ações urgentes no seu catálogo.</p>
+              </div>
+            )}
+          </div>
+        </DashboardCard>
+
+        <DashboardCard className="p-5 xl:col-span-2" aria-labelledby="onboarding-title">
+          <div className="flex items-start justify-between gap-4">
+            <div><h2 id="onboarding-title" className="font-serif text-lg font-bold text-[#0A1128]">Primeiros passos</h2><p className="mt-0.5 text-xs text-slate-500">Prepare sua vitrine para receber interessados.</p></div>
+            <span className="text-sm font-extrabold text-amber-700">{onboardingPercent}%</span>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Progresso da configuração" aria-valuemin={0} aria-valuemax={100} aria-valuenow={onboardingPercent}>
+            <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${onboardingPercent}%` }} />
+          </div>
+          <div className="mt-4 space-y-1">
+            {onboardingItems.map(item => (
+              <button key={item.label} type="button" onClick={() => !item.complete && navigate(item.path)} disabled={item.complete} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-slate-50 disabled:cursor-default">
+                {item.complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden="true" /> : <Circle className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />}
+                <span className={`text-xs ${item.complete ? 'text-slate-400 line-through' : 'font-semibold text-slate-700'}`}>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </DashboardCard>
+      </div>
+
+      <MetricsHistory points={dashboardMetrics} />
 
       {/* STATS SECTION - Editorial Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -136,13 +264,11 @@ export const OverviewTab: React.FC = () => {
         {/* Subscription Status */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-1">
           <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Assinatura</p>
-          <p className={`text-xl font-serif italic capitalize ${
-            subscription.status === 'active' ? 'text-emerald-600' : 'text-red-500'
-          }`}>
-            {subscription.status === 'active' ? 'Ativa' : 'Suspensa'}
+          <p className={`text-xl font-serif italic ${subscriptionMeta.textClass}`}>
+            {subscription.status === 'active' ? 'Ativa' : subscription.status === 'pending' ? 'Pendente' : subscription.status === 'suspended' ? 'Suspensa' : 'Cancelada'}
           </p>
           <span className="text-[10px] text-slate-400 block truncate">
-            {subscription.planName}
+            {subscriptionMeta.shortLabel}
           </span>
         </div>
 
@@ -152,21 +278,15 @@ export const OverviewTab: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* RECENT TRACKS TABLE CONTAINER */}
-        <div className="lg:col-span-8 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-            <div>
-              <h3 className="font-serif text-lg font-bold text-[#0A1128]">Catálogo de Obras</h3>
-              <p className="text-xs text-slate-400">Visão geral de suas composições recentes</p>
-            </div>
-            <button
+        <DashboardCard className="flex flex-col overflow-hidden lg:col-span-8">
+          <DashboardSectionHeader title="Catálogo de Obras" description="Visão geral de suas composições recentes" action={<button
               onClick={() => navigate('/dashboard/musicas')}
-              className="text-xs text-amber-600 font-bold hover:text-amber-700 transition"
+              className="min-h-11 rounded-xl px-3 text-xs font-bold text-amber-700 hover:bg-amber-50"
             >
               Ver todas →
-            </button>
-          </div>
+            </button>} />
 
-          <div className="overflow-x-auto flex-1">
+          <div className="hidden overflow-x-auto sm:block flex-1">
             <table className="w-full text-left">
               <thead className="bg-slate-50/80 text-[10px] uppercase text-slate-400 font-bold tracking-wider">
                 <tr>
@@ -198,7 +318,7 @@ export const OverviewTab: React.FC = () => {
                     <td className="px-6 py-4 text-xs font-semibold text-slate-700">{song.playCount} plays</td>
                     <td className="px-6 py-4 text-right">
                       <button 
-                        onClick={() => navigate('/dashboard/musicas')}
+                        onClick={() => navigate(`/dashboard/musicas/${song.id}/editar`)}
                         className="text-amber-600 font-bold hover:text-amber-700 text-xs"
                       >
                         Gerenciar
@@ -224,7 +344,20 @@ export const OverviewTab: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </div>
+          <div className="divide-y divide-slate-100 sm:hidden">
+            {songs.slice(0, 5).map(song => (
+              <article key={song.id} className="p-4">
+                <div className="flex items-start gap-3">
+                  {song.coverUrl ? <img src={song.coverUrl} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100"><Music2 className="h-5 w-5 text-slate-400" /></div>}
+                  <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold text-slate-900">{song.title}</h3><p className="mt-0.5 text-xs text-slate-500">{song.genre} · {song.playCount} reproduções</p></div>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${song.status === 'published' ? 'bg-emerald-100 text-emerald-700' : song.status === 'pending_approval' ? 'bg-amber-100 text-amber-700' : song.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{song.status === 'published' ? 'Publicada' : song.status === 'pending_approval' ? 'Em análise' : song.status === 'rejected' ? 'Rejeitada' : 'Rascunho'}</span>
+                </div>
+                <button type="button" onClick={() => navigate(`/dashboard/musicas/${song.id}/editar`)} className="mt-3 min-h-11 w-full rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50">Gerenciar música</button>
+              </article>
+            ))}
+            {songs.length === 0 && <div className="p-8 text-center text-sm text-slate-500">Seu catálogo ainda está vazio.</div>}
+          </div>
+        </DashboardCard>
 
         {/* RIGHT PANEL: EDITORIAL PREVIEW CARD */}
         <div className="lg:col-span-4 flex flex-col">
@@ -238,24 +371,18 @@ export const OverviewTab: React.FC = () => {
               </h4>
               
               <div className="flex flex-col items-center justify-center text-center my-4">
-                <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 mb-4 shadow-xl flex items-center justify-center text-3xl font-serif italic font-bold text-[#0A1128]">
-                  {topSongs[0]?.title?.slice(0, 2) || profile.stageName.slice(0, 2)}
-                </div>
-                <h5 className="text-xl font-serif italic mb-1">{topSongs[0]?.title || 'Seu perfil público'}</h5>
-                <p className="text-slate-400 text-xs">{profile.stageName}{topSongs[0] ? ` • ${topSongs[0].genre}` : ''}</p>
-                
-                {/* Mock Waveform Bars */}
-                <div className="flex items-end justify-center gap-1.5 h-12 my-6 w-full">
-                  <div className="w-1 bg-amber-500 h-[25%] rounded-full opacity-40" />
-                  <div className="w-1 bg-amber-500 h-[45%] rounded-full opacity-60" />
-                  <div className="w-1 bg-amber-500 h-[75%] rounded-full" />
-                  <div className="w-1 bg-amber-500 h-[95%] rounded-full shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse" />
-                  <div className="w-1 bg-amber-500 h-[65%] rounded-full" />
-                  <div className="w-1 bg-amber-500 h-[85%] rounded-full shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                  <div className="w-1 bg-amber-500 h-[35%] rounded-full opacity-50" />
-                  <div className="w-1 bg-amber-500 h-[55%] rounded-full opacity-60" />
-                  <div className="w-1 bg-amber-500 h-[80%] rounded-full" />
-                  <div className="w-1 bg-amber-500 h-[40%] rounded-full opacity-40" />
+                {featuredSong?.coverUrl ? (
+                  <img src={featuredSong.coverUrl} alt={`Capa de ${featuredSong.title}`} className="mb-4 h-28 w-28 rounded-2xl object-cover shadow-xl" />
+                ) : (
+                  <div className="mb-4 flex h-28 w-28 items-center justify-center rounded-2xl bg-slate-800 text-slate-400">
+                    <Music2 className="h-9 w-9" aria-hidden="true" />
+                  </div>
+                )}
+                <h5 className="text-xl font-serif italic mb-1">{featuredSong?.title || 'Seu perfil público'}</h5>
+                <p className="text-slate-400 text-xs">{profile.stageName}{featuredSong ? ` • ${featuredSong.genre}` : ''}</p>
+                <div className="my-6 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-left">
+                  <p className="text-xs font-semibold text-white">{featuredSong?.previewAudioUrl ? 'Prévia pública disponível' : 'Nenhuma prévia pública disponível'}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">{featuredSong?.previewAudioUrl ? 'O visitante poderá ouvir a prévia protegida desta música.' : 'Adicione uma prévia a uma música publicada para habilitar a audição.'}</p>
                 </div>
 
                 <div className="flex flex-col w-full gap-2.5">
@@ -269,23 +396,13 @@ export const OverviewTab: React.FC = () => {
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-800/80 flex justify-between items-center">
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Duração Prévia</p>
-                <p className="text-xs text-white font-mono">1:00 / 3:42</p>
-              </div>
-              <div className="w-8 h-8 rounded-full border border-amber-500/50 flex items-center justify-center text-amber-400">
-                <div className="w-2 h-2 bg-amber-500 transform rotate-45 ml-0.5" />
-              </div>
-            </div>
-
           </div>
         </div>
 
       </div>
 
       {/* RECENT REQUESTS SECTION */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+      <DashboardCard className="p-4 sm:p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>
             <h3 className="font-serif text-lg font-bold text-[#0A1128]">Solicitações Recentes de Intérpretes</h3>
@@ -308,7 +425,7 @@ export const OverviewTab: React.FC = () => {
                   <MessageSquare className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-900 text-sm">{req.buyerName} ({req.buyerStageName})</h4>
+                  <h4 className="font-bold text-slate-900 text-sm">{req.buyerName}{req.buyerStageName ? ` (${req.buyerStageName})` : ''}</h4>
                   <p className="text-slate-500">
                     Música: <strong className="text-amber-700">“{req.songTitle}”</strong> • {req.buyerCityState}
                   </p>
@@ -326,7 +443,7 @@ export const OverviewTab: React.FC = () => {
                 </span>
 
                 <button
-                  onClick={() => navigate('/dashboard/solicitacoes')}
+                  onClick={() => navigate(`/dashboard/solicitacoes/${req.id}`)}
                   className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition"
                 >
                   Ver Detalhes
@@ -342,7 +459,7 @@ export const OverviewTab: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
+      </DashboardCard>
 
       {/* Ferramenta secundária: fica após os dados comerciais do catálogo. */}
       <MusicPlayer />

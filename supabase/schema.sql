@@ -616,3 +616,4 @@ create policy "release documents owner or admin read" on storage.objects for sel
 -- Para ativar uploads validados no servidor, execute supabase/media_validation.sql.
 -- Para ativar a paginação server-side, execute supabase/pagination.sql.
 -- Para reforçar o isolamento do áudio original, execute por último supabase/music_security.sql.
+-- Para ativar métricas históricas agregadas, execute supabase/dashboard_metrics.sql.

@@ -14,6 +14,7 @@ const checks = [
   { name: 'Catálogo público', url: `${supabaseUrl}/rest/v1/rpc/get_featured_composers`, method: 'POST', headers: apiHeaders, body: JSON.stringify({ p_limit: 1 }), expected: [200] },
   { name: 'Perfil público sem áudio original', url: `${supabaseUrl}/rest/v1/rpc/get_public_composer`, method: 'POST', headers: apiHeaders, body: JSON.stringify({ p_username: 'mercado' }), expected: [200], inspect: body => !/("original_audio_path"|"audioUrl"|song-originals)/i.test(body) },
   { name: 'Estatísticas privadas', url: `${supabaseUrl}/rest/v1/rpc/get_my_song_stats`, method: 'POST', headers: apiHeaders, body: '{}', expected: [401, 403] },
+  { name: 'Métricas históricas privadas', url: `${supabaseUrl}/rest/v1/rpc/get_my_dashboard_metrics`, method: 'POST', headers: apiHeaders, body: JSON.stringify({ p_days: 30 }), expected: [401, 403] },
   { name: 'Validador sem sessão', url: `${supabaseUrl}/functions/v1/validate-media-upload`, method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json' }, body: '{}', expected: [401] },
 ];
 

@@ -1,22 +1,19 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { APP_CONFIG } from '../../config/appConfig';
+import { SUBSCRIPTION_STATUS_META } from '../../lib/subscriptionStatus';
+import { DashboardCard, DashboardSectionHeader } from '../../components/dashboard/DashboardUI';
 import { 
   CreditCard, 
-  ShieldCheck, 
-  ShieldAlert, 
-  Calendar, 
   FileText, 
   CheckCircle2, 
-  XCircle, 
-  AlertCircle, 
-  RefreshCw,
-  QrCode
+  Info
 } from 'lucide-react';
 
 export const SubscriptionTab: React.FC = () => {
   const { subscription } = useApp();
   const currentPlan = APP_CONFIG.plans.find(plan => plan.name === subscription.planName) || APP_CONFIG.plans[0];
+  const statusMeta = SUBSCRIPTION_STATUS_META[subscription.status];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
@@ -33,19 +30,14 @@ export const SubscriptionTab: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-            subscription.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
-            subscription.status === 'pending' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
-            subscription.status === 'suspended' ? 'bg-red-500/20 text-red-300 border border-red-500/40' :
-            'bg-slate-800 text-slate-400 border border-slate-700'
-          }`}>
-            Status: {subscription.status.toUpperCase()}
+          <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusMeta.badgeClass}`}>
+            {statusMeta.label}
           </span>
         </div>
       </div>
 
-      <div className="space-y-3">
-        <div><h2 className="font-bold text-white text-lg">Planos disponíveis</h2><p className="text-xs text-slate-400">Conheça os limites. Alterações são efetivadas somente após confirmação financeira.</p></div>
+      <section className="space-y-3" aria-labelledby="available-plans-title">
+        <div><h2 id="available-plans-title" className="font-bold text-slate-900 text-lg">Planos disponíveis</h2><p className="text-xs text-slate-500">Conheça os limites. Alterações são efetivadas somente após confirmação financeira.</p></div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {APP_CONFIG.plans.map(plan => {
             const selected = subscription.planName === plan.name;
@@ -79,21 +71,14 @@ export const SubscriptionTab: React.FC = () => {
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* Mandatory Warning Banner when Suspended required by Section 13 */}
-      {subscription.status === 'suspended' && (
-        <div className="p-4 bg-red-500/15 border border-red-500/40 rounded-2xl text-red-200 text-xs leading-relaxed space-y-2 animate-fadeIn">
-          <div className="flex items-center gap-2 font-bold text-red-300 text-sm">
-            <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
-            <span>Assinatura Suspensa — Visibilidade Oculta</span>
-          </div>
-          <p>
-            Quando a assinatura estiver suspensa, o compositor continuará acessando seus dados, mas seu perfil público e suas músicas ficarão ocultos até a regularização.
-          </p>
-          <p>Entre em contato com o suporte para regularizar a assinatura.</p>
+      <div className={`rounded-2xl border p-4 text-xs leading-relaxed ${statusMeta.panelClass}`}>
+        <div className="flex items-start gap-3">
+          <Info className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div><h2 className="text-sm font-bold">{statusMeta.label}</h2><p className="mt-1">{statusMeta.description}</p><p className="mt-1 font-semibold">{statusMeta.nextStep}</p></div>
         </div>
-      )}
+      </div>
 
       {/* Plan Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
@@ -116,7 +101,7 @@ export const SubscriptionTab: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
           <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
             <span className="text-slate-400 block">Próxima Cobrança:</span>
-            <strong className="text-white text-sm block">{subscription.nextBillingDate}</strong>
+            <strong className="text-white text-sm block">{subscription.nextBillingDate || 'Ainda não definida'}</strong>
           </div>
 
           <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
@@ -128,10 +113,8 @@ export const SubscriptionTab: React.FC = () => {
 
           <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
             <span className="text-slate-400 block">Status Atual:</span>
-            <strong className={`text-sm block capitalize font-bold ${
-              subscription.status === 'active' ? 'text-emerald-400' : 'text-red-400'
-            }`}>
-              {subscription.status}
+            <strong className={`text-sm block font-bold ${statusMeta.textClass}`}>
+              {statusMeta.label}
             </strong>
           </div>
         </div>
@@ -152,12 +135,10 @@ export const SubscriptionTab: React.FC = () => {
       </div>
 
       {/* Invoice History required by Section 13 */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <h3 className="font-bold text-white text-base border-b border-slate-800 pb-3">
-          Histórico de Cobranças
-        </h3>
+      <DashboardCard className="overflow-hidden bg-slate-900 border-slate-800">
+        <DashboardSectionHeader title="Histórico de Cobranças" description="Faturas vinculadas à sua assinatura" variant="dark" />
 
-        <div className="divide-y divide-slate-800/80">
+        <div className="divide-y divide-slate-800/80 px-5 sm:px-6">
           {subscription.invoices.map(inv => (
             <div key={inv.id} className="py-3 flex items-center justify-between text-xs">
               <div className="flex items-center gap-3">
@@ -172,14 +153,15 @@ export const SubscriptionTab: React.FC = () => {
                 <span className="font-mono text-slate-200 font-semibold">
                   R$ {inv.value.toFixed(2)}
                 </span>
-                <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase px-2 py-0.5 rounded">
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${inv.status === 'pago' ? 'bg-emerald-500/20 text-emerald-300' : inv.status === 'pendente' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
                   {inv.status}
                 </span>
               </div>
             </div>
           ))}
+          {subscription.invoices.length === 0 && <div className="py-8 text-center text-xs text-slate-400">Nenhuma cobrança registrada até o momento.</div>}
         </div>
-      </div>
+      </DashboardCard>
 
     </div>
   );

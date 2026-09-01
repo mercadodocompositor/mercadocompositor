@@ -102,6 +102,15 @@ export interface Subscription {
   invoices: Invoice[];
 }
 
+export interface DashboardMetricPoint {
+  date: string;
+  profileViews: number;
+  songPlays: number;
+  interestRequests: number;
+  releasesIssued: number;
+  songsPublished: number;
+}
+
 export interface ComposerProfile {
   username: string;
   name: string;

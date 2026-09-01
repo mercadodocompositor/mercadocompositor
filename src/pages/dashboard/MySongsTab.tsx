@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { APP_URL } from '../../config/appConfig';
 import { getSongToggleStatus } from '../../lib/songWorkflow';
+import { SUBSCRIPTION_STATUS_META } from '../../lib/subscriptionStatus';
 
 type Notice = { type: 'success' | 'error'; message: string } | null;
 
@@ -42,6 +43,7 @@ const songStatusClass: Record<SongStatus, string> = {
 export const MySongsTab: React.FC = () => {
   const navigate = useNavigate();
   const { profile, songs, requests, releases, subscription, deleteSong, updateSong, queryMySongs, platformSettings, isAdminAuthenticated } = useApp();
+  const subscriptionMeta = SUBSCRIPTION_STATUS_META[subscription.status];
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
@@ -198,7 +200,7 @@ export const MySongsTab: React.FC = () => {
       {subscription.status !== 'active' && (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
-          <div><strong className="block">Catálogo público indisponível</strong><span className="text-xs text-amber-200/80">Sua assinatura está {subscription.status === 'pending' ? 'pendente' : 'inativa'}. Você pode organizar rascunhos, mas as músicas só aparecem publicamente com uma assinatura ativa.</span></div>
+          <div><strong className="block">{subscriptionMeta.label} — catálogo público indisponível</strong><span className="text-xs text-amber-200/80">{subscriptionMeta.description} Você pode continuar organizando seus rascunhos pelo painel.</span></div>
         </div>
       )}
 

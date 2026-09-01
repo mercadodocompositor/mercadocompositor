@@ -11,11 +11,12 @@ import {
   AdminComposer,
   PlatformSettings,
   SystemLog
+  ,DashboardMetricPoint
 } from '../types';
 import { DEFAULT_PLATFORM_SETTINGS } from '../data/platformDefaults';
 import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertSong, insertSystemLog, issueReleaseRequest, loadAdminComposers, loadAdminSongs, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, type SongCatalogStats, type SongPageQuery } from '../lib/database';
+import { adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest, deleteSystemLogs, incrementPlay, insertSong, insertSystemLog, issueReleaseRequest, loadAdminComposers, loadAdminSongs, loadDashboardMetrics, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadSystemLogs, removeCurrentUserStorageFiles, removeSong, savePlatformSettings, saveProfile, saveRequest, saveSong, type SongCatalogStats, type SongPageQuery } from '../lib/database';
 
 type RegistrationResult = { success: boolean; needsEmailConfirmation: boolean };
 
@@ -50,10 +51,12 @@ interface AppContextType {
   issueRelease: (requestId: string, releaseData: Omit<ReleaseDocument, 'id' | 'documentCode' | 'isDemonstrative'>) => Promise<ReleaseDocument>;
   
   subscription: Subscription;
+  dashboardMetrics: DashboardMetricPoint[];
   
   isAuthenticated: boolean;
   authLoading: boolean;
   authError: string | null;
+  clearAuthError: () => void;
   login: (email?: string, password?: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   register: (email: string, password: string, profile: Partial<ComposerProfile>) => Promise<RegistrationResult>;
@@ -95,6 +98,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [authError, setAuthError] = useState<string | null>(null);
+  const clearAuthError = useCallback(() => setAuthError(null), []);
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<ComposerProfile>(() => {
     return EMPTY_PROFILE;
@@ -115,6 +119,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [subscription, setSubscription] = useState<Subscription>(() => {
     return EMPTY_SUBSCRIPTION;
   });
+  const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetricPoint[]>([]);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return false;
@@ -135,10 +140,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       try {
-        const [data, settings] = await Promise.all([loadPrivateData(sessionUserId), loadPlatformSettings()]);
+        const [data, settings, metrics] = await Promise.all([loadPrivateData(sessionUserId), loadPlatformSettings(), loadDashboardMetrics(30)]);
         setProfile(data.profile); setSongs(data.songs); setRequests(data.requests);
         setReleases(data.releases); setSubscription(data.subscription);
         setPlatformSettings(settings);
+        setDashboardMetrics(metrics);
         setIsAdminAuthenticated(data.isAdmin);
         if(data.isAdmin) {
           const [composers,allSongs,logs]=await Promise.all([loadAdminComposers(),loadAdminSongs(),loadSystemLogs()]);
@@ -614,9 +620,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       releases,
       issueRelease,
       subscription,
+      dashboardMetrics,
       isAuthenticated,
       authLoading,
       authError,
+      clearAuthError,
       login,
       loginWithGoogle,
       register,

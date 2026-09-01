@@ -68,7 +68,6 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
 
   // HTML5 Audio element reference
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const timerRef = useRef<number | null>(null);
 
   // Active song object from context or fallback
   const currentSong = songs.find(s => s.id === selectedSongId) || (songs.length > 0 ? songs[0] : null);
@@ -134,32 +133,9 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
     };
   }, [activeAudioUrl]);
 
-  // Simulated timer fallback if HTML5 audio fails or lacks playable stream
-  useEffect(() => {
-    if (isPlaying && !audioRef.current?.src) {
-      timerRef.current = window.setInterval(() => {
-        setCurrentTime(prev => {
-          if (prev >= 60) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            setIsPlaying(false);
-            setHasEnded(true);
-            return 60;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isPlaying]);
-
   // Play / Pause toggle
   const togglePlay = () => {
-    if (hasEnded) return;
+    if (hasEnded || !activeAudioUrl) return;
 
     if (!playCountIncremented && currentSong) {
       incrementPlayCount(currentSong.id);
@@ -171,12 +147,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId }) => {
       setIsPlaying(false);
     } else {
       if (audioRef.current && activeAudioUrl) {
-        audioRef.current.play().catch(() => {
-          // If browser blocks audio or network fails, fallback to simulated timer
-          setIsPlaying(true);
-        });
+        audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+        return;
       }
-      setIsPlaying(true);
+      setIsPlaying(false);
     }
   };
 

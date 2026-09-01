@@ -10,6 +10,8 @@ import { ProfileTab } from './ProfileTab';
 import { SubscriptionTab } from './SubscriptionTab';
 import { SettingsTab } from './SettingsTab';
 import { APP_CONFIG } from '../../config/appConfig';
+import { DashboardErrorBoundary } from '../../components/dashboard/DashboardErrorBoundary';
+import { SUBSCRIPTION_STATUS_META } from '../../lib/subscriptionStatus';
 import { 
   LayoutDashboard, 
   Music2, 
@@ -23,18 +25,23 @@ import {
   ExternalLink, 
   Menu, 
   X, 
-  Sparkles
+  Sparkles,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 export const DashboardLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile, songs, logout, subscription, isAdminAuthenticated } = useApp();
+  const { profile, songs, logout, subscription, isAdminAuthenticated, authError, clearAuthError } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const mobileMenuRef = React.useRef<HTMLDivElement>(null);
+  const mobileMenuButtonRef = React.useRef<HTMLButtonElement>(null);
   const currentPlan = APP_CONFIG.plans.find(plan => plan.name === subscription.planName) || APP_CONFIG.plans[0];
   const songUsagePercent = currentPlan.maxSongs ? Math.min(100, (songs.length / currentPlan.maxSongs) * 100) : 100;
   const publicProfilePath = `/compositor/${profile.username}`;
+  const subscriptionMeta = SUBSCRIPTION_STATUS_META[subscription.status];
 
   const menuItems = [
     { path: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard },
@@ -68,13 +75,33 @@ export const DashboardLayout: React.FC = () => {
     if (!mobileMenuOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMobileMenuOpen(false);
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(mobileMenuRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') || []) as HTMLElement[];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    document.body.style.overflow = 'hidden';
+    const firstFocusable = mobileMenuRef.current?.querySelector<HTMLElement>('a, button');
+    firstFocusable?.focus();
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      document.body.style.overflow = '';
+      mobileMenuButtonRef.current?.focus();
+    };
   }, [mobileMenuOpen]);
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] text-slate-900 flex flex-col font-sans selection:bg-amber-500 selection:text-white">
+      <a href="#dashboard-main" className="fixed left-4 top-3 z-[100] -translate-y-20 rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition-transform focus:translate-y-0">Pular para o conteúdo</a>
       
       {/* Top Navigation Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -136,16 +163,15 @@ export const DashboardLayout: React.FC = () => {
               </div>
               <div className="hidden md:block text-left">
                 <span className="text-xs font-bold text-slate-900 block leading-none">{profile.stageName}</span>
-                <span className={`text-[10px] font-medium capitalize ${
-                  subscription.status === 'active' ? 'text-amber-600' : 'text-red-500'
-                }`}>
-                  Plano {subscription.status === 'active' ? 'Ativo' : 'Suspenso'}
+                <span className={`text-[10px] font-medium ${subscriptionMeta.textClass}`}>
+                  {subscriptionMeta.shortLabel}
                 </span>
               </div>
             </div>
 
             {/* Mobile Menu Button */}
             <button
+              ref={mobileMenuButtonRef}
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label={mobileMenuOpen ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
@@ -172,7 +198,7 @@ export const DashboardLayout: React.FC = () => {
               Navegação
             </div>
 
-            <nav className="space-y-1">
+            <nav aria-label="Navegação do dashboard" className="space-y-1">
               {menuItems.map(item => {
                 const Icon = item.icon;
                 const isActive = isMenuItemActive(item.path);
@@ -181,6 +207,7 @@ export const DashboardLayout: React.FC = () => {
                   <Link
                     key={item.path}
                     to={item.path}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-medium transition-all ${
                       isActive 
                         ? 'bg-amber-500/15 text-amber-400 border-l-4 border-amber-500 font-bold' 
@@ -235,7 +262,9 @@ export const DashboardLayout: React.FC = () => {
 
         {/* MOBILE MENU DROPDOWN */}
         {mobileMenuOpen && (
-          <div id="dashboard-mobile-menu" className="md:hidden bg-[#0A1128] text-white border border-amber-500/20 rounded-3xl p-4 space-y-2 shadow-2xl">
+          <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 backdrop-blur-sm md:hidden" onMouseDown={event => { if (event.target === event.currentTarget) setMobileMenuOpen(false); }}>
+          <div ref={mobileMenuRef} id="dashboard-mobile-menu" role="dialog" aria-modal="true" aria-label="Navegação do dashboard" className="ml-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl border border-amber-500/20 bg-[#0A1128] p-4 text-white shadow-2xl">
+            <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-3"><span className="text-sm font-bold">Menu</span><button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar menu" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800"><X className="h-5 w-5" /></button></div>
             {menuItems.map(item => {
               const Icon = item.icon;
               const isActive = isMenuItemActive(item.path);
@@ -244,6 +273,7 @@ export const DashboardLayout: React.FC = () => {
                   key={item.path}
                   to={item.path}
                   onClick={() => setMobileMenuOpen(false)}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
                     isActive ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'
                   }`}
@@ -261,11 +291,25 @@ export const DashboardLayout: React.FC = () => {
               <span>Sair da Conta</span>
             </button>
           </div>
+          </div>
         )}
 
         {/* MAIN DASHBOARD CONTENT ROUTE VIEW */}
-        <main className="md:col-span-9 pb-24 md:pb-12">
-          <Routes>
+        <main id="dashboard-main" tabIndex={-1} className="dashboard-safe-bottom min-w-0 md:col-span-9 md:pb-12">
+          {authError && (
+            <div role="alert" className="mb-6 flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 sm:flex-row sm:items-center">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" aria-hidden="true" />
+              <p className="flex-1"><strong>Não foi possível concluir a operação.</strong> {authError}</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => window.location.reload()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-red-700 px-4 py-2 text-xs font-bold text-white hover:bg-red-800">
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" /> Tentar novamente
+                </button>
+                <button type="button" onClick={clearAuthError} className="min-h-11 rounded-xl px-4 py-2 text-xs font-bold text-red-800 hover:bg-red-100">Fechar</button>
+              </div>
+            </div>
+          )}
+          <DashboardErrorBoundary key={location.pathname}>
+            <Routes>
             <Route path="/" element={<OverviewTab />} />
             <Route path="/musicas" element={<MySongsTab />} />
             <Route path="/musicas/nova" element={<AddSongTab />} />
@@ -276,13 +320,14 @@ export const DashboardLayout: React.FC = () => {
             <Route path="/perfil" element={<ProfileTab />} />
             <Route path="/assinatura" element={<SubscriptionTab />} />
             <Route path="/configuracoes" element={<SettingsTab />} />
-          </Routes>
+            </Routes>
+          </DashboardErrorBoundary>
         </main>
 
       </div>
 
       {/* MOBILE BOTTOM NAVIGATION BAR required by Section 6 */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-2 py-2 flex items-center justify-around">
+      <nav aria-label="Navegação principal do dashboard" className="dashboard-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-2 pt-2 flex items-center justify-around">
         {[
           { path: '/dashboard', label: 'Início', icon: LayoutDashboard },
           { path: '/dashboard/musicas', label: 'Músicas', icon: Music2 },

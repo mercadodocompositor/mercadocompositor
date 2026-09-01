@@ -1,4 +1,4 @@
-import type { AdminComposer, ComposerProfile, FeaturedComposer, InterestRequest, PlatformSettings, ReleaseDocument, Song, Subscription, SubscriptionStatus, SystemLog } from '../types';
+import type { AdminComposer, ComposerProfile, DashboardMetricPoint, FeaturedComposer, InterestRequest, PlatformSettings, ReleaseDocument, Song, Subscription, SubscriptionStatus, SystemLog } from '../types';
 import { supabase } from './supabase';
 
 const camelSong = (r: any): Song => ({
@@ -66,6 +66,20 @@ export async function loadPrivateData(userId: string) {
     subscription:{status:sub.status,planName:sub.plan_name,monthlyPrice:sub.monthly_price,nextBillingDate:sub.next_billing_date||'',
       paymentMethod:sub.payment_method,cardLast4:sub.card_last4,cardBrand:sub.card_brand,invoices:sub.invoices||[]} as Subscription,
     isAdmin:(role.data||[]).some((r:any)=>r.role==='admin')};
+}
+
+export async function loadDashboardMetrics(days=30):Promise<DashboardMetricPoint[]> {
+  if(!supabase) return [];
+  const {data,error}=await supabase.rpc('get_my_dashboard_metrics',{p_days:days});
+  if(error) {
+    // Compatibilidade durante a implantação gradual do novo SQL.
+    if(error.code==='PGRST202'||error.code==='42883') return [];
+    throw error;
+  }
+  return (Array.isArray(data)?data:[]).map((point:any)=>({
+    date:String(point.date),profileViews:Number(point.profileViews||0),songPlays:Number(point.songPlays||0),
+    interestRequests:Number(point.interestRequests||0),releasesIssued:Number(point.releasesIssued||0),songsPublished:Number(point.songsPublished||0)
+  }));
 }
 
 export async function saveProfile(userId:string,p:ComposerProfile){if(!supabase)return;const [{error:a},{error:b}]=await Promise.all([
