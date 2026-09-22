@@ -65,14 +65,26 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       }
     };
 
+    // Mantém o botão coerente quando o áudio é pausado por fora (outra prévia, fone desconectado).
+    const handlePause = () => setIsPlaying(false);
+
+    // Só uma prévia toca por vez: 'play' não borbulha, por isso o listener é em captura.
+    const handleOtherPlay = (event: Event) => {
+      if (event.target instanceof HTMLMediaElement && event.target !== audio && !audio.paused) audio.pause();
+    };
+
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('pause', handlePause);
+    document.addEventListener('play', handleOtherPlay, true);
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('pause', handlePause);
+      document.removeEventListener('play', handleOtherPlay, true);
     };
-  }, [maxDurationSeconds]);
+  }, [maxDurationSeconds, audioUrl]);
 
   const togglePlay = () => {
     if (hasEnded || !hasAudioSource) return;
@@ -123,13 +135,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       )}
 
       {/* Title & Player Status */}
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2 text-amber-400 font-medium">
-          <Music2 className="w-4 h-4 animate-pulse" />
-          <span className="truncate max-w-[200px] text-slate-200">{songTitle}</span>
+      <div className="flex items-center justify-between text-xs gap-2">
+        <div className="flex items-center gap-2 text-amber-400 font-medium min-w-0">
+          <Music2 className="w-4 h-4 animate-pulse shrink-0" />
+          <span className="truncate text-slate-200">{songTitle}</span>
         </div>
-          <span className="bg-slate-800 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">
-          {hasAudioSource ? 'Prévia limitada (60s)' : 'Prévia indisponível'}
+        <span className="bg-slate-800 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-semibold shrink-0">
+          {hasAudioSource ? 'Prévia (60s)' : 'Indisponível'}
         </span>
       </div>
 
@@ -164,7 +176,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         </div>
 
         {/* Time display */}
-        <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+        <div className="flex justify-between items-center text-[10px] sm:text-[11px] font-mono text-slate-400">
           <span>{formatTime(currentTime)}</span>
           <span className="text-slate-500">
             {formatTime(maxDurationSeconds)} (Máximo de fábrica)

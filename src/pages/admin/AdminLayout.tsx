@@ -1,14 +1,38 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
-import { AdminOverviewTab } from './AdminOverviewTab';
-import { AdminComposersTab } from './AdminComposersTab';
-import { AdminSongsTab } from './AdminSongsTab';
-import { AdminTransactionsTab } from './AdminTransactionsTab';
-import { AdminSettingsTab } from './AdminSettingsTab';
-import { AdminLogsTab } from './AdminLogsTab';
 import { AdminToastProvider } from '../../components/admin/AdminToast';
+import { ThemeToggle } from '../../components/common/ThemeToggle';
 import { useApp } from '../../context/AppContext';
+
+const AdminOverviewTab = lazy(() => import('./AdminOverviewTab').then(m => ({ default: m.AdminOverviewTab })));
+const AdminComposersTab = lazy(() => import('./AdminComposersTab').then(m => ({ default: m.AdminComposersTab })));
+const AdminSongsTab = lazy(() => import('./AdminSongsTab').then(m => ({ default: m.AdminSongsTab })));
+const AdminTransactionsTab = lazy(() => import('./AdminTransactionsTab').then(m => ({ default: m.AdminTransactionsTab })));
+const AdminSettingsTab = lazy(() => import('./AdminSettingsTab').then(m => ({ default: m.AdminSettingsTab })));
+const AdminLogsTab = lazy(() => import('./AdminLogsTab').then(m => ({ default: m.AdminLogsTab })));
+
+const preloadAdminTabs = () => {
+  import('./AdminOverviewTab');
+  import('./AdminComposersTab');
+  import('./AdminSongsTab');
+  import('./AdminTransactionsTab');
+  import('./AdminSettingsTab');
+  import('./AdminLogsTab');
+};
+
+const AdminTabSkeleton = () => (
+  <div className="space-y-6 skeleton-delayed" role="status" aria-label="Carregando painel administrativo">
+    <div className="h-10 w-72 bg-slate-800/60 rounded-2xl animate-pulse" />
+    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="h-24 bg-slate-900/60 border border-slate-800 rounded-3xl animate-pulse" />
+      <div className="h-24 bg-slate-900/60 border border-slate-800 rounded-3xl animate-pulse" />
+      <div className="h-24 bg-slate-900/60 border border-slate-800 rounded-3xl animate-pulse" />
+      <div className="h-24 bg-slate-900/60 border border-slate-800 rounded-3xl animate-pulse" />
+    </div>
+    <div className="h-96 bg-slate-900/60 border border-slate-800 rounded-3xl animate-pulse" />
+  </div>
+);
 import { 
   Menu, 
   ShieldCheck, 
@@ -24,17 +48,33 @@ import {
 export const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdminAuthenticated } = useApp();
+  const { isAdminAuthenticated, adminRole } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(preloadAdminTabs, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const TAB_ROLES: Record<string, Array<'master' | 'moderator' | 'financial'>> = {
+    overview: ['master', 'moderator', 'financial'],
+    musicas: ['master', 'moderator'],
+    compositores: ['master', 'financial'],
+    transacoes: ['master', 'financial'],
+    configuracoes: ['master'],
+    logs: ['master', 'financial']
+  };
+
+  const validTabs = ['overview', 'compositores', 'musicas', 'transacoes', 'configuracoes', 'logs'];
   // Tab mapping from path or internal state
   const getCurrentTab = () => {
     const path = location.pathname.replace('/admin', '').replace('/', '');
-    if (!path || path === '') return 'overview';
+    if (!path || path === '' || !validTabs.includes(path)) return 'overview';
     return path;
   };
 
   const currentTab = getCurrentTab();
+  const isTabAllowed = (TAB_ROLES[currentTab] || ['master']).includes(adminRole);
 
   const handleSelectTab = (tabId: string) => {
     if (tabId === 'overview') {
@@ -117,6 +157,8 @@ export const AdminLayout: React.FC = () => {
                 <span className="font-semibold text-[11px]">Painel Master Administrativo</span>
               </div>
 
+              <ThemeToggle />
+
               <button
                 onClick={() => navigate('/dashboard')}
                 className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center gap-1.5 transition"
@@ -129,12 +171,35 @@ export const AdminLayout: React.FC = () => {
 
           {/* Content Tabs */}
           <main className="p-4 sm:p-8 max-w-7xl w-full mx-auto flex-1">
-            {currentTab === 'overview' && <AdminOverviewTab onNavigateTab={handleSelectTab} />}
-            {currentTab === 'compositores' && <AdminComposersTab />}
-            {currentTab === 'musicas' && <AdminSongsTab />}
-            {currentTab === 'transacoes' && <AdminTransactionsTab />}
-            {currentTab === 'configuracoes' && <AdminSettingsTab />}
-            {currentTab === 'logs' && <AdminLogsTab />}
+            {!isTabAllowed ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-lg mx-auto text-center space-y-4 my-12 shadow-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto">
+                  <Lock className="w-7 h-7" />
+                </div>
+                <h3 className="text-xl font-bold text-white">Acesso Restrito ao Perfil</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Seu perfil de equipe atual (<strong className="text-amber-400 uppercase">{adminRole}</strong>) não possui permissão para acessar a área <strong className="text-white capitalize">{currentTab}</strong>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('overview')}
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-amber-500/20"
+                >
+                  Voltar à Visão Geral
+                </button>
+              </div>
+            ) : (
+              <Suspense fallback={<AdminTabSkeleton />}>
+                <div key={currentTab} className="tab-content-enter">
+                  {currentTab === 'overview' && <AdminOverviewTab onNavigateTab={handleSelectTab} />}
+                  {currentTab === 'compositores' && <AdminComposersTab />}
+                  {currentTab === 'musicas' && <AdminSongsTab />}
+                  {currentTab === 'transacoes' && <AdminTransactionsTab />}
+                  {currentTab === 'configuracoes' && <AdminSettingsTab />}
+                  {currentTab === 'logs' && <AdminLogsTab />}
+                </div>
+              </Suspense>
+            )}
           </main>
         </div>
       </div>

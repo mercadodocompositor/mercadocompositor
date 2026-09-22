@@ -4,6 +4,7 @@ import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { validateReleaseDocument, type PublicReleaseValidation } from '../lib/database';
 import { downloadReleasePdf } from '../lib/pdfGenerator';
+import { captureException } from '../lib/monitoring';
 import { 
   ShieldCheck, 
   Search, 
@@ -17,7 +18,8 @@ import {
   ArrowLeft,
   Lock,
   Download,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { APP_CONFIG } from '../config/appConfig';
 
@@ -39,7 +41,7 @@ export const ValidarDocumentoPage: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 50));
       downloadReleasePdf(matchedDocument);
     } catch (err) {
-      console.error('Erro ao gerar PDF:', err);
+      captureException(err, { operation: 'downloadReleasePdf' });
     } finally {
       setIsDownloadingPdf(false);
     }
@@ -63,11 +65,19 @@ export const ValidarDocumentoPage: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSearching) return;
     const normalized = inputCode.trim().toUpperCase();
     setSearchedCode(normalized);
     setMatchedDocument(null);
     setSearchError(null);
-    if (!normalized) return;
+    if (!normalized) {
+      setSearchError('Por favor, informe o código verificador do documento (ex.: LIB-2026-12345).');
+      return;
+    }
+    if (normalized.length > 50 || !/^[A-Z0-9_-]+$/.test(normalized)) {
+      setSearchError('Código em formato inválido. Códigos de liberação contêm apenas letras, números e hífens.');
+      return;
+    }
     setIsSearching(true);
     try {
       setMatchedDocument(await validateReleaseDocument(normalized));
@@ -108,24 +118,43 @@ export const ValidarDocumentoPage: React.FC = () => {
 
           {/* Search Box */}
           <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-3xl shadow-2xl backdrop-blur-sm max-w-2xl mx-auto">
-            <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="w-5 h-5 text-slate-500 absolute left-4 top-3.5" />
-                <input
-                  type="text"
-                  value={inputCode}
-                  onChange={e => setInputCode(e.target.value)}
-                  placeholder="Ex: LIB-2026-12345"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-white font-mono uppercase placeholder:normal-case placeholder:font-sans focus:outline-none focus:border-amber-500 transition"
-                />
+            <form onSubmit={handleSearch}>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-5 h-5 text-slate-500 absolute left-4 top-3.5" />
+                  <input
+                    type="text"
+                    value={inputCode}
+                    onChange={e => {
+                      setInputCode(e.target.value);
+                      if (searchError) setSearchError(null);
+                    }}
+                    placeholder="Ex: LIB-2026-12345"
+                    aria-label="Código do documento para verificação"
+                    aria-invalid={Boolean(searchError && (!searchedCode || !inputCode.trim()))}
+                    aria-describedby={searchError && (!searchedCode || !inputCode.trim()) ? "validation-input-error" : undefined}
+                    className={`w-full bg-slate-950 border rounded-2xl pl-12 pr-4 py-3.5 text-sm text-white font-mono uppercase placeholder:normal-case placeholder:font-sans focus:outline-none transition ${
+                      searchError && (!searchedCode || !inputCode.trim())
+                        ? 'border-red-500/80 focus:border-red-500 ring-1 ring-red-500/30'
+                        : 'border-slate-700 focus:border-amber-500'
+                    }`}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSearching}
+                  className="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition shrink-0"
+                >
+                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  <span>{isSearching ? 'Verificando...' : 'Verificar Código'}</span>
+                </button>
               </div>
-              <button
-                type="submit"
-                className="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition shrink-0"
-              >
-                <Search className="w-4 h-4" />
-                <span>Verificar Código</span>
-              </button>
+              {searchError && (!searchedCode || !inputCode.trim()) && (
+                <div id="validation-input-error" role="alert" className="mt-3 flex items-center gap-2 text-xs font-medium text-red-400 animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{searchError}</span>
+                </div>
+              )}
             </form>
           </div>
 
@@ -135,7 +164,27 @@ export const ValidarDocumentoPage: React.FC = () => {
               {isSearching ? (
                 <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-8 text-center shadow-2xl"><p className="text-sm text-amber-300">Consultando documento...</p></div>
               ) : searchError ? (
-                <div role="alert" className="bg-slate-900 border border-red-500/30 rounded-3xl p-8 text-center shadow-2xl"><AlertCircle className="w-8 h-8 mx-auto text-red-400" /><p className="mt-3 text-sm text-red-200">{searchError}</p></div>
+                <div role="alert" className="bg-slate-900 border border-red-500/30 rounded-3xl p-8 text-center shadow-2xl">
+                  <AlertCircle className="w-8 h-8 mx-auto text-red-400" />
+                  <p className="mt-3 text-sm text-red-200">{searchError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (searchedCode) {
+                        setIsSearching(true);
+                        setSearchError(null);
+                        validateReleaseDocument(searchedCode)
+                          .then(setMatchedDocument)
+                          .catch(() => { setMatchedDocument(null); setSearchError('Não foi possível consultar o documento. Tente novamente.'); })
+                          .finally(() => setIsSearching(false));
+                      }
+                    }}
+                    className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2 text-xs font-semibold text-white border border-slate-700 transition"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Tentar Novamente
+                  </button>
+                </div>
               ) : matchedDocument ? (
                 <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
                   

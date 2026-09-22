@@ -41,28 +41,44 @@ begin
     end if;
   end if;
 
-  if new.date_composed > current_date then
-    raise exception using
-      errcode = '23514',
-      message = 'A data da composição não pode estar no futuro.';
+  -- 1. Título obrigatório com trim para todos os status (inclusive rascunho)
+  if nullif(btrim(new.title), '') is null then
+    raise exception using errcode = '23514', message = 'Informe ao menos um título provisório para salvar o rascunho.';
   end if;
 
-  if new.value_type = 'suggested'
-     and (new.suggested_value is null or new.suggested_value <= 0) then
-    raise exception using
-      errcode = '23514',
-      message = 'O valor sugerido deve ser maior que zero.';
+  -- 2. Data da composição não pode estar no futuro
+  if new.date_composed > current_date then
+    raise exception using errcode = '23514', message = 'A data da composição não pode estar no futuro.';
+  end if;
+
+  -- 3. Sanitização graciosa para campos de rascunho (evita falha em NOT NULL)
+  new.authors := coalesce(new.authors, '');
+  new.lyrics := coalesce(new.lyrics, '');
+  new.cover_url := coalesce(new.cover_url, '');
+
+  -- 4. Validação unificada de valor sugerido
+  if new.value_type = 'suggested' then
+    -- Se estiver sendo publicada ou enviada para aprovação, valor é obrigatório
+    if new.status in ('published', 'pending_approval') and (new.suggested_value is null or new.suggested_value <= 0) then
+      raise exception using errcode = '23514', message = 'O valor sugerido deve ser maior que zero.';
+    end if;
+    -- Se o valor foi informado (inclusive em rascunho), deve ser > 0 e <= 10.000.000
+    if new.suggested_value is not null and new.suggested_value <= 0 then
+      raise exception using errcode = '23514', message = 'O valor sugerido deve ser maior que zero.';
+    end if;
+    if new.suggested_value > 10000000 then
+      raise exception using errcode = '23514', message = 'O valor sugerido não pode ultrapassar R$ 10.000.000,00.';
+    end if;
   end if;
 
   if new.status = 'published' then
     if nullif(btrim(new.title), '') is null
        or nullif(btrim(new.authors), '') is null
        or nullif(btrim(new.lyrics), '') is null
-       or nullif(btrim(coalesce(new.original_audio_path, '')), '') is null
        or nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
       raise exception using
         errcode = '23514',
-        message = 'Para publicar, informe título, autores, letra, áudio original e prévia pública.';
+        message = 'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.';
     end if;
 
     if not exists (
@@ -164,14 +180,8 @@ drop policy if exists "media owner insert" on storage.objects;
 drop policy if exists "media owner update" on storage.objects;
 drop policy if exists "media owner delete" on storage.objects;
 
-create policy "media owner insert"
-on storage.objects
-for insert
-to authenticated
-with check (
-  (storage.foldername(name))[1] = auth.uid()::text
-  and public.is_valid_storage_object(bucket_id, name, metadata)
-);
+-- Sem política de INSERT nos buckets finais: a promoção de arquivos validados
+-- é executada exclusivamente pela Edge Function com service_role.
 
 create policy "media owner update"
 on storage.objects

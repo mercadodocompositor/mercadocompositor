@@ -22,12 +22,11 @@ import {
 } from 'lucide-react';
 
 export const AdminLogsTab: React.FC = () => {
-  const { systemLogs, clearSystemLogs } = useApp();
+  const { systemLogs } = useApp();
   const toast = useAdminToast();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'auth' | 'financial' | 'moderation' | 'system'>('all');
-  const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -99,12 +98,6 @@ export const AdminLogsTab: React.FC = () => {
     toast.success('Logs Exportados!', 'O arquivo JSON com a trilha de auditoria foi baixado.');
   };
 
-  const handleConfirmClearByPin = () => {
-    clearSystemLogs();
-    setIsPinDialogOpen(false);
-    toast.info('Histórico Limpo', 'Os registros de log da sessão foram limpos com autorização por PIN.');
-  };
-
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
       {/* Top Header */}
@@ -128,13 +121,10 @@ export const AdminLogsTab: React.FC = () => {
             <span>Exportar JSON</span>
           </button>
 
-          <button
-            onClick={() => setIsPinDialogOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-slate-800 text-xs font-semibold flex items-center gap-2 transition shadow-sm"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>Limpar Histórico (PIN)</span>
-          </button>
+          <span className="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2 shadow-sm">
+            <ShieldCheck className="w-4 h-4" />
+            <span>Trilha Imutável (LGPD Compliance)</span>
+          </span>
         </div>
       </div>
 
@@ -245,17 +235,6 @@ export const AdminLogsTab: React.FC = () => {
           onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }}
         />
       </div>
-
-      {/* SECURITY PIN CONFIRMATION DIALOG (FOR LOG PURGING) */}
-      <AdminSecurityPinDialog
-        isOpen={isPinDialogOpen}
-        title="Limpar Trilha de Auditoria?"
-        description="Esta ação removerá permanentemente os registros de log da sessão atual. Digite o PIN mestre para autorizar a limpeza."
-        correctPin="1234"
-        actionLabel="Autorizar Limpeza"
-        onSuccess={handleConfirmClearByPin}
-        onCancel={() => setIsPinDialogOpen(false)}
-      />
     </div>
   );
 };

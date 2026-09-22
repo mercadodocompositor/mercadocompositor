@@ -2,20 +2,21 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { APP_CONFIG } from '../../config/appConfig';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Music, 
-  FileCheck2, 
-  Settings, 
-  Activity, 
-  ShieldCheck, 
-  ArrowLeft, 
+import {
+  LayoutDashboard,
+  Users,
+  Music,
+  FileCheck2,
+  Settings,
+  Activity,
+  ShieldCheck,
+  ArrowLeft,
   LogOut,
   Sparkles,
   ExternalLink,
   UserCog,
-  Check
+  Check,
+  X
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -32,7 +33,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onCloseMobile
 }) => {
   const navigate = useNavigate();
-  const { adminComposers, songs, requests, adminLogout, adminRole, setAdminRole } = useApp();
+  const { adminComposers, adminSongs, adminRequests, songs, requests, adminLogout, adminRole } = useApp();
+
+  const totalSongsCount = (adminSongs && adminSongs.length > 0 ? adminSongs : songs).length;
+  const totalRequestsCount = (adminRequests && adminRequests.length > 0 ? adminRequests : requests).length;
 
   const allNavItems = [
     {
@@ -53,14 +57,14 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       id: 'musicas',
       label: 'Acervo & Moderação',
       icon: Music,
-      badge: songs.length.toString(),
+      badge: totalSongsCount.toString(),
       roles: ['master', 'moderator']
     },
     {
       id: 'transacoes',
       label: 'Propostas & Liberações',
       icon: FileCheck2,
-      badge: requests.length.toString(),
+      badge: totalRequestsCount.toString(),
       roles: ['master', 'financial']
     },
     {
@@ -99,34 +103,54 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const roleInfo = getRoleBadge();
 
+  React.useEffect(() => {
+    if (!mobileOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseMobile();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [mobileOpen, onCloseMobile]);
+
   return (
     <>
       {/* Mobile Backdrop */}
       {mobileOpen && (
-        <div 
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden"
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden animate-fadeIn"
           onClick={onCloseMobile}
         />
       )}
 
       <aside className={`
-        fixed top-0 bottom-0 left-0 z-50 w-72 bg-slate-950 border-r border-slate-800 flex flex-col justify-between transition-transform duration-300 ease-in-out
+        fixed top-0 bottom-0 left-0 z-50 w-72 max-w-[85vw] bg-slate-950 border-r border-slate-800 flex flex-col justify-between transition-transform duration-300 ease-in-out
         lg:translate-x-0 lg:static lg:z-auto
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         {/* Top brand */}
         <div>
-          <div className="p-6 border-b border-slate-800/80 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center">
-                <img src="/logo.webp" alt="Mercado do Compositor" className="w-full h-full object-contain" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-white font-bold text-base tracking-tight">Master Admin</span>
+          <div className="p-5 sm:p-6 border-b border-slate-800/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shrink-0">
+                  <img src="/logo.webp" alt="Mercado do Compositor" className="w-full h-full object-contain" />
                 </div>
-                <p className="text-slate-400 text-xs truncate">{APP_CONFIG.name}</p>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-white font-bold text-base tracking-tight">Master Admin</span>
+                  </div>
+                  <p className="text-slate-400 text-xs truncate">{APP_CONFIG.name}</p>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="lg:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition"
+                aria-label="Fechar menu lateral"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {/* RBAC Active Role Badge */}
@@ -177,23 +201,26 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
         {/* Bottom Actions & Role Switcher */}
         <div className="p-4 border-t border-slate-800/80 space-y-2">
-          
-          {/* RBAC Role Switcher Dropdown */}
+
+          {/*
+            Indicador do papel efetivo — deliberadamente somente leitura.
+            Aqui havia um <select> que permitia a um moderador ou auditor
+            escolher "Master Admin" e destravar as abas restritas: controle de
+            acesso não pode ser um campo de formulário. O papel vem de
+            user_roles e só muda no banco.
+          */}
           <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl space-y-1.5">
             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase">
               <UserCog className="w-3.5 h-3.5 text-amber-400" />
-              <span>Simular Perfil / Papel:</span>
+              <span>Papel de Acesso Ativo:</span>
             </div>
-            <select
-              value={adminRole}
-              onChange={e => setAdminRole(e.target.value as 'master' | 'moderator' | 'financial')}
-              aria-label="Perfil administrativo"
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs text-white px-2 py-1 focus:outline-none focus:border-amber-500 cursor-pointer"
-            >
-              <option value="master">Master Admin (Dono)</option>
-              <option value="moderator">Moderador Musical</option>
-              <option value="financial">Auditor Financeiro</option>
-            </select>
+            <p className="text-xs font-bold text-white px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              {adminRole === 'master'
+                ? 'Master Admin (Acesso Total)'
+                : adminRole === 'moderator'
+                  ? 'Moderador de Músicas'
+                  : 'Auditor Financeiro'}
+            </p>
           </div>
 
           <button
@@ -221,7 +248,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           <div className="pt-1">
             <button
               type="button"
-              onClick={() => { adminLogout(); navigate('/autenticacao?modo=admin'); }}
+              onClick={async () => {
+                await adminLogout();
+                navigate('/autenticacao?modo=admin', { replace: true });
+              }}
               className="w-full flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-500/10 transition"
             >
               <LogOut className="w-4 h-4" />

@@ -28,9 +28,12 @@ interface AdminOverviewTabProps {
 export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTab }) => {
   const { 
     adminComposers, 
+    adminSongs,
     songs, 
     requests, 
     releases, 
+    adminRequests,
+    adminReleases,
     platformSettings, 
     systemLogs 
   } = useApp();
@@ -38,50 +41,123 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
   const [activePeriod, setActivePeriod] = useState<'6m' | '12m'>('6m');
   const [hoveredDataPoint, setHoveredDataPoint] = useState<{ month: string; mrr: number; gmv: number; deals: number } | null>(null);
 
+  // Platform Datasets (Prioritize platform-wide admin collections over personal user collections)
+  const effectiveSongs = adminSongs && adminSongs.length > 0 ? adminSongs : songs;
+  const effectiveRequests = adminRequests && adminRequests.length > 0 ? adminRequests : requests;
+  const effectiveReleases = adminReleases && adminReleases.length > 0 ? adminReleases : releases;
+
   // Metrics Calculations
   const activeComposers = adminComposers.filter(c => c.subscriptionStatus === 'active');
   const pendingComposers = adminComposers.filter(c => c.subscriptionStatus === 'pending');
   const suspendedComposers = adminComposers.filter(c => c.subscriptionStatus === 'suspended');
 
-  const mrr = activeComposers.reduce((acc, c) => acc + c.monthlyValue, 0);
+  const mrr = activeComposers.reduce((acc, c) => acc + (c.monthlyValue || 0), 0);
   const arr = mrr * 12;
 
-  const totalSongs = adminComposers.reduce((acc, c) => acc + c.songCount, 0);
-  const totalPlays = adminComposers.reduce((acc, c) => acc + c.totalPlays, 0);
-  const totalDealsValue = adminComposers.reduce((acc, c) => acc + c.revenueGenerated, 0);
-  const totalReleasesCount = adminComposers.reduce((acc, c) => acc + c.totalReleases, 0);
+  const totalSongs = effectiveSongs.length > 0 
+    ? effectiveSongs.length 
+    : adminComposers.reduce((acc, c) => acc + c.songCount, 0);
 
-  // Chart 1: Revenue Evolution Data
-  const revenueHistory6m = [
-    { month: 'Mar', mrr: 1240, gmv: 3400, deals: 3 },
-    { month: 'Abr', mrr: 1860, gmv: 5200, deals: 5 },
-    { month: 'Mai', mrr: 2490, gmv: 8100, deals: 7 },
-    { month: 'Jun', mrr: 3120, gmv: 11400, deals: 9 },
-    { month: 'Jul', mrr: 3850, gmv: 15900, deals: 12 },
-    { month: 'Ago', mrr: mrr > 0 ? mrr : 4620, gmv: totalDealsValue > 0 ? totalDealsValue : 21800, deals: totalReleasesCount > 0 ? totalReleasesCount : 15 }
-  ];
+  const totalPlays = effectiveSongs.reduce((acc, s) => acc + (s.playCount || 0), 0) || 
+    adminComposers.reduce((acc, c) => acc + c.totalPlays, 0);
 
-  const revenueHistory12m = [
-    { month: 'Set', mrr: 450, gmv: 1200, deals: 1 },
-    { month: 'Out', mrr: 680, gmv: 1800, deals: 2 },
-    { month: 'Nov', mrr: 890, gmv: 2300, deals: 2 },
-    { month: 'Dez', mrr: 1100, gmv: 2900, deals: 3 },
-    { month: 'Jan', mrr: 1200, gmv: 3100, deals: 3 },
-    { month: 'Fev', mrr: 1240, gmv: 3400, deals: 3 },
-    ...revenueHistory6m
-  ];
+  const releasesGmv = effectiveReleases.reduce((acc, r) => acc + (r.agreedValue || 0), 0);
+  const requestsGmv = effectiveRequests
+    .filter(r => r.status === 'pagamento_confirmado' || r.status === 'liberacao_enviada')
+    .reduce((acc, r) => acc + (r.agreedValue || 0), 0);
+  const composersGmv = adminComposers.reduce((acc, c) => acc + (c.revenueGenerated || 0), 0);
+  const totalDealsValue = Math.max(releasesGmv, requestsGmv, composersGmv);
 
+  const totalReleasesCount = Math.max(
+    effectiveReleases.length,
+    effectiveRequests.filter(r => r.status === 'liberacao_enviada').length,
+    adminComposers.reduce((acc, c) => acc + c.totalReleases, 0)
+  );
+
+  // Dynamic Chart 1: Revenue Evolution Data (computed dynamically from real transactions & active subscriptions)
+  const generateRevenueHistory = (monthCount: number) => {
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const now = new Date();
+    const result = [];
+
+    for (let i = monthCount - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const monthIndex = d.getMonth();
+      const monthLabel = monthNames[monthIndex];
+      const isCurrentMonth = i === 0;
+
+      // Filter releases/requests for this specific month & year
+      const matchingReleases = effectiveReleases.filter(r => {
+        // ReleaseDocument não tem createdAt/signedAt: a data de emissão é issueDate.
+        const dateStr = r.issueDate || r.documentArchivedAt;
+        if (!dateStr) return false;
+        const relDate = new Date(dateStr);
+        return !isNaN(relDate.getTime()) && relDate.getFullYear() === year && relDate.getMonth() === monthIndex;
+      });
+
+      const matchingRequests = effectiveRequests.filter(r => {
+        if (r.status !== 'pagamento_confirmado' && r.status !== 'liberacao_enviada') return false;
+        const dateStr = r.paymentReceivedAt || r.createdAt;
+        if (!dateStr) return false;
+        const reqDate = new Date(dateStr);
+        return !isNaN(reqDate.getTime()) && reqDate.getFullYear() === year && reqDate.getMonth() === monthIndex;
+      });
+
+      const releaseGmv = matchingReleases.reduce((sum, r) => sum + (r.agreedValue || 0), 0);
+      const requestGmv = matchingRequests.reduce((sum, r) => sum + (r.agreedValue || 0), 0);
+      const gmv = Math.max(releaseGmv, requestGmv);
+      const deals = Math.max(matchingReleases.length, matchingRequests.length);
+
+      // MRR: current month uses real active MRR; previous months calculate from composers registered on or before that month
+      let monthMrr = 0;
+      if (isCurrentMonth) {
+        monthMrr = mrr;
+      } else {
+        const endOfMonth = new Date(year, monthIndex + 1, 0, 23, 59, 59);
+        monthMrr = adminComposers
+          .filter(c => {
+            if (c.subscriptionStatus !== 'active') return false;
+            if (!c.registeredAt) return true;
+            const regDate = new Date(c.registeredAt);
+            return isNaN(regDate.getTime()) || regDate <= endOfMonth;
+          })
+          .reduce((sum, c) => sum + (c.monthlyValue || 0), 0);
+      }
+
+      result.push({
+        month: monthLabel,
+        year,
+        mrr: monthMrr,
+        gmv,
+        deals
+      });
+    }
+
+    return result;
+  };
+
+  const revenueHistory6m = React.useMemo(() => generateRevenueHistory(6), [effectiveReleases, effectiveRequests, adminComposers, mrr]);
+  const revenueHistory12m = React.useMemo(() => generateRevenueHistory(12), [effectiveReleases, effectiveRequests, adminComposers, mrr]);
   const revenueHistory = activePeriod === '6m' ? revenueHistory6m : revenueHistory12m;
-  const maxRevenue = Math.max(...revenueHistory.map(r => r.gmv), 1);
+  const maxRevenue = Math.max(...revenueHistory.map(r => r.gmv), ...revenueHistory.map(r => r.mrr), 1);
+  const hasAnyRevenueData = revenueHistory.some(r => r.gmv > 0 || r.mrr > 0);
+
+  // Month-over-month MRR growth calculation
+  const currentMonthMrr = revenueHistory6m[revenueHistory6m.length - 1]?.mrr || 0;
+  const prevMonthMrr = revenueHistory6m[revenueHistory6m.length - 2]?.mrr || 0;
+  const mrrGrowth = prevMonthMrr > 0 
+    ? ((currentMonthMrr - prevMonthMrr) / prevMonthMrr) * 100 
+    : (currentMonthMrr > 0 ? 100 : 0);
 
   // Chart 2: Songs by Genre Distribution
-  const genreCounts = songs.reduce<Record<string, number>>((acc, s) => {
+  const genreCounts = effectiveSongs.reduce<Record<string, number>>((acc, s) => {
     const genre = s.genre || 'Outros';
     acc[genre] = (acc[genre] || 0) + 1;
     return acc;
   }, {});
 
-  const totalSongsInDb = songs.length > 0 ? songs.length : 1;
+  const totalSongsInDb = effectiveSongs.length > 0 ? effectiveSongs.length : 1;
   const genreData = (Object.entries(genreCounts) as [string, number][])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
@@ -91,17 +167,18 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
       percent: Math.round((count / totalSongsInDb) * 100)
     }));
 
-  // Chart 4: Funnel Metrics
-  const totalRequestsCount = requests.length > 0 ? requests.length : 28;
-  const inNegotiationCount = requests.filter(r => r.status === 'em_negociacao').length || 14;
-  const confirmedPaymentCount = requests.filter(r => r.status === 'pagamento_confirmado').length || 9;
-  const releasedTermsCount = releases.length > 0 ? releases.length : 8;
+  // Chart 4: Funnel Metrics with Real Platform Data
+  const totalRequestsCount = effectiveRequests.length;
+  const inNegotiationCount = effectiveRequests.filter(r => r.status === 'em_negociacao').length;
+  const confirmedPaymentCount = effectiveRequests.filter(r => r.status === 'pagamento_confirmado' || r.status === 'liberacao_enviada').length;
+  const releasedTermsCount = effectiveReleases.length;
+  const funnelBase = totalRequestsCount > 0 ? totalRequestsCount : 1;
 
   const funnelSteps = [
-    { label: 'Propostas Recebidas', count: totalRequestsCount, percent: 100, color: 'from-amber-500 to-amber-600', badge: '100%' },
-    { label: 'Em Negociação', count: inNegotiationCount, percent: Math.round((inNegotiationCount / totalRequestsCount) * 100), color: 'from-blue-500 to-blue-600', badge: `${Math.round((inNegotiationCount / totalRequestsCount) * 100)}%` },
-    { label: 'Pagamentos Confirmados', count: confirmedPaymentCount, percent: Math.round((confirmedPaymentCount / totalRequestsCount) * 100), color: 'from-emerald-500 to-emerald-600', badge: `${Math.round((confirmedPaymentCount / totalRequestsCount) * 100)}%` },
-    { label: 'Termos Emitidos', count: releasedTermsCount, percent: Math.round((releasedTermsCount / totalRequestsCount) * 100), color: 'from-purple-500 to-purple-600', badge: `${Math.round((releasedTermsCount / totalRequestsCount) * 100)}%` }
+    { label: 'Propostas Recebidas', count: totalRequestsCount, percent: totalRequestsCount > 0 ? 100 : 0, color: 'from-amber-500 to-amber-600', badge: totalRequestsCount > 0 ? '100%' : '0%' },
+    { label: 'Em Negociação', count: inNegotiationCount, percent: totalRequestsCount > 0 ? Math.round((inNegotiationCount / funnelBase) * 100) : 0, color: 'from-blue-500 to-blue-600', badge: `${totalRequestsCount > 0 ? Math.round((inNegotiationCount / funnelBase) * 100) : 0}%` },
+    { label: 'Pagamentos Confirmados', count: confirmedPaymentCount, percent: totalRequestsCount > 0 ? Math.round((confirmedPaymentCount / funnelBase) * 100) : 0, color: 'from-emerald-500 to-emerald-600', badge: `${totalRequestsCount > 0 ? Math.round((confirmedPaymentCount / funnelBase) * 100) : 0}%` },
+    { label: 'Termos Emitidos', count: releasedTermsCount, percent: totalRequestsCount > 0 ? Math.round((releasedTermsCount / funnelBase) * 100) : 0, color: 'from-purple-500 to-purple-600', badge: `${totalRequestsCount > 0 ? Math.round((releasedTermsCount / funnelBase) * 100) : 0}%` }
   ];
 
   return (
@@ -162,9 +239,16 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               R$ {mrr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </h3>
             <div className="flex items-center gap-2 mt-2">
-              <span className="text-emerald-400 font-bold text-xs flex items-center bg-emerald-500/10 px-2 py-0.5 rounded-md">
-                <TrendingUp className="w-3.5 h-3.5 mr-1" /> +18.4%
-              </span>
+              {prevMonthMrr > 0 || currentMonthMrr > 0 ? (
+                <span className={`${mrrGrowth >= 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10'} font-bold text-xs flex items-center px-2 py-0.5 rounded-md`}>
+                  {mrrGrowth >= 0 ? <TrendingUp className="w-3.5 h-3.5 mr-1" /> : <TrendingDown className="w-3.5 h-3.5 mr-1" />}
+                  {mrrGrowth > 0 ? `+${mrrGrowth.toFixed(1)}%` : `${mrrGrowth.toFixed(1)}%`}
+                </span>
+              ) : (
+                <span className="text-slate-400 text-xs bg-slate-800 px-2 py-0.5 rounded-md">
+                  {activeComposers.length} assinante(s) ativo(s)
+                </span>
+              )}
               <span className="text-slate-400 text-xs">ARR: R$ {arr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
@@ -298,6 +382,16 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                 </div>
               )}
 
+              {/* Notice when empty in production */}
+              {!hasAnyRevenueData && (
+                <div className="absolute inset-x-4 top-14 bottom-8 flex flex-col items-center justify-center pointer-events-none z-20">
+                  <div className="bg-slate-900/95 border border-slate-700/60 rounded-xl px-4 py-2.5 text-center shadow-lg max-w-sm">
+                    <p className="text-xs text-slate-200 font-medium">Nenhuma transação ou renovação no período</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Os dados serão refletidos automaticamente conforme os pagamentos forem confirmados.</p>
+                  </div>
+                </div>
+              )}
+
               {/* Background Grid Lines */}
               <div className="absolute inset-0 flex flex-col justify-between p-4 pointer-events-none opacity-20">
                 <div className="border-b border-slate-700 w-full" />
@@ -307,8 +401,8 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               </div>
 
               {revenueHistory.map((item) => {
-                const barHeightPercent = Math.max(12, Math.round((item.gmv / maxRevenue) * 100));
-                const mrrPercent = Math.max(8, Math.round((item.mrr / maxRevenue) * 100));
+                const barHeightPercent = maxRevenue > 0 && item.gmv > 0 ? Math.max(8, Math.round((item.gmv / maxRevenue) * 100)) : 0;
+                const mrrPercent = maxRevenue > 0 && item.mrr > 0 ? Math.max(6, Math.round((item.mrr / maxRevenue) * 100)) : 0;
 
                 return (
                   <div 
@@ -321,12 +415,12 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                     <div className="w-full max-w-[34px] flex items-end justify-center gap-1 h-full">
                       {/* GMV Column */}
                       <div 
-                        className="w-full bg-gradient-to-t from-amber-500/40 via-amber-500/80 to-amber-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom"
+                        className={`w-full bg-gradient-to-t from-amber-500/40 via-amber-500/80 to-amber-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom ${barHeightPercent > 0 ? 'min-h-[4px]' : 'h-0'}`}
                         style={{ height: `${barHeightPercent}%` }}
                       />
                       {/* MRR Column */}
                       <div 
-                        className="w-full bg-gradient-to-t from-emerald-500/40 to-emerald-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom"
+                        className={`w-full bg-gradient-to-t from-emerald-500/40 to-emerald-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom ${mrrPercent > 0 ? 'min-h-[4px]' : 'h-0'}`}
                         style={{ height: `${mrrPercent}%` }}
                       />
                     </div>
@@ -404,7 +498,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
 
           <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
             <span>Total de Obras no Catálogo:</span>
-            <strong className="text-white font-mono">{songs.length} faixas</strong>
+            <strong className="text-white font-mono">{effectiveSongs.length} faixas</strong>
           </div>
         </div>
 
@@ -428,7 +522,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               </p>
             </div>
             <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
-              Conversão: ~{funnelSteps[3].percent}%
+              Conversão: {totalRequestsCount > 0 ? `~${funnelSteps[3].percent}%` : '0%'}
             </span>
           </div>
 
@@ -471,9 +565,14 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
 
           <div className="space-y-4">
             {APP_CONFIG.plans.map(plan => {
-              const count = adminComposers.filter(c => c.planName.toLowerCase().includes(plan.name.split(' ')[1]?.toLowerCase() || '')).length || (plan.name.includes('Ouro') ? 6 : plan.name.includes('Prata') ? 4 : 2);
-              const totalComposersCount = adminComposers.length > 0 ? adminComposers.length : 12;
-              const percent = Math.round((count / totalComposersCount) * 100);
+              const count = adminComposers.filter(c => {
+                const compPlan = (c.planName || '').toLowerCase();
+                const targetPlan = plan.name.toLowerCase();
+                const planKeyword = plan.name.split(' ')[1]?.toLowerCase() || '';
+                return compPlan === targetPlan || (planKeyword && compPlan.includes(planKeyword));
+              }).length;
+              const totalComposersCount = adminComposers.length;
+              const percent = totalComposersCount > 0 ? Math.round((count / totalComposersCount) * 100) : 0;
 
               return (
                 <div key={plan.name} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 hover:border-slate-700 transition">
@@ -527,43 +626,56 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
           </div>
 
           <div className="divide-y divide-slate-800/80">
-            {adminComposers.slice(0, 5).map(composer => (
-              <div key={composer.id} className="py-3.5 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <img 
-                    src={composer.photo} 
-                    alt={composer.name} 
-                    className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white text-xs font-bold truncate">{composer.stageName}</span>
-                      {composer.isVerified && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-400 truncate">{composer.email} • {composer.cityState}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 shrink-0">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-xs font-bold text-white font-mono">R$ {composer.revenueGenerated.toLocaleString('pt-BR')}</p>
-                    <p className="text-[10px] text-slate-400">{composer.songCount} músicas • {composer.totalReleases} liberações</p>
-                  </div>
-
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                    composer.subscriptionStatus === 'active'
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                      : composer.subscriptionStatus === 'pending'
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                  }`}>
-                    {composer.subscriptionStatus === 'active' ? 'Ativo' : composer.subscriptionStatus === 'pending' ? 'Pendente' : 'Suspenso'}
-                  </span>
-                </div>
+            {adminComposers.length === 0 ? (
+              <div className="py-8 text-center text-slate-500 text-xs">
+                Nenhum compositor cadastrado até o momento.
               </div>
-            ))}
+            ) : (
+              adminComposers.slice(0, 5).map(composer => (
+                <div key={composer.id} className="py-3.5 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {composer.photo ? (
+                      <img 
+                        src={composer.photo} 
+                        alt={composer.name} 
+                        className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 font-bold text-xs shrink-0">
+                        {composer.stageName?.slice(0, 2).toUpperCase() || 'MC'}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white text-xs font-bold truncate">{composer.stageName}</span>
+                        {composer.isVerified && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate">{composer.email} • {composer.cityState}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-xs font-bold text-white font-mono">R$ {(composer.revenueGenerated || 0).toLocaleString('pt-BR')}</p>
+                      <p className="text-[10px] text-slate-400">{composer.songCount} músicas • {composer.totalReleases} liberações</p>
+                    </div>
+
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                      composer.subscriptionStatus === 'active'
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : composer.subscriptionStatus === 'pending'
+                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                    }`}>
+                      {composer.subscriptionStatus === 'active' ? 'Ativo' : composer.subscriptionStatus === 'pending' ? 'Pendente' : 'Suspenso'}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -583,15 +695,21 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
           </div>
 
           <div className="space-y-3">
-            {systemLogs.slice(0, 5).map(log => (
-              <div key={log.id} className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-white truncate">{log.title}</span>
-                  <span className="text-[10px] text-slate-400 shrink-0 font-mono">{log.timestamp}</span>
-                </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed truncate">{log.description}</p>
+            {systemLogs.length === 0 ? (
+              <div className="py-8 text-center text-slate-500 text-xs">
+                Nenhum registro de atividade recente no momento.
               </div>
-            ))}
+            ) : (
+              systemLogs.slice(0, 5).map(log => (
+                <div key={log.id} className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-white truncate">{log.title}</span>
+                    <span className="text-[10px] text-slate-400 shrink-0 font-mono">{log.timestamp}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed truncate">{log.description}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

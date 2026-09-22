@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { APP_CONFIG } from '../../config/appConfig';
-import { Music2, Instagram, Youtube, Mail, Phone, MapPin, ShieldCheck, FileText } from 'lucide-react';
+import { Music2, Instagram, Youtube, Mail, Phone, ShieldCheck, FileText } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -23,13 +23,29 @@ export const Footer: React.FC = () => {
               A plataforma SaaS dedicada ao fortalecimento do compositor brasileiro. Divulgue suas obras, proteja suas áudio-prévias e conecte-se diretamente com artistas e produtores.
             </p>
             <div className="pt-2 flex items-center gap-4 text-slate-300">
-              <a href="#" className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center hover:text-amber-400 hover:border-amber-500/40 transition">
+              <a 
+                href={APP_CONFIG.social?.instagram || "https://instagram.com/mercadodocompositor"} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                aria-label="Instagram oficial"
+                className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center hover:text-amber-400 hover:border-amber-500/40 transition"
+              >
                 <Instagram className="w-4 h-4" />
               </a>
-              <a href="#" className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center hover:text-amber-400 hover:border-amber-500/40 transition">
+              <a 
+                href={APP_CONFIG.social?.youtube || "https://youtube.com/@mercadodocompositor"} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                aria-label="Canal do YouTube"
+                className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center hover:text-amber-400 hover:border-amber-500/40 transition"
+              >
                 <Youtube className="w-4 h-4" />
               </a>
-              <a href={`mailto:${APP_CONFIG.contact.email}`} className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center hover:text-amber-400 hover:border-amber-500/40 transition">
+              <a 
+                href={`mailto:${APP_CONFIG.contact.email}`} 
+                aria-label="E-mail de atendimento"
+                className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center hover:text-amber-400 hover:border-amber-500/40 transition"
+              >
                 <Mail className="w-4 h-4" />
               </a>
             </div>
@@ -39,10 +55,10 @@ export const Footer: React.FC = () => {
           <div className="space-y-3">
             <h4 className="text-white font-semibold text-base">Plataforma</h4>
             <ul className="space-y-2 text-slate-400">
-              <li><a href="#como-funciona" className="hover:text-amber-400 transition">Como funciona</a></li>
-              <li><a href="#beneficios" className="hover:text-amber-400 transition">Benefícios</a></li>
-              <li><a href="#compositores" className="hover:text-amber-400 transition">Compositores em Destaque</a></li>
-              <li><a href="#planos" className="hover:text-amber-400 transition">Planos e Preços</a></li>
+              <li><Link to="/#como-funciona" className="hover:text-amber-400 transition">Como funciona</Link></li>
+              <li><Link to="/#beneficios" className="hover:text-amber-400 transition">Benefícios</Link></li>
+              <li><Link to="/compositores" className="hover:text-amber-400 transition">Compositores em Destaque</Link></li>
+              <li><Link to="/#planos" className="hover:text-amber-400 transition">Planos e Preços</Link></li>
               <li><Link to="/cadastro" className="hover:text-amber-400 transition">Criar Conta</Link></li>
             </ul>
           </div>
@@ -54,8 +70,8 @@ export const Footer: React.FC = () => {
               <li><Link to="/validar-documento" className="text-amber-400/90 hover:text-amber-300 transition flex items-center gap-1.5 font-medium"><ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> Validar Liberação</Link></li>
               <li><Link to="/termos" className="hover:text-amber-400 transition flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-500" /> Termos de Uso</Link></li>
               <li><Link to="/privacidade" className="hover:text-amber-400 transition flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-slate-500" /> Política de Privacidade</Link></li>
-              <li><a href="#como-funciona" className="hover:text-amber-400 transition">Direitos Autorais e ECAD</a></li>
-              <li><a href="#faq" className="hover:text-amber-400 transition">Dúvidas Frequentes (FAQ)</a></li>
+              <li><Link to="/#faq" className="hover:text-amber-400 transition">Direitos Autorais e ECAD</Link></li>
+              <li><Link to="/#faq" className="hover:text-amber-400 transition">Dúvidas Frequentes (FAQ)</Link></li>
             </ul>
           </div>
 
@@ -69,11 +85,7 @@ export const Footer: React.FC = () => {
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>{APP_CONFIG.contact.whatsapp}</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>{APP_CONFIG.contact.address}</span>
+                <span>{APP_CONFIG.contact.whatsapp} <span className="text-slate-500">(somente WhatsApp)</span></span>
               </li>
             </ul>
           </div>
@@ -82,7 +94,7 @@ export const Footer: React.FC = () => {
 
         {/* Notice & Bottom Bar */}
         <div className="mt-12 pt-8 border-t border-slate-900 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <p>© {new Date().getFullYear()} {APP_CONFIG.name}. Todos os direitos reservados.</p>
+          <p>© {new Date().getFullYear()} {APP_CONFIG.name} • CNPJ: {APP_CONFIG.company.cnpj}. Todos os direitos reservados.</p>
           <div className="text-slate-400 text-center">Privacidade e segurança para o catálogo do compositor.</div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
-import { ReleaseDocument } from '../types';
-import { PublicReleaseValidation } from './database';
+import type { ReleaseDocument } from '../types';
+import type { PublicReleaseValidation } from './database';
 import { APP_CONFIG } from '../config/appConfig';
 
 export type AnyReleaseData = ReleaseDocument | (PublicReleaseValidation & {
@@ -15,7 +15,7 @@ const formatDate = (date: string) => {
 };
 
 /**
- * Gera um documento PDF oficial e elegante para o Termo de Liberação Fonográfica.
+ * Gera o PDF do Termo de Liberação Fonográfica registrado na plataforma.
  */
 export function generateReleasePdf(data: AnyReleaseData): jsPDF {
   const doc = new jsPDF({
@@ -61,7 +61,7 @@ export function generateReleasePdf(data: AnyReleaseData): jsPDF {
   doc.setTextColor(22, 101, 52); // emerald-800
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
-  doc.text('DOCUMENTO ELETRÔNICO OFICIAL COM AUTENTICIDADE REGISTRADA', margin + 5, cursorY + 6);
+  doc.text('REGISTRO ELETRÔNICO COM AUTENTICIDADE VERIFICÁVEL', margin + 5, cursorY + 6);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
@@ -154,8 +154,8 @@ export function generateReleasePdf(data: AnyReleaseData): jsPDF {
   doc.text(`Modalidade de Licença: ${data.releaseType}`, margin + 6, cursorY + 27);
 
   const valueText = typeof data.agreedValue === 'number'
-    ? `Valor Acordado e Quitado: R$ ${data.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-    : 'Valor Acordado e Quitado: Conforme Termo de Negociação';
+    ? `Valor Acordado: R$ ${data.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+    : 'Valor Acordado: Conforme Termo de Negociação';
 
   doc.setTextColor(22, 101, 52);
   doc.text(valueText, margin + 95, cursorY + 27);
@@ -214,12 +214,12 @@ export function generateReleasePdf(data: AnyReleaseData): jsPDF {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Data de Emissão Oficial: ${formatDate(data.issueDate)}`, margin + 6, cursorY + 7);
+  doc.text(`Data de Emissão: ${formatDate(data.issueDate)}`, margin + 6, cursorY + 7);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Código de Registro Oficial: ${data.documentCode}`, margin + 6, cursorY + 13);
+  doc.text(`Código do Registro: ${data.documentCode}`, margin + 6, cursorY + 13);
   doc.text(`Endereço de Consulta: ${validationUrl}`, margin + 6, cursorY + 19);
 
   // Digital Signature seal box
@@ -253,7 +253,7 @@ export function generateReleasePdf(data: AnyReleaseData): jsPDF {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(148, 163, 184);
-  doc.text(`${APP_CONFIG.name} • Plataforma Oficial de Conexão Fonográfica e Gestão de Direitos Autorais`, margin, footerY);
+  doc.text(`${APP_CONFIG.name} • Plataforma de conexão fonográfica e gestão de registros`, margin, footerY);
   doc.text(`Página 1 de 1  •  Emitido em ${new Date().toLocaleDateString('pt-BR')}`, margin + contentWidth - 45, footerY);
 
   return doc;

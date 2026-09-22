@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Lock, X, AlertTriangle, KeyRound } from 'lucide-react';
+import { ShieldCheck, Lock, X, KeyRound, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { useAdminToast } from './AdminToast';
+import { useApp } from '../../context/AppContext';
 
 export interface AdminSecurityPinDialogProps {
   isOpen: boolean;
   title: string;
   description: string;
-  correctPin?: string;
   onSuccess: () => void;
   onCancel: () => void;
   actionLabel?: string;
@@ -16,82 +16,75 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
   isOpen,
   title,
   description,
-  correctPin = '1234',
   onSuccess,
   onCancel,
   actionLabel = 'Autorizar Operação'
 }) => {
-  const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '']);
+  const { verifyAdminPassword } = useApp();
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const [isLockedOut, setIsLockedOut] = useState(false);
   const [hasError, setHasError] = useState(false);
   const toast = useAdminToast();
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setPinDigits(['', '', '', '']);
+      setPassword('');
       setHasError(false);
       setTimeout(() => {
-        inputRefs.current[0]?.focus();
+        inputRef.current?.focus();
       }, 100);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleDigitChange = (index: number, value: string) => {
-    if (isLockedOut) return;
-
-    const val = value.replace(/\D/g, '').slice(-1);
-    const newDigits = [...pinDigits];
-    newDigits[index] = val;
-    setPinDigits(newDigits);
-    setHasError(false);
-
-    if (val && index < 3) {
-      inputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLockedOut) return;
+    if (isLockedOut || isVerifying) return;
 
-    const enteredPin = pinDigits.join('');
-    if (enteredPin.length < 4) {
+    if (!password.trim()) {
       setHasError(true);
-      toast.warning('PIN Incompleto', 'Digite os 4 dígitos do PIN mestre de segurança.');
+      toast.warning('Senha Obrigatória', 'Digite a senha da sua conta de administrador para autorizar.');
       return;
     }
 
-    if (enteredPin === correctPin) {
-      toast.success('Autorização Concedida', 'Operação crítica autorizada com sucesso.');
-      onSuccess();
-    } else {
-      setHasError(true);
-      const nextErrors = errorCount + 1;
-      setErrorCount(nextErrors);
+    setIsVerifying(true);
+    try {
+      // Validação real via Supabase Auth
+      const isValid = await verifyAdminPassword(password.trim());
 
-      if (nextErrors >= 3) {
-        setIsLockedOut(true);
-        toast.error('Bloqueio Temporário', 'Muitas tentativas incorretas. Aguarde 10 segundos.');
-        setTimeout(() => {
-          setIsLockedOut(false);
-          setErrorCount(0);
-        }, 10000);
+      if (isValid) {
+        toast.success('Autorização Concedida', 'Operação crítica autorizada com sucesso.');
+        setPassword('');
+        setErrorCount(0);
+        onSuccess();
       } else {
-        toast.error('PIN Incorreto', `PIN de segurança inválido (${3 - nextErrors} tentativas restantes).`);
-      }
+        setHasError(true);
+        const nextErrors = errorCount + 1;
+        setErrorCount(nextErrors);
 
-      setPinDigits(['', '', '', '']);
-      inputRefs.current[0]?.focus();
+        if (nextErrors >= 3) {
+          setIsLockedOut(true);
+          toast.error('Bloqueio Temporário', 'Muitas tentativas incorretas. Aguarde 15 segundos.');
+          setTimeout(() => {
+            setIsLockedOut(false);
+            setErrorCount(0);
+          }, 15000);
+        } else {
+          toast.error('Senha Incorreta', `Senha de administrador inválida (${3 - nextErrors} tentativas restantes).`);
+        }
+
+        setPassword('');
+        inputRef.current?.focus();
+      }
+    } catch {
+      toast.error('Erro na Validação', 'Não foi possível verificar a autenticidade da conta.');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -104,7 +97,7 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
       />
 
       {/* Security Box */}
-      <div className="relative bg-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 animate-scaleUp z-10">
+      <div className="relative bg-slate-900 border border-amber-500/30 rounded-3xl p-5 sm:p-8 max-w-md w-full shadow-2xl space-y-6 animate-scaleUp z-10 max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
         
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -114,7 +107,7 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
             </div>
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> Ação Crítica / 2FA
+                <ShieldCheck className="w-3.5 h-3.5" /> Ação Crítica / Reautenticação
               </span>
               <h3 className="text-base font-bold text-white tracking-tight">{title}</h3>
             </div>
@@ -134,33 +127,46 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
           {description}
         </p>
 
-        {/* PIN Digits Form */}
+        {/* Password Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-400 block text-center">
-              Digite o PIN Master de 4 dígitos (Padrão: <span className="font-mono text-amber-400 font-bold">1234</span>):
+            <label className="text-xs font-semibold text-slate-400 block">
+              Confirme sua senha de Administrador:
             </label>
 
-            <div className="flex items-center justify-center gap-3">
-              {[0, 1, 2, 3].map(index => (
-                <input
-                  key={index}
-                  ref={el => { inputRefs.current[index] = el; }}
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={1}
-                  disabled={isLockedOut}
-                  value={pinDigits[index]}
-                  onChange={e => handleDigitChange(index, e.target.value)}
-                  onKeyDown={e => handleKeyDown(index, e)}
-                  className={`w-12 h-14 bg-slate-950 text-white text-center font-mono text-xl font-bold rounded-2xl border transition focus:outline-none ${
-                    hasError 
-                      ? 'border-rose-500 text-rose-400 shadow-lg shadow-rose-500/20' 
-                      : 'border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-md'
-                  } disabled:opacity-30 disabled:cursor-not-allowed`}
-                />
-              ))}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <Lock className="w-4 h-4" />
+              </div>
+              <input
+                ref={inputRef}
+                type={showPassword ? 'text' : 'password'}
+                disabled={isLockedOut || isVerifying}
+                value={password}
+                onChange={e => {
+                  setPassword(e.target.value);
+                  setHasError(false);
+                }}
+                placeholder="Digite sua senha da conta"
+                className={`w-full bg-slate-950 text-white pl-10 pr-10 py-3 text-sm rounded-xl border transition focus:outline-none ${
+                  hasError 
+                    ? 'border-rose-500 text-rose-400 shadow-lg shadow-rose-500/20' 
+                    : 'border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-md'
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
+            {isLockedOut && (
+              <span className="text-[11px] text-rose-400 font-medium block">
+                Bloqueado temporariamente por excesso de tentativas. Aguarde 15 segundos.
+              </span>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -174,10 +180,11 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isLockedOut}
-              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition disabled:opacity-50"
+              disabled={isLockedOut || isVerifying}
+              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition disabled:opacity-50 flex items-center gap-2"
             >
-              {actionLabel}
+              {isVerifying && <LoaderCircle className="w-3.5 h-3.5 animate-spin" />}
+              <span>{actionLabel}</span>
             </button>
           </div>
         </form>

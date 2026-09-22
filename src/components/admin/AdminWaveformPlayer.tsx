@@ -2,17 +2,19 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Volume2, VolumeX, RotateCcw, Sparkles } from 'lucide-react';
 
 export interface AdminWaveformPlayerProps {
-  audioUrl: string;
+  audioUrl?: string | null;
   title?: string;
   maxPreviewSeconds?: number;
   onPlayStateChange?: (isPlaying: boolean) => void;
+  externalStopTrigger?: any;
 }
 
 export const AdminWaveformPlayer: React.FC<AdminWaveformPlayerProps> = ({
   audioUrl,
   title,
   maxPreviewSeconds = 60,
-  onPlayStateChange
+  onPlayStateChange,
+  externalStopTrigger
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -32,7 +34,24 @@ export const AdminWaveformPlayer: React.FC<AdminWaveformPlayerProps> = ({
     return bars;
   }, [title, audioUrl]);
 
+  // Pause when external stop trigger fires (e.g. table play begins)
   useEffect(() => {
+    if (externalStopTrigger && isPlaying) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      onPlayStateChange?.(false);
+    }
+  }, [externalStopTrigger]);
+
+  useEffect(() => {
+    if (!audioUrl) {
+      audioRef.current = null;
+      setIsPlaying(false);
+      return;
+    }
+
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
     audio.volume = isMuted ? 0 : volume;
@@ -73,13 +92,16 @@ export const AdminWaveformPlayer: React.FC<AdminWaveformPlayerProps> = ({
   }, [audioUrl, maxPreviewSeconds]);
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !audioUrl) return;
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
       onPlayStateChange?.(false);
     } else {
-      audioRef.current.play().catch(e => console.log('Audio error', e));
+      audioRef.current.play().catch(() => {
+        setIsPlaying(false);
+        onPlayStateChange?.(false);
+      });
       setIsPlaying(true);
       onPlayStateChange?.(true);
     }
@@ -111,6 +133,20 @@ export const AdminWaveformPlayer: React.FC<AdminWaveformPlayerProps> = ({
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  if (!audioUrl) {
+    return (
+      <div className="bg-slate-950 p-4 sm:p-5 rounded-2xl border border-dashed border-slate-800 flex items-center gap-3.5 text-slate-400">
+        <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-rose-400 shrink-0">
+          <VolumeX className="w-5 h-5" />
+        </div>
+        <div>
+          <span className="text-slate-200 font-bold text-xs block">Nenhum áudio anexado</span>
+          <p className="text-[11px] text-slate-500">Esta obra não possui arquivo de áudio ou prévia cadastrada pelo compositor.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-4">

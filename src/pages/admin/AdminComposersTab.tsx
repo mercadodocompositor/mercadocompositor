@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AdminComposer, SubscriptionStatus } from '../../types';
 import { useAdminToast } from '../../components/admin/AdminToast';
@@ -36,9 +36,8 @@ import {
   Link as LinkIcon, 
   CheckSquare, 
   Square,
-  Lock
+  Lock,
 } from 'lucide-react';
-import { APP_CONFIG } from '../../config/appConfig';
 
 type SortField = 'stageName' | 'planName' | 'monthlyValue' | 'songCount' | 'totalPlays' | 'revenueGenerated' | 'subscriptionStatus';
 type SortOrder = 'asc' | 'desc';
@@ -48,8 +47,10 @@ export const AdminComposersTab: React.FC = () => {
     adminComposers, 
     updateAdminComposerStatus, 
     toggleComposerVerified, 
-    deleteAdminComposer,
-    addAdminComposer
+    suspendAdminComposer,
+    subscriptionPlans,
+    addSystemLog,
+    profile
   } = useApp();
 
   const toast = useAdminToast();
@@ -61,8 +62,7 @@ export const AdminComposersTab: React.FC = () => {
   const [datePreset, setDatePreset] = useState<DateFilterPreset>('all');
   const [selectedComposer, setSelectedComposer] = useState<AdminComposer | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [addMode, setAddMode] = useState<'invite' | 'manual'>('invite');
-  const [invitePlan, setInvitePlan] = useState('Plano Ouro (Ilimitado)');
+  const [invitePlan, setInvitePlan] = useState('');
   const [copiedInviteLink, setCopiedInviteLink] = useState(false);
 
   // Bulk Selection State
@@ -75,24 +75,10 @@ export const AdminComposersTab: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Security PIN deletion dialog state
-  const [composerToDelete, setComposerToDelete] = useState<AdminComposer | null>(null);
+  // Password confirmation state for account suspension
+  const [composerToSuspend, setComposerToSuspend] = useState<AdminComposer | null>(null);
+  const [exportRequest, setExportRequest] = useState<boolean | null>(null);
 
-  // New Composer Form state for manual add
-  const [newForm, setNewForm] = useState({
-    name: '',
-    stageName: '',
-    email: '',
-    whatsapp: '',
-    cpf: '',
-    cityState: '',
-    username: '',
-    planName: 'Plano Ouro',
-    monthlyValue: 54.90,
-    subscriptionStatus: 'active' as SubscriptionStatus,
-    photo: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
-    isVerified: true
-  });
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -115,7 +101,7 @@ export const AdminComposersTab: React.FC = () => {
         composer.cpf.includes(debouncedSearchTerm);
 
       const matchesStatus = statusFilter === 'all' || composer.subscriptionStatus === statusFilter;
-      const matchesDate = filterByDatePreset(composer.createdAt, datePreset);
+      const matchesDate = filterByDatePreset(composer.registeredAt, datePreset);
 
       return matchesSearch && matchesStatus && matchesDate;
     });
@@ -164,20 +150,22 @@ export const AdminComposersTab: React.FC = () => {
 
   // Bulk Execution
   const handleBulkActivate = async () => {
-    const results=await Promise.all(selectedComposerIds.map(id=>updateAdminComposerStatus(id,'active')));
+    const ids = [...selectedComposerIds];
+    const results=await Promise.all(ids.map(id=>updateAdminComposerStatus(id,'active')));
     const saved=results.filter(Boolean).length;
     if(saved)toast.success('Assinaturas Ativadas!', `${saved} compositores agora estão com status ativo.`);
     if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} assinaturas mantiveram o status anterior.`);
-    setSelectedComposerIds([]);
+    setSelectedComposerIds(ids.filter((_, index) => !results[index]));
     setBulkActionType(null);
   };
 
   const handleBulkSuspend = async () => {
-    const results=await Promise.all(selectedComposerIds.map(id=>updateAdminComposerStatus(id,'suspended')));
+    const ids = [...selectedComposerIds];
+    const results=await Promise.all(ids.map(id=>updateAdminComposerStatus(id,'suspended')));
     const saved=results.filter(Boolean).length;
     if(saved)toast.warning('Assinaturas Suspensas', `${saved} compositores foram suspensos.`);
     if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} assinaturas mantiveram o status anterior.`);
-    setSelectedComposerIds([]);
+    setSelectedComposerIds(ids.filter((_, index) => !results[index]));
     setBulkActionType(null);
   };
 
@@ -190,67 +178,60 @@ export const AdminComposersTab: React.FC = () => {
     const saved=results.filter(Boolean).length;
     if(saved)toast.success('Selo Verificado em Lote!', `${saved} perfis foram verificados.`);
     if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} perfis mantiveram o estado anterior.`);
-    setSelectedComposerIds([]);
+    setSelectedComposerIds(targets.filter((_, index) => !results[index]));
     setBulkActionType(null);
   };
 
-  const handleCopyInviteLink = () => {
-    const planSlug = encodeURIComponent(invitePlan);
-    const inviteUrl = `${window.location.origin}/autenticacao?modo=cadastro&plano=${planSlug}`;
-    navigator.clipboard.writeText(inviteUrl);
-    setCopiedInviteLink(true);
-    toast.success('Link de convite copiado!', 'Envie o link para o compositor concluir o cadastro.');
-    setTimeout(() => setCopiedInviteLink(false), 2500);
-  };
+  const activeInvitePlans = useMemo(
+    () => subscriptionPlans.filter(plan => plan.isActive).sort((a, b) => a.sortOrder - b.sortOrder),
+    [subscriptionPlans]
+  );
 
-  const handleManualAddSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newForm.name || !newForm.email || !newForm.stageName) {
-      toast.warning('Campos obrigatórios', 'Preencha o Nome civil, Nome artístico e E-mail.');
+  useEffect(() => {
+    if (!activeInvitePlans.length) {
+      setInvitePlan('');
       return;
     }
+    if (!activeInvitePlans.some(plan => plan.name === invitePlan)) {
+      setInvitePlan(activeInvitePlans[0].name);
+    }
+  }, [activeInvitePlans, invitePlan]);
 
-    addAdminComposer({
-      name: newForm.name,
-      stageName: newForm.stageName,
-      email: newForm.email,
-      whatsapp: newForm.whatsapp,
-      cpf: newForm.cpf,
-      cityState: newForm.cityState || 'Brasil',
-      username: newForm.username || newForm.stageName.toLowerCase().replace(/\s+/g, '-'),
-      planName: newForm.planName,
-      monthlyValue: newForm.monthlyValue,
-      subscriptionStatus: newForm.subscriptionStatus,
-      photo: newForm.photo,
-      isVerified: newForm.isVerified
-    });
+  useEffect(() => {
+    if (!selectedComposer) return;
+    const current = adminComposers.find(composer => composer.id === selectedComposer.id);
+    if (!current) setSelectedComposer(null);
+    else if (current !== selectedComposer) setSelectedComposer(current);
+  }, [adminComposers, selectedComposer?.id]);
 
-    toast.success('Compositor adicionado com sucesso!', `${newForm.stageName} foi incluído no painel.`);
-    setIsAddModalOpen(false);
-    setNewForm({
-      name: '',
-      stageName: '',
-      email: '',
-      whatsapp: '',
-      cpf: '',
-      cityState: '',
-      username: '',
-      planName: 'Plano Ouro',
-      monthlyValue: 54.90,
-      subscriptionStatus: 'active',
-      photo: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
-      isVerified: true
-    });
+  const handleCopyInviteLink = async () => {
+    if (!invitePlan) {
+      toast.warning('Plano indisponível', 'Cadastre ou ative um plano antes de gerar o convite.');
+      return;
+    }
+    const planSlug = encodeURIComponent(invitePlan);
+    const inviteUrl = `${window.location.origin}/autenticacao?modo=cadastro&plano=${planSlug}`;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopiedInviteLink(true);
+      toast.success('Link de convite copiado!', 'Envie o link para o compositor concluir o cadastro.');
+      setTimeout(() => setCopiedInviteLink(false), 2500);
+    } catch {
+      toast.error('Falha ao copiar', 'Não foi possível acessar a área de transferência. Copie o link manualmente.');
+    }
   };
 
-  const handleConfirmDeleteByPin = () => {
-    if (!composerToDelete) return;
-    deleteAdminComposer(composerToDelete.id);
-    toast.error('Compositor removido', `${composerToDelete.stageName} foi excluído permanentemente da base.`);
-    if (selectedComposer?.id === composerToDelete.id) {
-      setSelectedComposer(null);
+  const handleConfirmSuspend = async () => {
+    if (!composerToSuspend) return;
+    const composer = composerToSuspend;
+    const success = await suspendAdminComposer(composer.id);
+    if (success) {
+      toast.warning('Conta suspensa', `A assinatura de ${composer.stageName} foi suspensa.`);
+      if (selectedComposer?.id === composer.id) setSelectedComposer(null);
+      setComposerToSuspend(null);
+    } else {
+      toast.error('Falha ao suspender', 'A conta permaneceu com o status anterior.');
     }
-    setComposerToDelete(null);
   };
 
   const handleStatusChange = async (composer: AdminComposer, newStatus: SubscriptionStatus) => {
@@ -273,15 +254,49 @@ export const AdminComposersTab: React.FC = () => {
     }
   };
 
-  const handleExportCsv = (onlySelected: boolean = false) => {
+  const getExportList = (onlySelected: boolean) => onlySelected
+    ? adminComposers.filter(c => selectedComposerIds.includes(c.id))
+    : filteredAndSortedComposers;
+
+  const requestCsvExport = (onlySelected: boolean) => {
+    if (getExportList(onlySelected).length === 0) {
+      toast.warning('Nenhum dado', 'Não há registros para exportar com os filtros atuais.');
+      return;
+    }
+    setExportRequest(onlySelected);
+  };
+
+  const handleExportCsv = async () => {
+    if (exportRequest === null) return;
+    const onlySelected = exportRequest;
     const listToExport = onlySelected
       ? adminComposers.filter(c => selectedComposerIds.includes(c.id))
       : filteredAndSortedComposers;
 
     if (listToExport.length === 0) {
       toast.warning('Nenhum dado', 'Não há registros para exportar com os filtros atuais.');
+      setExportRequest(null);
       return;
     }
+
+    const auditSaved = await addSystemLog({
+      category: 'auth',
+      status: 'warning',
+      title: 'Exportação de Dados Pessoais (LGPD)',
+      description: `Exportação CSV com dados cadastrais de ${listToExport.length} compositores (${onlySelected ? 'seleção manual' : 'filtros atuais'}).`,
+      user: profile.email || profile.name || 'Administrador autenticado'
+    });
+    if (!auditSaved) {
+      toast.error('Exportação bloqueada', 'Não foi possível registrar a operação na trilha de auditoria.');
+      setExportRequest(null);
+      return;
+    }
+
+    const csvCell = (value: unknown) => {
+      let text = String(value ?? '');
+      if (/^[=+\-@]/.test(text)) text = `'${text}`;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
 
     const headers = [
       'Nome_Civil',
@@ -300,19 +315,19 @@ export const AdminComposersTab: React.FC = () => {
     ];
 
     const rows = listToExport.map(c => [
-      `"${c.name.replace(/"/g, '""')}"`,
-      `"${c.stageName.replace(/"/g, '""')}"`,
-      `"${c.email}"`,
-      `"${c.whatsapp}"`,
-      `"${c.cpf}"`,
-      `"${c.cityState.replace(/"/g, '""')}"`,
-      `"${c.planName}"`,
-      c.monthlyValue.toFixed(2),
-      c.subscriptionStatus,
-      c.songCount,
-      c.totalPlays,
-      c.revenueGenerated.toFixed(2),
-      c.isVerified ? 'Sim' : 'Nao'
+      csvCell(c.name),
+      csvCell(c.stageName),
+      csvCell(c.email),
+      csvCell(c.whatsapp),
+      csvCell(c.cpf),
+      csvCell(c.cityState),
+      csvCell(c.planName),
+      csvCell(c.monthlyValue.toFixed(2)),
+      csvCell(c.subscriptionStatus),
+      csvCell(c.songCount),
+      csvCell(c.totalPlays),
+      csvCell(c.revenueGenerated.toFixed(2)),
+      csvCell(c.isVerified ? 'Sim' : 'Nao')
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
@@ -324,6 +339,7 @@ export const AdminComposersTab: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     toast.success('Relatório CSV Gerado', `${listToExport.length} compositores exportados.`);
+    setExportRequest(null);
   };
 
   const renderSortIcon = (field: SortField) => {
@@ -350,15 +366,15 @@ export const AdminComposersTab: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           <AdminDateRangeFilter
             activePreset={datePreset}
             onPresetChange={preset => { setDatePreset(preset); setCurrentPage(1); }}
           />
 
           <button
-            onClick={() => handleExportCsv(false)}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition shadow-sm"
+            onClick={() => requestCsvExport(false)}
+            className="flex-1 sm:flex-none justify-center px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition shadow-sm"
           >
             <Download className="w-4 h-4 text-amber-400" />
             <span>Exportar CSV</span>
@@ -366,10 +382,10 @@ export const AdminComposersTab: React.FC = () => {
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
+            className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Adicionar / Convidar</span>
+            <span>Convidar</span>
           </button>
         </div>
       </div>
@@ -380,7 +396,7 @@ export const AdminComposersTab: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por nome, nome artístico, e-mail, cidade ou CPF (busca instantânea)..."
+            placeholder="Buscar por nome, nome artístico, e-mail, cidade ou CPF..."
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition"
@@ -388,7 +404,7 @@ export const AdminComposersTab: React.FC = () => {
         </div>
 
         {/* Status Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+        <div className="flex items-center gap-2 overflow-x-auto touch-scroll pb-1 md:pb-0">
           <button
             onClick={() => { setStatusFilter('all'); setCurrentPage(1); }}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
@@ -434,8 +450,8 @@ export const AdminComposersTab: React.FC = () => {
 
       {/* Composers DataTable with LGPD Masked Data */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
+        <div className="overflow-x-auto touch-scroll">
+          <table className="w-full min-w-[760px] text-left text-xs text-slate-300">
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
                 <th className="p-4 w-10 text-center">
@@ -494,8 +510,10 @@ export const AdminComposersTab: React.FC = () => {
             <tbody className="divide-y divide-slate-800/80">
               {paginatedComposers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400">
-                    Nenhum compositor encontrado para os filtros selecionados.
+                  <td colSpan={8} className="p-12 text-center text-slate-400">
+                    <Users className="w-10 h-10 mx-auto text-slate-600 mb-2" />
+                    <p className="text-sm font-semibold text-slate-300">Nenhum compositor encontrado para os filtros selecionados.</p>
+                    <p className="text-xs text-slate-500 mt-1">Tente alterar os termos de busca ou selecionar outro status de assinatura.</p>
                   </td>
                 </tr>
               ) : (
@@ -525,16 +543,23 @@ export const AdminComposersTab: React.FC = () => {
                       {/* Photo & Stage Name */}
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <img 
-                            src={composer.photo} 
-                            alt={composer.name} 
-                            className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
-                          />
+                          {composer.photo ? (
+                            <img 
+                              src={composer.photo} 
+                              alt={composer.name} 
+                              className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
+                              onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 font-bold text-xs shrink-0">
+                              {composer.stageName?.slice(0, 2).toUpperCase() || 'MC'}
+                            </div>
+                          )}
                           <div>
                             <div className="flex items-center gap-1.5">
                               <strong className="text-white text-sm">{composer.stageName}</strong>
                               {composer.isVerified && (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" title="Verificado" />
+                                <span title="Verificado" className="inline-flex"><CheckCircle2 aria-label="Verificado" className="w-3.5 h-3.5 text-amber-400" /></span>
                               )}
                             </div>
                             <span className="text-[11px] text-slate-400 block">{composer.name}</span>
@@ -624,9 +649,9 @@ export const AdminComposersTab: React.FC = () => {
                         </button>
 
                         <button
-                          onClick={() => setComposerToDelete(composer)}
+                          onClick={() => setComposerToSuspend(composer)}
                           className="p-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 transition"
-                          title="Excluir compositor (Requer PIN)"
+                          title="Suspender conta (Requer senha)"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -681,7 +706,7 @@ export const AdminComposersTab: React.FC = () => {
             label: 'Exportar CSV',
             icon: <Download className="w-4 h-4" />,
             variant: 'secondary',
-            onClick: () => handleExportCsv(true)
+            onClick: () => requestCsvExport(true)
           }
         ]}
       />
@@ -720,11 +745,18 @@ export const AdminComposersTab: React.FC = () => {
           <div className="space-y-6 text-xs">
             {/* Profile Overview Card */}
             <div className="flex items-center gap-4 bg-slate-950 p-4 rounded-2xl border border-slate-800">
-              <img 
-                src={selectedComposer.photo} 
-                alt={selectedComposer.name} 
-                className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-400"
-              />
+              {selectedComposer.photo ? (
+                <img 
+                  src={selectedComposer.photo} 
+                  alt={selectedComposer.name} 
+                  className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-400 shrink-0"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-slate-800 border-2 border-amber-400 flex items-center justify-center text-amber-400 font-bold text-lg shrink-0">
+                  {selectedComposer.stageName?.slice(0, 2).toUpperCase() || 'MC'}
+                </div>
+              )}
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h4 className="font-bold text-white text-base truncate">{selectedComposer.stageName}</h4>
@@ -831,26 +863,34 @@ export const AdminComposersTab: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setComposerToDelete(selectedComposer)}
+                onClick={() => setComposerToSuspend(selectedComposer)}
                 className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Excluir (PIN)</span>
+                <span>Suspender conta</span>
               </button>
             </div>
           </div>
         )}
       </AdminDrawer>
 
-      {/* SECURITY PIN CONFIRMATION DIALOG (FOR DELETIONS) */}
+      {/* PASSWORD CONFIRMATION DIALOG FOR ACCOUNT SUSPENSION */}
       <AdminSecurityPinDialog
-        isOpen={!!composerToDelete}
-        title={`Excluir ${composerToDelete?.stageName}?`}
-        description="Esta ação removerá permanentemente todos os registros deste compositor. Por motivos de segurança e conformidade, digite seu PIN mestre para confirmar."
-        correctPin="1234"
-        actionLabel="Confirmar Exclusão"
-        onSuccess={handleConfirmDeleteByPin}
-        onCancel={() => setComposerToDelete(null)}
+        isOpen={!!composerToSuspend}
+        title={`Suspender ${composerToSuspend?.stageName}?`}
+        description="A assinatura será suspensa e o compositor perderá o acesso aos recursos ativos. Digite a senha da sua conta de administrador para confirmar."
+        actionLabel="Confirmar Suspensão"
+        onSuccess={handleConfirmSuspend}
+        onCancel={() => setComposerToSuspend(null)}
+      />
+
+      <AdminSecurityPinDialog
+        isOpen={exportRequest !== null}
+        title="Exportar dados pessoais?"
+        description="O relatório contém e-mail, telefone e CPF. Confirme sua senha de administrador; a finalidade, o responsável e a quantidade exportada serão registrados na auditoria."
+        actionLabel="Autorizar Exportação"
+        onSuccess={handleExportCsv}
+        onCancel={() => setExportRequest(null)}
       />
 
       {/* CONFIRM BULK ACTION DIALOG */}
@@ -878,11 +918,11 @@ export const AdminComposersTab: React.FC = () => {
       {/* ADD / INVITE COMPOSER MODAL */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 animate-fadeIn max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
-                <h3 className="font-bold text-white text-base">Adicionar / Convidar Compositor</h3>
-                <p className="text-slate-400 text-xs mt-0.5">Envie um link pré-pago ou faça o cadastro manual.</p>
+                <h3 className="font-bold text-white text-base">Convidar Compositor</h3>
+                <p className="text-slate-400 text-xs mt-0.5">Envie um link para o compositor concluir o cadastro com segurança.</p>
               </div>
               <button 
                 onClick={() => setIsAddModalOpen(false)}
@@ -892,168 +932,43 @@ export const AdminComposersTab: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-              <button
-                onClick={() => setAddMode('invite')}
-                className={`flex-1 py-2 rounded-lg font-bold transition flex items-center justify-center gap-2 ${
-                  addMode === 'invite' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <LinkIcon className="w-3.5 h-3.5" />
-                <span>Gerar Link de Convite</span>
-              </button>
-              <button
-                onClick={() => setAddMode('manual')}
-                className={`flex-1 py-2 rounded-lg font-bold transition flex items-center justify-center gap-2 ${
-                  addMode === 'manual' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span>Cadastro Manual</span>
-              </button>
-            </div>
+            <div className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-semibold">Selecione o Plano do Convite</label>
+                <select
+                  value={invitePlan}
+                  onChange={e => setInvitePlan(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3 py-2.5"
+                >
+                  {activeInvitePlans.map(plan => (
+                    <option key={plan.id} value={plan.name}>
+                      {plan.name} — R$ {plan.monthlyPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês
+                      {plan.maxSongs == null ? ' — ilimitado' : ` — até ${plan.maxSongs} músicas`}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {addMode === 'invite' ? (
-              <div className="space-y-4 text-xs">
-                <div className="space-y-1.5">
-                  <label className="text-slate-300 font-semibold">Selecione o Plano do Convite</label>
-                  <select
-                    value={invitePlan}
-                    onChange={e => setInvitePlan(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3 py-2.5"
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+                <span className="text-slate-400 block text-[11px]">Link direto para o compositor concluir o próprio cadastro:</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={invitePlan ? `${window.location.origin}/autenticacao?modo=cadastro&plano=${encodeURIComponent(invitePlan)}` : ''}
+                    className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-[11px] text-amber-400 font-mono flex-1 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleCopyInviteLink}
+                    disabled={!invitePlan}
+                    className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold flex items-center gap-1.5 shrink-0 transition"
                   >
-                    <option value="Plano Ouro (Ilimitado)">Plano Ouro (Ilimitado) — R$ 54,90/mês</option>
-                    <option value="Plano Prata (200 Músicas)">Plano Prata (200 Músicas) — R$ 34,90/mês</option>
-                    <option value="Plano Bronze (100 Músicas)">Plano Bronze (100 Músicas) — R$ 19,90/mês</option>
-                  </select>
-                </div>
-
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
-                  <span className="text-slate-400 block text-[11px]">Link direto para envio via WhatsApp ou E-mail:</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={`${window.location.origin}/autenticacao?modo=cadastro&plano=${encodeURIComponent(invitePlan)}`}
-                      className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-[11px] text-amber-400 font-mono flex-1 focus:outline-none"
-                    />
-                    <button
-                      onClick={handleCopyInviteLink}
-                      className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold flex items-center gap-1.5 shrink-0 transition"
-                    >
-                      {copiedInviteLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      <span>{copiedInviteLink ? 'Copiado!' : 'Copiar'}</span>
-                    </button>
-                  </div>
+                    {copiedInviteLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedInviteLink ? 'Copiado!' : 'Copiar'}</span>
+                  </button>
                 </div>
               </div>
-            ) : (
-              <form onSubmit={handleManualAddSubmit} className="space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-slate-300 font-medium">Nome Artístico *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: João Viola"
-                      value={newForm.stageName}
-                      onChange={e => setNewForm({ ...newForm, stageName: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-300 font-medium">Nome Civil Completo *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: João Carlos da Silva"
-                      value={newForm.name}
-                      onChange={e => setNewForm({ ...newForm, name: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-slate-300 font-medium">E-mail *</label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="compositor@email.com"
-                      value={newForm.email}
-                      onChange={e => setNewForm({ ...newForm, email: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-300 font-medium">WhatsApp</label>
-                    <input
-                      type="text"
-                      placeholder="(62) 99999-9999"
-                      value={newForm.whatsapp}
-                      onChange={e => setNewForm({ ...newForm, whatsapp: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-slate-300 font-medium">CPF</label>
-                    <input
-                      type="text"
-                      placeholder="000.000.000-00"
-                      value={newForm.cpf}
-                      onChange={e => setNewForm({ ...newForm, cpf: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-300 font-medium">Cidade/UF</label>
-                    <input
-                      type="text"
-                      placeholder="Goiânia - GO"
-                      value={newForm.cityState}
-                      onChange={e => setNewForm({ ...newForm, cityState: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-300 font-medium">Plano Inicial</label>
-                    <select
-                      value={newForm.planName}
-                      onChange={e => {
-                        const val = e.target.value;
-                        const price = val.includes('Ouro') ? 54.90 : val.includes('Prata') ? 34.90 : 19.90;
-                        setNewForm({ ...newForm, planName: val, monthlyValue: price });
-                      }}
-                      className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-2 py-2"
-                    >
-                      <option value="Plano Ouro">Ouro (R$ 54,90)</option>
-                      <option value="Plano Prata">Prata (R$ 34,90)</option>
-                      <option value="Plano Bronze">Bronze (R$ 19,90)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddModalOpen(false)}
-                    className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-semibold hover:bg-slate-700 transition"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl shadow-lg transition"
-                  >
-                    Cadastrar Compositor
-                  </button>
-                </div>
-              </form>
-            )}
+            </div>
           </div>
         </div>
       )}

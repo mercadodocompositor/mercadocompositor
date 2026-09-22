@@ -9,7 +9,6 @@ supabase/.temp/
 .DS_Store
 *.log
 mercado-do-compositor-*.zip
-/mercado-do-compositor-hostinger/
-/mercado-do-compositor-producao/
+/mercado-do-compositor-*/
 .env*
 !.env.example

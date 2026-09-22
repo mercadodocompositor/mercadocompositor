@@ -27,5 +27,21 @@ email_sent = 30
 [functions.send-auth-email]
 verify_jwt = false
 
+[functions.process-notification-emails]
+verify_jwt = false
+
 [functions.validate-media-upload]
+verify_jwt = true
+
+# O Mercado Pago chama o webhook sem JWT. Sem esta linha o gateway do Supabase
+# aplica o padrao verify_jwt = true e recusa toda notificacao com HTTP 401 --
+# nenhum pagamento seria processado. A autenticidade do evento e garantida
+# dentro da funcao: assinatura HMAC (x-signature) quando
+# MERCADOPAGO_WEBHOOK_SECRET esta configurado, mais releitura obrigatoria do
+# pagamento na API oficial do Mercado Pago.
+[functions.mercadopago-webhook]
+verify_jwt = false
+
+# Chamado pelo proprio app com a sessao do compositor.
+[functions.mercadopago-checkout]
 verify_jwt = true
