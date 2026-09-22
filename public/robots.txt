@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Allow: /compositor/
+Allow: /validar-documento
+Allow: /validar/
+Allow: /termos
+Allow: /privacidade
+
+# Páginas privadas e administrativas que não devem ser indexadas por buscadores
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /login
+Disallow: /autenticacao
+Disallow: /cadastro
+Disallow: /recuperar-senha
+
+Sitemap: https://mercadodocompositor.com.br/sitemap.xml

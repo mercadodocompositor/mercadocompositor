@@ -19,7 +19,7 @@ export const AdminMaskedData: React.FC<AdminMaskedDataProps> = ({
   className = ''
 }) => {
   const [isRevealed, setIsRevealed] = useState(false);
-  const { addSystemLog } = useApp();
+  const { addSystemLog, profile } = useApp();
   const toast = useAdminToast();
 
   if (!value) {
@@ -65,26 +65,30 @@ export const AdminMaskedData: React.FC<AdminMaskedDataProps> = ({
     }
   };
 
-  const handleToggleReveal = (e: React.MouseEvent) => {
+  const handleToggleReveal = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const nextState = !isRevealed;
-    setIsRevealed(nextState);
+    if (isRevealed) {
+      setIsRevealed(false);
+      return;
+    }
 
-    if (nextState) {
       // LGPD Compliance: Audit log event
       const logTitle = `Visualização de Dado Sensível (LGPD)`;
       const logDesc = `O administrador revelou o campo [${type.toUpperCase()}] de [${subjectName}].`;
-      
-      addSystemLog({
+      const persisted = await addSystemLog({
         category: 'auth',
         status: 'warning',
         title: logTitle,
         description: logDesc,
-        user: 'Owner Admin'
+        user: profile.email || profile.name || 'Administrador autenticado'
       });
 
+      if (!persisted) {
+        toast.error('Auditoria indisponível', 'O dado não foi revelado porque o acesso não pôde ser registrado.');
+        return;
+      }
+      setIsRevealed(true);
       toast.info('Dado Sensível Revelado', 'O acesso foi registrado no log de auditoria e segurança (LGPD).');
-    }
   };
 
   const displayedText = isRevealed ? value : maskValue(value, type);

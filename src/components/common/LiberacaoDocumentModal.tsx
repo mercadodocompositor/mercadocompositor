@@ -1,34 +1,49 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ReleaseDocument } from '../../types';
 import { X, FileCheck, Copy, CheckCircle, ShieldCheck, Printer, Phone, Download, Loader2, ExternalLink } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
-import { downloadReleasePdf } from '../../lib/pdfGenerator';
+import { downloadReleaseDocument } from '../../lib/releaseArchive';
+import { normalizeBrazilianWhatsapp } from '../../lib/contact';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 interface LiberacaoDocumentModalProps {
   document: ReleaseDocument;
   buyerPhone?: string;
   onClose: () => void;
   onCompleteNegotiation?: () => void;
+  archiveError?: string;
+  archiving?: boolean;
+  onRetryArchive?: () => void;
 }
 
 export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   document,
   buyerPhone,
   onClose,
-  onCompleteNegotiation
+  onCompleteNegotiation,
+  archiveError,
+  archiving,
+  onRetryArchive
 }) => {
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const validationUrl = `${window.location.origin}/validar-documento?codigo=${document.documentCode}`;
+  const dialogRef = useModalFocus<HTMLDivElement>(true, onClose);
 
   const handleDownloadPdf = async () => {
     try {
       setIsDownloadingPdf(true);
+      setDownloadError(null);
+      setDownloadNotice(null);
       // Allow slight tick for UI update
       await new Promise(resolve => setTimeout(resolve, 50));
-      downloadReleasePdf(document);
+      const archived = await downloadReleaseDocument(document);
+      setDownloadNotice(archived ? 'PDF arquivado baixado.' : 'PDF gerado e baixado. O documento ainda não foi arquivado.');
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
+      setDownloadError('Não foi possível baixar o PDF. Tente novamente.');
     } finally {
       setIsDownloadingPdf(false);
     }
@@ -36,7 +51,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
 
   const handleCopySummary = async () => {
     const summary = [
-      `🎵 ${APP_CONFIG.name} — Termo Oficial de Liberação Fonográfica`,
+      `🎵 ${APP_CONFIG.name} — Termo de Liberação Fonográfica`,
       `Código de Autenticidade: ${document.documentCode}`,
       `Obra Musical: "${document.songTitle}"`,
       `Compositor (Outorgante): ${document.composerName}`,
@@ -45,7 +60,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
       `Valor Acordado: R$ ${document.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
       `Data de Emissão: ${formatDate(document.issueDate)}`,
       `Consulta Pública de Autenticidade: ${validationUrl}`,
-      'Documento emitido eletronicamente com validade jurídica pela plataforma Mercado do Compositor.'
+      'Registro eletrônico emitido pela plataforma Mercado do Compositor.'
     ].join('\n');
     try {
       await navigator.clipboard.writeText(summary);
@@ -57,10 +72,9 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   };
 
   const handleSendWhatsApp = () => {
-    const digits = buyerPhone ? buyerPhone.replace(/\D/g, '') : '';
-    const normalizedPhone = digits.length > 0 ? (digits.startsWith('55') ? digits : `55${digits}`) : '';
+    const normalizedPhone = buyerPhone ? normalizeBrazilianWhatsapp(buyerPhone) : null;
     const message = encodeURIComponent(
-      `Olá, ${document.buyerName}! Segue o Termo de Liberação da música "${document.songTitle}" emitido por ${document.composerName}.\n\nCódigo do Documento: ${document.documentCode}\nTipo: ${document.releaseType}\n\nVocê pode consultar e validar a autenticidade oficial do documento no link:\n${validationUrl}`
+      `Olá, ${document.buyerName}! Segue o Termo de Liberação da música "${document.songTitle}" emitido por ${document.composerName}.\n\nCódigo do Documento: ${document.documentCode}\nTipo: ${document.releaseType}\n\nVocê pode consultar a autenticidade do registro no link:\n${validationUrl}`
     );
 
     if (normalizedPhone) {
@@ -85,17 +99,9 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
     return `${'•'.repeat(Math.max(3, digits.length - 4))}${digits.slice(-4)}`;
   };
 
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose]);
-
   return (
     <div className="release-print-root fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:p-0 print:static print:bg-white">
-      <div role="dialog" aria-modal="true" aria-labelledby="release-document-title" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-4 sm:p-8 shadow-2xl relative my-6 text-slate-100 print:border-none print:shadow-none print:bg-white print:text-slate-900 print:my-0 print:max-w-none">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="release-document-title" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-4 sm:p-8 shadow-2xl relative my-6 text-slate-100 print:border-none print:shadow-none print:bg-white print:text-slate-900 print:my-0 print:max-w-none max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
         
         {/* Header Actions (Hidden when printing) */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6 print:hidden">
@@ -105,12 +111,13 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
             </div>
             <div>
               <h3 id="release-document-title" className="font-bold text-base sm:text-lg text-white">Termo de Liberação Fonográfica</h3>
-              <p className="text-xs text-slate-400">Código Oficial: {document.documentCode}</p>
+              <p className="text-xs text-slate-400">Código do registro: {document.documentCode}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
+              data-autofocus
               type="button"
               onClick={onClose}
               aria-label="Fechar documento"
@@ -121,12 +128,25 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           </div>
         </div>
 
+        {!document.documentPath && onRetryArchive && (
+          <div role={archiveError ? 'alert' : 'status'} className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200 print:hidden">
+            <p>Termo emitido. {archiving ? 'Arquivando PDF...' : archiveError ? `Falha ao arquivar o PDF: ${archiveError}` : 'O PDF ainda precisa ser arquivado.'}</p>
+            {!archiving && <button type="button" onClick={onRetryArchive} className="mt-2 rounded-lg bg-amber-500 px-3 py-2 font-bold text-slate-950">Arquivar PDF</button>}
+          </div>
+        )}
+
+        {document.documentPath && (
+          <div role="status" className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200 print:hidden">
+            PDF arquivado. O download utiliza a versão armazenada.
+          </div>
+        )}
+
         {/* Authenticity Banner */}
         <div className="mb-6 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-300 print:bg-emerald-50 print:border-emerald-400 print:text-emerald-900">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="font-bold uppercase tracking-wider text-[10px] sm:text-xs">
-              Documento Oficial Eletrônico com Autenticidade Registrada
+              Registro eletrônico com autenticidade verificável
             </span>
           </div>
           <a
@@ -196,7 +216,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               </div>
 
               <div>
-                <span className="font-semibold text-slate-300 print:text-slate-800 block">Valor Acordado e Quitado:</span>
+                <span className="font-semibold text-slate-300 print:text-slate-800 block">Valor Acordado:</span>
                 <p className="text-white print:text-slate-900 font-bold font-mono">
                   R$ {document.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
@@ -246,28 +266,30 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
         {summaryCopied && (
           <div role="status" className="mt-4 p-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs rounded-xl flex items-center gap-2 animate-fadeIn">
             <CheckCircle className="w-4 h-4 text-emerald-400" />
-            <span>Resumo com link oficial de autenticidade copiado para a área de transferência!</span>
+            <span>Resumo com link de autenticidade copiado para a área de transferência!</span>
           </div>
         )}
+        {downloadError && <div role="alert" className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">{downloadError}</div>}
+        {downloadNotice && <div role="status" className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{downloadNotice}</div>}
 
         {/* Action Buttons */}
-        <div className="mt-6 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 print:hidden">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-6 pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={handleDownloadPdf}
               disabled={isDownloadingPdf}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition disabled:opacity-50"
+              className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition disabled:opacity-50"
             >
               {isDownloadingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Gerando PDF...</span>
+                  <span>Preparando PDF...</span>
                 </>
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>Baixar PDF Oficial</span>
+                  <span>Baixar PDF</span>
                 </>
               )}
             </button>
@@ -275,16 +297,16 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
             <button
               type="button"
               onClick={handleSendWhatsApp}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition"
+              className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition"
             >
               <Phone className="w-4 h-4" />
-              <span>Enviar via WhatsApp</span>
+              <span>WhatsApp</span>
             </button>
 
             <button
               type="button"
               onClick={handlePrint}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs flex items-center gap-1.5 transition"
+              className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs flex items-center gap-1.5 transition"
             >
               <Printer className="w-4 h-4 text-amber-400" />
               <span>Imprimir</span>
@@ -293,10 +315,10 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
             <button
               type="button"
               onClick={handleCopySummary}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs flex items-center gap-1.5 transition"
+              className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs flex items-center gap-1.5 transition"
             >
               <Copy className="w-4 h-4 text-amber-400" />
-              <span>{summaryCopied ? 'Resumo Copiado' : 'Copiar Resumo'}</span>
+              <span>{summaryCopied ? 'Copiado!' : 'Copiar'}</span>
             </button>
           </div>
 
@@ -306,7 +328,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               if (onCompleteNegotiation) onCompleteNegotiation();
               onClose();
             }}
-            className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition"
+            className="w-full sm:w-auto justify-center px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition"
           >
             <CheckCircle className="w-4 h-4" />
             <span>{onCompleteNegotiation ? 'Concluir Negociação' : 'Fechar'}</span>

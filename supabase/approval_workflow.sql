@@ -58,17 +58,34 @@ begin
     end if;
   end if;
 
-  if new.date_composed > current_date then
-    raise exception using
-      errcode = '23514',
-      message = 'A data da composição não pode estar no futuro.';
+  -- 1. Título obrigatório com trim para todos os status (inclusive rascunho)
+  if nullif(btrim(new.title), '') is null then
+    raise exception using errcode = '23514', message = 'Informe ao menos um título provisório para salvar o rascunho.';
   end if;
 
-  if new.value_type = 'suggested'
-     and (new.suggested_value is null or new.suggested_value <= 0) then
-    raise exception using
-      errcode = '23514',
-      message = 'O valor sugerido deve ser maior que zero.';
+  -- 2. Data da composição não pode estar no futuro
+  if new.date_composed > current_date then
+    raise exception using errcode = '23514', message = 'A data da composição não pode estar no futuro.';
+  end if;
+
+  -- 3. Sanitização graciosa para campos de rascunho (evita falha em NOT NULL)
+  new.authors := coalesce(new.authors, '');
+  new.lyrics := coalesce(new.lyrics, '');
+  new.cover_url := coalesce(new.cover_url, '');
+
+  -- 4. Validação unificada de valor sugerido
+  if new.value_type = 'suggested' then
+    -- Se estiver sendo publicada ou enviada para aprovação, valor é obrigatório
+    if new.status in ('published', 'pending_approval') and (new.suggested_value is null or new.suggested_value <= 0) then
+      raise exception using errcode = '23514', message = 'O valor sugerido deve ser maior que zero.';
+    end if;
+    -- Se o valor foi informado (inclusive em rascunho), deve ser > 0 e <= 10.000.000
+    if new.suggested_value is not null and new.suggested_value <= 0 then
+      raise exception using errcode = '23514', message = 'O valor sugerido deve ser maior que zero.';
+    end if;
+    if new.suggested_value > 10000000 then
+      raise exception using errcode = '23514', message = 'O valor sugerido não pode ultrapassar R$ 10.000.000,00.';
+    end if;
   end if;
 
   if not admin_actor then
@@ -119,11 +136,10 @@ begin
     if nullif(btrim(new.title), '') is null
        or nullif(btrim(new.authors), '') is null
        or nullif(btrim(new.lyrics), '') is null
-       or nullif(btrim(coalesce(new.original_audio_path, '')), '') is null
        or nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
       raise exception using
         errcode = '23514',
-        message = 'Para publicar ou enviar para aprovação, informe título, autores, letra, áudio original e prévia pública.';
+        message = 'Para publicar ou enviar para aprovação, informe título, autores, letra e uma prévia pública de até 60 segundos.';
     end if;
 
     if not exists (

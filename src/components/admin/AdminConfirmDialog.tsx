@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { AlertTriangle, Info, Trash2, X } from 'lucide-react';
 
 export interface ConfirmDialogProps {
@@ -11,6 +11,7 @@ export interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
+  children?: React.ReactNode;
 }
 
 export const AdminConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -22,8 +23,52 @@ export const AdminConfirmDialog: React.FC<ConfirmDialogProps> = ({
   variant = 'danger',
   onConfirm,
   onCancel,
-  isLoading = false
+  isLoading = false,
+  children
 }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  // Mantém a última versão de onCancel sem reinstalar os listeners a cada render.
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = isLoading ? () => {} : onCancel;
+
+  // Acessibilidade: Esc fecha, Tab circula só dentro da janela e, ao fechar,
+  // o foco volta para o botão que abriu.
+  useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        cancelRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const getVariantStyles = () => {
@@ -60,16 +105,24 @@ export const AdminConfirmDialog: React.FC<ConfirmDialogProps> = ({
       />
 
       {/* Dialog Box */}
-      <div className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scaleUp z-10">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+        className="relative outline-none bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-5 animate-scaleUp z-10 max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
         <div className="flex items-start gap-4">
           <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center shrink-0 ${styles.iconBg}`}>
             {styles.icon}
           </div>
           <div className="flex-1 min-w-0 pr-2">
-            <h3 className="text-base font-bold text-white tracking-tight">{title}</h3>
-            <p className="text-xs text-slate-300 mt-1 leading-relaxed">{description}</p>
+            <h3 id={titleId} className="text-base font-bold text-white tracking-tight">{title}</h3>
+            <p id={descriptionId} className="text-xs text-slate-300 mt-1 leading-relaxed">{description}</p>
           </div>
           <button
+            type="button"
             onClick={onCancel}
             className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
             aria-label="Fechar"
@@ -77,6 +130,12 @@ export const AdminConfirmDialog: React.FC<ConfirmDialogProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {children && (
+          <div className="pt-1">
+            {children}
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <button

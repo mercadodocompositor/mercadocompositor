@@ -8,10 +8,12 @@ interface State {
 
 interface Props {
   children: React.ReactNode;
+  resetKey?: string;
 }
 
 export class DashboardErrorBoundary extends React.Component<Props, State> {
   declare readonly props: Readonly<Props>;
+  declare setState: React.Component<Props, State>['setState'];
   state: State = { hasError: false };
 
   static getDerivedStateFromError(): State {
@@ -23,14 +25,20 @@ export class DashboardErrorBoundary extends React.Component<Props, State> {
     captureException(error, { boundary: 'dashboard' });
   }
 
+  componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+
   render() {
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <section role="alert" className="rounded-2xl border border-red-200 bg-white p-8 text-center shadow-sm">
+      <section role="alert" className="rounded-2xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-slate-900 p-8 text-center shadow-sm">
         <AlertTriangle className="mx-auto h-10 w-10 text-red-500" aria-hidden="true" />
-        <h1 className="mt-4 text-xl font-bold text-slate-900">Não foi possível exibir esta área</h1>
-        <p className="mx-auto mt-2 max-w-lg text-sm text-slate-600">
+        <h1 className="mt-4 text-xl font-bold text-slate-900 dark:text-white">Não foi possível exibir esta área</h1>
+        <p className="mx-auto mt-2 max-w-lg text-sm text-slate-600 dark:text-slate-400">
           Ocorreu uma falha inesperada. Recarregue a página para buscar os dados novamente.
         </p>
         <button

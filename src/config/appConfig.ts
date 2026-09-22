@@ -1,7 +1,7 @@
 const configuredAppUrl = import.meta.env.VITE_APP_URL?.trim().replace(/\/$/, '');
 
 export const APP_URL = configuredAppUrl || window.location.origin;
-export const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_GOOGLE_AUTH_ENABLED === 'true';
+export const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_GOOGLE_AUTH_ENABLED !== 'false';
 
 export const APP_CONFIG = {
   name: "Mercado do Compositor",
@@ -50,11 +50,22 @@ export const APP_CONFIG = {
       features: [
         "Todos os benefícios do Plano Prata",
         "Músicas ilimitadas no catálogo",
-        "Cartão",
         "Elegibilidade para destaque no catálogo público",
         "Gestão completa de propostas e liberações",
         "Painel completo de desempenho das composições",
         "Perfil preparado para um catálogo profissional amplo"
+      ]
+    },
+    {
+      name: "Plano Inicial",
+      priceMonthly: "1,00",
+      priceValue: 1.00,
+      maxSongs: 1,
+      highlight: false,
+      features: [
+        "Plano exclusivo para testes",
+        "Publicação de até 1 música no catálogo",
+        "Validação do fluxo de assinatura e cobrança"
       ]
     }
   ],
@@ -78,9 +89,24 @@ export const APP_CONFIG = {
     cancelNotice: "Cancele quando quiser, sem fidelidade ou multa."
   },
 
+  company: {
+    legalName: "Mercado do Compositor Intermediação e Tecnologia Digital Ltda.",
+    tradeName: "Mercado do Compositor",
+    cnpj: "41.099.784/0001-34",
+    jurisdiction: "Comarca de Goiânia — Estado de Goiás",
+    dpoEmail: "contato@mercadodocompositor.com.br",
+    supportEmail: "contato@mercadodocompositor.com.br",
+    serviceHours: "Segunda a sexta-feira, das 09h às 18h (Horário de Brasília)",
+    paymentProcessor: "Mercado Pago Instituição de Pagamento Ltda."
+  },
+
+  social: {
+    instagram: "https://instagram.com/mercadodocompositor",
+    youtube: "https://youtube.com/@mercadodocompositor"
+  },
+
   contact: {
     email: "contato@mercadodocompositor.com.br",
-    whatsapp: "(62) 99876-5432",
-    address: "Goiânia — GO, Brasil"
+    whatsapp: "(51) 99659-7804"
   }
 };

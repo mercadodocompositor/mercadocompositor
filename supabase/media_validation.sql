@@ -20,8 +20,6 @@ with check (
   and (storage.foldername(name))[1] = auth.uid()::text
   and lower(coalesce(storage.extension(name), '')) in
     ('jpg', 'jpeg', 'png', 'webp', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'pdf')
-  and case when coalesce(metadata->>'size', '') ~ '^[0-9]+$'
-    then (metadata->>'size')::bigint else null end between 1 and 26214400
 );
 
 create policy "quarantine owner delete"
@@ -32,4 +30,43 @@ using (
   bucket_id = 'media-quarantine'
   and (storage.foldername(name))[1] = auth.uid()::text
 );
+
+drop policy if exists "quarantine owner select" on storage.objects;
+create policy "quarantine owner select"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'media-quarantine'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- Manutenção: Limpeza de arquivos expirados na quarentena
+create or replace function public.cleanup_expired_quarantine(p_hours integer default 24)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  deleted_count integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Apenas administradores podem executar a limpeza geral da quarentena.';
+  end if;
+
+  with deleted as (
+    delete from storage.objects
+    where bucket_id = 'media-quarantine'
+      and created_at < (now() - make_interval(hours => greatest(1, p_hours)))
+    returning 1
+  )
+  select count(*) into deleted_count from deleted;
+
+  return deleted_count;
+end;
+$$;
+
+revoke execute on function public.cleanup_expired_quarantine(integer) from public, anon;
+grant execute on function public.cleanup_expired_quarantine(integer) to authenticated;
 

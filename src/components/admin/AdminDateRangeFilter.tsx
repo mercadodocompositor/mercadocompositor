@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calendar, ChevronDown } from 'lucide-react';
+import { isDateWithinPeriod } from '../../lib/dateUtils';
 
 export type DateFilterPreset = 'all' | 'today' | '7d' | '30d' | 'month';
 
@@ -40,36 +41,5 @@ export const AdminDateRangeFilter: React.FC<AdminDateRangeFilterProps> = ({
 };
 
 export function filterByDatePreset(dateStr: string | undefined | null, preset: DateFilterPreset): boolean {
-  if (!dateStr || preset === 'all') return true;
-
-  try {
-    const itemDate = new Date(dateStr);
-    if (isNaN(itemDate.getTime())) return true;
-
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    if (preset === 'today') {
-      return itemDate >= startOfToday;
-    }
-
-    if (preset === '7d') {
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return itemDate >= sevenDaysAgo;
-    }
-
-    if (preset === '30d') {
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return itemDate >= thirtyDaysAgo;
-    }
-
-    if (preset === 'month') {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      return itemDate >= startOfMonth;
-    }
-
-    return true;
-  } catch {
-    return true;
-  }
+  return isDateWithinPeriod(dateStr, preset);
 }

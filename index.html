@@ -2,14 +2,51 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mercado do Compositor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0" />
+    <title>Mercado do Compositor | Plataforma de Liberação e Obras Musicais</title>
+    <meta name="description" content="Conecte compositores a cantores e produtoras. Divulgue obras autorais inéditas, receba pagamentos diretos via PIX e emita termos de liberação com autenticidade jurídica." />
+    <link rel="canonical" href="https://mercadodocompositor.com.br" />
+    <meta name="theme-color" content="#0A1128" />
+
+    <!-- Open Graph / Facebook / WhatsApp -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mercadodocompositor.com.br" />
+    <meta property="og:title" content="Mercado do Compositor | Plataforma de Liberação e Obras Musicais" />
+    <meta property="og:description" content="Conecte compositores a cantores e produtoras. Obras autorais inéditas com emissão digital de termos de liberação." />
+    <meta property="og:image" content="https://mercadodocompositor.com.br/logo.webp" />
+    <meta property="og:locale" content="pt_BR" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://mercadodocompositor.com.br" />
+    <meta name="twitter:title" content="Mercado do Compositor | Plataforma de Liberação e Obras Musicais" />
+    <meta name="twitter:description" content="Conecte compositores a cantores e produtoras. Obras autorais inéditas com emissão digital de termos de liberação." />
+    <meta name="twitter:image" content="https://mercadodocompositor.com.br/logo.webp" />
+
     <link rel="icon" type="image/webp" href="/logo.webp" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('compositor_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = t === 'dark' || ((!t || t === 'system') && prefersDark);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-theme', 'dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-[#F1F5F9] text-slate-900 font-sans antialiased selection:bg-amber-500 selection:text-white">
+  <body class="bg-[#F1F5F9] dark:bg-[#070D1B] text-slate-900 dark:text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-white transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -33,10 +33,22 @@ const send = (event: MonitoringEvent) => {
 };
 
 export const captureException = (error: unknown, context?: Record<string,unknown>) => send({
-  level:'error',message:error instanceof Error?error.message:'Erro inesperado',context:{error,...context},timestamp:new Date().toISOString(),path:location.pathname,release
+  level:'error',
+  message:error instanceof Error?error.message:'Erro inesperado',
+  context:{error,...context},
+  timestamp:new Date().toISOString(),
+  path:typeof window !== 'undefined' && window.location ? window.location.pathname : '/',
+  release
 });
 
-export const captureEvent = (message:string,level:MonitoringLevel='info',context?:Record<string,unknown>) => send({level,message,context,timestamp:new Date().toISOString(),path:location.pathname,release});
+export const captureEvent = (message:string,level:MonitoringLevel='info',context?:Record<string,unknown>) => send({
+  level,
+  message,
+  context,
+  timestamp:new Date().toISOString(),
+  path:typeof window !== 'undefined' && window.location ? window.location.pathname : '/',
+  release
+});
 
 export const initializeMonitoring = () => {
   window.addEventListener('error',event=>captureException(event.error||event.message,{source:'window.error'}));

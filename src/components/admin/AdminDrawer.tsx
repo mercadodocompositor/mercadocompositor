@@ -66,12 +66,12 @@ export const AdminDrawer: React.FC<AdminDrawerProps> = ({
         aria-hidden="true"
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10 w-full justify-end">
         <div 
-          className={`w-screen ${getMaxWidthClass()} bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col justify-between transform transition-transform ease-in-out duration-300 animate-slideLeft`}
+          className={`w-full ${getMaxWidthClass()} bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col justify-between transform transition-transform ease-in-out duration-300 animate-slideLeft`}
         >
           {/* Header */}
-          <div className="px-6 py-5 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
+          <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
             <div className="flex items-center gap-3 min-w-0 pr-4">
               {icon && (
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
@@ -96,7 +96,7 @@ export const AdminDrawer: React.FC<AdminDrawerProps> = ({
           </div>
 
           {/* Body Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
             {children}
           </div>
 

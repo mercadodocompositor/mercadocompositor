@@ -15,8 +15,10 @@ export interface Song {
   audioUrl?: string;
   /** Internal Storage path for replacing/removing the protected original. */
   originalAudioPath?: string | null;
+  originalMediaId?: string | null;
   /** Physically truncated public file. Never point this field at the original audio. */
-  previewAudioUrl?: string;
+  previewAudioUrl?: string | null;
+  previewMediaId?: string | null;
   coverUrl: string;
   registryCode?: string;
   notes?: string;
@@ -40,6 +42,8 @@ export type RequestStatus =
 
 export interface InterestRequest {
   id: string;
+  composerId?: string;
+  composerName?: string;
   songId: string;
   songTitle: string;
   songCover?: string;
@@ -56,7 +60,24 @@ export interface InterestRequest {
   agreedValue?: number;
   notes?: string;
   paymentReceivedAt?: string;
+  platformFeePercentage?: number;
+  platformFeeAmount?: number;
+  composerNetAmount?: number;
+  archiveReason?: string;
+  archivedAt?: string;
   releaseId?: string;
+  updatedAt?: string;
+}
+
+export interface RequestHistoryItem {
+  id: string;
+  requestId: string;
+  actorId: string;
+  previousStatus: RequestStatus;
+  newStatus: RequestStatus;
+  previousAgreedValue?: number;
+  newAgreedValue?: number;
+  changedAt: string;
 }
 
 export interface ReleaseDocument {
@@ -75,9 +96,15 @@ export interface ReleaseDocument {
   authorizedPurpose: string;
   releaseType: string; // e.g. "Exclusiva por 24 meses" or "Não Exclusiva"
   issueDate: string;
+  expiresAt?: string;
   additionalConditions: string;
   digitalSignature: string;
   documentCode: string;
+  documentPath?: string;
+  documentHash?: string;
+  templateVersion?: string;
+  documentArchivedAt?: string;
+  sentToBuyerAt?: string;
   isDemonstrative: boolean;
 }
 
@@ -85,7 +112,7 @@ export interface Invoice {
   id: string;
   date: string;
   value: number;
-  status: 'pago' | 'pendente' | 'cancelado';
+  status: 'pago' | 'pendente' | 'cancelado' | 'estornado';
   pdfUrl?: string;
 }
 
@@ -100,6 +127,15 @@ export interface Subscription {
   cardLast4?: string;
   cardBrand?: string;
   invoices: Invoice[];
+  /** Renovação automática no cartão (Assinaturas do Mercado Pago) autorizada. */
+  autoRenew?: boolean;
+  /** Status do preapproval no Mercado Pago: pending, authorized, paused, cancelled. */
+  recurringStatus?: string;
+  /** Datas do teste grátis, quando a conta já utilizou a oferta. */
+  trialStartedAt?: string;
+  trialEndsAt?: string;
+  /** Valor inicial do contexto antes de a assinatura real carregar do banco. */
+  isPlaceholder?: boolean;
 }
 
 export interface DashboardMetricPoint {
@@ -130,7 +166,11 @@ export interface ComposerProfile {
   website: string;
   photo: string;
   coverPhoto: string;
+  pixKey?: string;
+  pixKeyType?: string;
   viewsCount: number;
+  /** Definido apenas pela equipe (admin_set_profile_verified); nunca enviado no salvamento. */
+  isVerified?: boolean;
 }
 
 export interface FeaturedComposer {
@@ -174,11 +214,18 @@ export interface PlatformSettings {
   platformFeePercentage: number;
   supportWhatsapp: string;
   supportEmail: string;
-  pixKey: string;
+  /**
+   * Preview mascarado da chave Pix master (apenas os 4 últimos caracteres).
+   * A chave em texto claro nunca faz parte do estado global: ela só é obtida
+   * sob demanda por um administrador via `adminRevealPixKey()`.
+   */
+  pixKeyMasked: string;
+  pixKeyConfigured: boolean;
   maintenanceMode: boolean;
   systemAnnouncement: string;
   requireApprovalForNewSongs: boolean;
   termsVersion: string;
+  updatedAt?: string;
 }
 
 export interface SystemLog {
@@ -188,6 +235,56 @@ export interface SystemLog {
   title: string;
   description: string;
   user: string;
-  ip: string;
+  /** Nunca foi persistido: system_logs não tem coluna de IP. Mantido opcional para compatibilidade. */
+  ip?: string;
   status: 'info' | 'success' | 'warning' | 'error';
+}
+
+export interface SubscriptionPlanItem {
+  id: string;
+  name: string;
+  monthlyPrice: number;
+  maxSongs: number | null;
+  isActive: boolean;
+  sortOrder: number;
+  features?: string[];
+  description?: string;
+}
+
+export type AdminRoleType = 'admin' | 'moderator' | 'financial';
+
+export interface UserRoleItem {
+  id: string;
+  userId: string;
+  email: string;
+  name?: string;
+  role: AdminRoleType;
+  createdAt: string;
+}
+
+export type DeletionRequestStatus = 'pendente' | 'em_analise' | 'concluida' | 'rejeitada';
+
+export interface AccountDeletionRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  reason?: string;
+  status: DeletionRequestStatus;
+  createdAt: string;
+  resolvedAt?: string;
+  adminNotes?: string;
+}
+
+export type NotificationType = 'request' | 'release' | 'moderation' | 'system';
+
+export interface UserNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  read: boolean;
+  link?: string;
+  createdAt: string;
 }

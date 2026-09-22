@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { X, CheckCircle2, Music, Send, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, CheckCircle2, Music, Send, ShieldCheck, AlertCircle } from 'lucide-react';
 import { Song } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { getRequestCode } from '../../lib/identifiers';
 
 interface InterestModalProps {
   song: Song;
@@ -53,43 +54,89 @@ export const InterestModal: React.FC<InterestModalProps> = ({ song, onClose, isO
 
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [requestCode, setRequestCode] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setFormError(null);
     if (!acceptedTerms) {
-      alert("Por favor, aceite os termos de uso antes de enviar.");
+      setFormError("Por favor, confirme a declaração de veracidade antes de enviar a proposta.");
+      return;
+    }
+    if (!buyerName.trim() || !cpfCnpj.trim() || !buyerEmail.trim() || !buyerWhatsapp.trim() || !buyerCityState.trim()) {
+      setFormError("Preencha todos os campos obrigatórios da proposta.");
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(buyerEmail.trim())) {
+      setFormError("Informe um endereço de e-mail de contato válido (ex.: seu.nome@email.com).");
+      return;
+    }
+    const documentDigits = cpfCnpj.replace(/\D/g, '');
+    if (![11, 14].includes(documentDigits.length)) {
+      setFormError("Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) com quantidade válida de números.");
+      return;
+    }
+    const phoneDigits = buyerWhatsapp.replace(/\D/g, '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 13) {
+      setFormError("Informe um WhatsApp válido com DDD (ex: 11 99999-9999).");
+      return;
+    }
+    if (message.trim().length < 20) {
+      setFormError("A mensagem para o compositor deve conter pelo menos 20 caracteres descrevendo seu projeto.");
       return;
     }
 
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      addInterestRequest({
+    try {
+      const created = await addInterestRequest({
         songId: song.id,
         songTitle: song.title,
         songCover: song.coverUrl,
-        buyerName,
-        buyerStageName: buyerStageName || buyerName,
-        cpfCnpj,
-        buyerEmail,
-        buyerWhatsapp,
-        buyerCityState,
+        buyerName: buyerName.trim(),
+        buyerStageName: (buyerStageName || buyerName).trim(),
+        cpfCnpj: cpfCnpj.trim(),
+        buyerEmail: buyerEmail.trim().toLowerCase(),
+        buyerWhatsapp: buyerWhatsapp.trim(),
+        buyerCityState: buyerCityState.trim(),
         purpose,
-        message
+        message: message.trim()
       });
 
+      if (created) {
+        setRequestCode(getRequestCode(created.id));
+        setSubmitted(true);
+      } else {
+        setFormError("Não foi possível enviar sua solicitação. Tente novamente.");
+      }
+    } catch (err) {
+      console.error("Erro ao registrar interesse:", err);
+      setFormError("Erro de conexão ao enviar proposta. Tente novamente.");
+    } finally {
       setIsSubmitting(false);
-      setSubmitted(true);
-    }, 600);
+    }
   };
 
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-4 sm:p-8 shadow-2xl relative my-4 sm:my-8 text-slate-100">
+    <div 
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-4 sm:p-8 shadow-2xl relative my-4 sm:my-8 text-slate-100 animate-scaleUp max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
         
         {/* Close Button */}
         <button
           onClick={onClose}
+          aria-label="Fechar modal"
           className="absolute top-5 right-5 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/80 hover:bg-slate-800 transition"
         >
           <X className="w-5 h-5" />
@@ -111,6 +158,13 @@ export const InterestModal: React.FC<InterestModalProps> = ({ song, onClose, isO
                 Preencha o formulário abaixo para entrar em contato direto com o compositor.
               </p>
             </div>
+
+            {formError && (
+              <div role="alert" className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-200 text-xs flex items-center gap-2.5">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
 
             {/* Song Card Summary */}
             <div className="flex items-center gap-4 bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
@@ -290,7 +344,13 @@ export const InterestModal: React.FC<InterestModalProps> = ({ song, onClose, isO
 
             <div className="space-y-2">
               <h3 className="text-2xl font-bold text-white">Solicitação Enviada com Sucesso!</h3>
-              <p className="text-amber-200 text-sm max-w-md mx-auto leading-relaxed bg-amber-500/10 p-4 rounded-2xl border border-amber-500/20">
+              {requestCode && (
+                <div className="mx-auto max-w-xs rounded-2xl border border-slate-700 bg-slate-950 p-3 mt-3">
+                  <span className="block text-[10px] uppercase tracking-wider text-slate-500">Código da proposta</span>
+                  <strong className="block font-mono text-lg text-amber-400 mt-0.5">{requestCode}</strong>
+                </div>
+              )}
+              <p className="text-amber-200 text-xs max-w-md mx-auto leading-relaxed bg-amber-500/10 p-4 rounded-2xl border border-amber-500/20 mt-3">
                 “Seu interesse foi enviado ao compositor. Ele entrará em contato para combinar os detalhes da liberação.”
               </p>
             </div>

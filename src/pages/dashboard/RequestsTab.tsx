@@ -1,18 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { useParams, useNavigate, Link, useSearchParams, UNSAFE_NavigationContext } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { InterestRequest, RequestStatus, ReleaseDocument } from '../../types';
+import { InterestRequest, RequestStatus, ReleaseDocument, RequestHistoryItem } from '../../types';
 import { LiberacaoDocumentModal } from '../../components/common/LiberacaoDocumentModal';
 import { getRequestCode } from '../../lib/identifiers';
-import { 
-  MessageSquare, 
-  Search, 
-  CheckCircle2, 
-  FileCheck, 
-  Phone, 
-  Mail, 
-  DollarSign, 
-  X, 
+import { normalizeBrazilianWhatsapp } from '../../lib/contact';
+import { useDebounce } from '../../hooks/useDebounce';
+import { isExclusiveReleaseType, isActiveExclusiveRelease, isReleaseExpired } from '../../lib/releaseTypes';
+import { DEFAULT_RELEASE_TYPE, RELEASE_TYPE_OPTIONS, REQUEST_STATUS_LABELS, getAllowedRequestStatuses, getManuallySelectableRequestStatuses, getReleaseConditions } from '../../lib/requestWorkflow';
+import { loadRequestHistory } from '../../lib/database';
+import { parseRequestFilters, serializeRequestFilters } from '../../lib/requestFilters';
+import { useModalFocus } from '../../hooks/useModalFocus';
+import {
+  MessageSquare,
+  Search,
+  CheckCircle2,
+  FileCheck,
+  Phone,
+  Mail,
+  DollarSign,
+  X,
   ChevronRight,
   FileText,
   Clock,
@@ -26,93 +33,463 @@ import {
   User,
   MapPin,
   Calendar,
-  ExternalLink
+  ExternalLink,
+  LoaderCircle
 } from 'lucide-react';
 
 export const RequestsTab: React.FC = () => {
   const { requestId } = useParams<{ requestId?: string }>();
   const navigate = useNavigate();
-  const { requests, songs, updateRequestStatus, issueRelease, updateSong, releases, profile } = useApp();
+  const { navigator } = useContext(UNSAFE_NavigationContext);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { requests, songs, updateRequestStatus, queryRequests, getRequestById, issueRelease, retryReleaseArchive, markReleaseSent, releases, profile, authLoading } = useApp();
 
-  const [activeTab, setActiveTab] = useState<RequestStatus | 'todas'>('todas');
-  const [selectedSongFilter, setSelectedSongFilter] = useState<string>('todas');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState<'recent' | 'oldest'>('recent');
-  
+  const [activeTab, setActiveTab] = useState<RequestStatus | 'todas'>(() => parseRequestFilters(searchParams).status);
+  const [selectedSongFilter, setSelectedSongFilter] = useState<string>(() => parseRequestFilters(searchParams).song);
+  const [searchTerm, setSearchTerm] = useState(() => parseRequestFilters(searchParams).query);
+  const [sortOrder, setSortOrder] = useState<'recent' | 'oldest'>(() => parseRequestFilters(searchParams).sort);
+  const [page, setPage] = useState(() => parseRequestFilters(searchParams).page);
+  const pageSize = 20;
+  const [listedRequests, setListedRequests] = useState<InterestRequest[]>([]);
+  const [listTotal, setListTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [songCounts, setSongCounts] = useState<Record<string, number>>({});
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState('');
+  const [loadedRequest, setLoadedRequest] = useState<InterestRequest | null>(null);
+  const [detailError, setDetailError] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(Boolean(requestId));
+  const [concurrencyConflict, setConcurrencyConflict] = useState(false);
+
   // Selected request state based on URL or local state
-  const activeRequest = requestId ? requests.find(r => r.id === requestId) : null;
-  
+  const activeRequest = requestId ? requests.find(r => r.id === requestId) || (loadedRequest?.id === requestId ? loadedRequest : null) : null;
+
   // Detail page form state
+  const [moneyDisplay, setMoneyDisplay] = useState('');
   const [agreedValueInput, setAgreedValueInput] = useState<number | ''>('');
   const [notesInput, setNotesInput] = useState('');
-  const [releaseTypeInput, setReleaseTypeInput] = useState<string>('Autorização de Gravação e Exploração Fonográfica (Não-Exclusiva)');
+  const [releaseTypeInput, setReleaseTypeInput] = useState<string>(DEFAULT_RELEASE_TYPE);
   const [closeSongForRelease, setCloseSongForRelease] = useState<boolean>(false);
   const [archiveReason, setArchiveReason] = useState<string>('');
-  
+  const [draftStatus, setDraftStatus] = useState<RequestStatus>('nova');
+  const [showBuyerDocument, setShowBuyerDocument] = useState(false);
+  const [legalAcknowledged, setLegalAcknowledged] = useState(false);
+  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
+  const [showArchiveConfirmation, setShowArchiveConfirmation] = useState(false);
+  const [showReleaseReview, setShowReleaseReview] = useState(false);
+  const [releasePendingSentConfirmation, setReleasePendingSentConfirmation] = useState<ReleaseDocument | null>(null);
+  const [historyRequestId, setHistoryRequestId] = useState<string | null>(null);
+  const [requestHistory, setRequestHistory] = useState<RequestHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [archiveError, setArchiveError] = useState('');
+  const [archivingRelease, setArchivingRelease] = useState(false);
+  const [restorableDraft, setRestorableDraft] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
+  const [isIssuingRelease, setIsIssuingRelease] = useState(false);
+  const [isMarkingReleaseSent, setIsMarkingReleaseSent] = useState(false);
+
   // Document modal trigger state
   const [viewingReleaseDoc, setViewingReleaseDoc] = useState<ReleaseDocument | null>(null);
 
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
+  const closePaymentModal = React.useCallback(() => { if (!isConfirmingPayment) setShowPaymentConfirmation(false); }, [isConfirmingPayment]);
+  const closeArchiveModal = React.useCallback(() => { if (!isSaving) setShowArchiveConfirmation(false); }, [isSaving]);
+  const closeReviewModal = React.useCallback(() => { if (!isIssuingRelease) setShowReleaseReview(false); }, [isIssuingRelease]);
+  const closeSentConfirmationModal = React.useCallback(() => { if (!isMarkingReleaseSent) setReleasePendingSentConfirmation(null); }, [isMarkingReleaseSent]);
+  const paymentDialogRef = useModalFocus<HTMLDivElement>(showPaymentConfirmation, closePaymentModal);
+  const archiveDialogRef = useModalFocus<HTMLDivElement>(showArchiveConfirmation, closeArchiveModal);
+  const reviewDialogRef = useModalFocus<HTMLDivElement>(showReleaseReview, closeReviewModal);
+  const sentConfirmationDialogRef = useModalFocus<HTMLDivElement>(Boolean(releasePendingSentConfirmation), closeSentConfirmationModal);
+
   // Toast feedback
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const mutationInProgressRef = useRef(false);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+  const beginMutation = (setPending: React.Dispatch<React.SetStateAction<boolean>>) => {
+    if (mutationInProgressRef.current) return false;
+    mutationInProgressRef.current = true;
+    setPending(true);
+    return true;
   };
 
-  const statusLabels: Record<RequestStatus, string> = {
-    nova: 'Nova',
-    em_negociacao: 'Em negociação',
-    pagamento_pendente: 'Pagamento pendente',
-    pagamento_confirmado: 'Pagamento confirmado',
-    liberacao_enviada: 'Liberação enviada',
-    arquivada: 'Arquivada'
+  const endMutation = (setPending: React.Dispatch<React.SetStateAction<boolean>>) => {
+    mutationInProgressRef.current = false;
+    setPending(false);
   };
 
-  const getAllowedStatuses = (current: RequestStatus): RequestStatus[] => {
-    if (current === 'nova') return ['nova', 'em_negociacao', 'arquivada'];
-    if (current === 'em_negociacao') return ['em_negociacao', 'pagamento_pendente', 'arquivada'];
-    if (current === 'pagamento_pendente') return ['pagamento_pendente', 'em_negociacao', 'arquivada'];
-    if (current === 'arquivada') return ['arquivada', 'nova'];
-    return [current];
-  };
+  const isMutating = isSaving || isConfirmingPayment || isIssuingRelease || isMarkingReleaseSent;
 
-  // Sync form inputs when active request changes
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    setToastMessage({ message, type });
+    if (type === 'success') setTimeout(() => setToastMessage(current => current?.message === message ? null : current), 3500);
+  };
+  const statusLabels = REQUEST_STATUS_LABELS;
+  const getAllowedStatuses = getAllowedRequestStatuses;
+  const getSelectableStatuses = getManuallySelectableRequestStatuses;
+
+  const lastLoadedRequestIdRef = useRef<string | null>(null);
+  const isNavigatingConfirmedRef = useRef(false);
+  const hasUnsavedChangesRef = useRef(false);
+
+  // Sincroniza ao trocar de solicitação. Mutações bem-sucedidas atualizam
+  // explicitamente os campos confirmados para preservar rascunhos em falhas.
   useEffect(() => {
-    if (activeRequest) {
+    if (!activeRequest) {
+      lastLoadedRequestIdRef.current = null;
+      return;
+    }
+
+    if (lastLoadedRequestIdRef.current !== activeRequest.id) {
+      lastLoadedRequestIdRef.current = activeRequest.id;
+      let cachedNotes: string | null = null;
+      let cachedReason: string | null = null;
+      let cachedValue: string | null = null;
+      let cachedStatus: string | null = null;
+      try {
+        cachedNotes = sessionStorage.getItem(`req_draft_notes_${activeRequest.id}`);
+        cachedReason = sessionStorage.getItem(`req_draft_reason_${activeRequest.id}`);
+        cachedValue = sessionStorage.getItem(`req_draft_value_${activeRequest.id}`);
+        cachedStatus = sessionStorage.getItem(`req_draft_status_${activeRequest.id}`);
+      } catch {
+        cachedNotes = null;
+        cachedReason = null;
+        cachedValue = null;
+        cachedStatus = null;
+      }
+      setRestorableDraft(cachedNotes !== null || cachedReason !== null || cachedValue !== null || cachedStatus !== null);
       setAgreedValueInput(activeRequest.agreedValue || '');
+      setMoneyDisplay(activeRequest.agreedValue ? activeRequest.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
       setNotesInput(activeRequest.notes || '');
-      setArchiveReason('');
+      setArchiveReason(activeRequest.archiveReason || '');
+      setDraftStatus(activeRequest.status);
+      setShowBuyerDocument(false);
+      setArchiveError('');
+      setLegalAcknowledged(false);
       setCloseSongForRelease(false);
     }
-  }, [activeRequest]);
+  }, [activeRequest?.id]);
 
-  const normalize = (value: string) => value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+  const restoreDraft = () => {
+    if (!activeRequest) return;
+    try {
+      const id = activeRequest.id;
+      const value = sessionStorage.getItem(`req_draft_value_${id}`);
+      const notes = sessionStorage.getItem(`req_draft_notes_${id}`);
+      const reason = sessionStorage.getItem(`req_draft_reason_${id}`);
+      const status = sessionStorage.getItem(`req_draft_status_${id}`);
+      if (value !== null) { setAgreedValueInput(value === '' ? '' : Number(value)); setMoneyDisplay(value ? Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''); }
+      if (notes !== null) setNotesInput(notes);
+      if (reason !== null) setArchiveReason(reason);
+      if (status && getSelectableStatuses(activeRequest.status).includes(status as RequestStatus)) setDraftStatus(status as RequestStatus);
+    } catch { /* storage unavailable */ }
+    setRestorableDraft(false);
+  };
 
-  const filteredRequests = requests.filter(req => {
-    const matchesTab = activeTab === 'todas' || req.status === activeTab;
-    const matchesSong = selectedSongFilter === 'todas' || req.songId === selectedSongFilter;
-    const query = normalize(searchTerm);
-    const matchesSearch = [
-      req.buyerName,
-      req.buyerStageName || '',
-      req.songTitle,
-      req.buyerCityState,
-      req.buyerEmail,
-      req.cpfCnpj,
-      getRequestCode(req.id)
-    ].some(value => normalize(value).includes(query));
-    return matchesTab && matchesSong && matchesSearch;
-  }).sort((a, b) => sortOrder === 'recent'
-    ? b.createdAt.localeCompare(a.createdAt)
-    : a.createdAt.localeCompare(b.createdAt));
+  const handleNotesChange = (value: string) => {
+    setNotesInput(value);
+    if (activeRequest) {
+      try {
+        if (value !== (activeRequest.notes || '')) {
+          sessionStorage.setItem(`req_draft_notes_${activeRequest.id}`, value);
+        } else {
+          sessionStorage.removeItem(`req_draft_notes_${activeRequest.id}`);
+        }
+      } catch {
+        // Ignora falhas em storage
+      }
+    }
+  };
 
-  const formatDate = (date: string) => {
-    const [year, month, day] = date.slice(0, 10).split('-');
-    return year && month && day ? `${day}/${month}/${year}` : date;
+  const handleArchiveReasonChange = (value: string) => {
+    setArchiveReason(value);
+    if (activeRequest) {
+      try {
+        if (value !== (activeRequest.archiveReason || '')) {
+          sessionStorage.setItem(`req_draft_reason_${activeRequest.id}`, value);
+        } else {
+          sessionStorage.removeItem(`req_draft_reason_${activeRequest.id}`);
+        }
+      } catch {
+        // Ignora falhas em storage
+      }
+    }
+  };
+
+  const handleAgreedValueChange = (value: number | '') => {
+    setMoneyDisplay(value === '' ? '' : value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setAgreedValueInput(value);
+    if (activeRequest) {
+      try {
+        const originalValue = activeRequest.agreedValue || '';
+        if (value !== originalValue) {
+          sessionStorage.setItem(`req_draft_value_${activeRequest.id}`, String(value));
+        } else {
+          sessionStorage.removeItem(`req_draft_value_${activeRequest.id}`);
+        }
+      } catch {
+        // Ignora falhas em storage
+      }
+    }
+  };
+
+  const handleMoneyTextChange = (text: string) => {
+    const digits = text.replace(/\D/g, '').slice(0, 10);
+    const amount = digits ? Number(digits) / 100 : '';
+    handleAgreedValueChange(amount);
+  };
+
+  const moneyError = agreedValueInput !== '' && (agreedValueInput <= 0 || agreedValueInput > 10000000)
+    ? agreedValueInput <= 0 ? 'Informe um valor maior que zero.' : 'Limite: R$ 10.000.000,00.'
+    : '';
+
+  const handleDraftStatusChange = (status: RequestStatus) => {
+    setDraftStatus(status);
+    if (activeRequest) {
+      try {
+        if (status !== activeRequest.status) {
+          sessionStorage.setItem(`req_draft_status_${activeRequest.id}`, status);
+        } else {
+          sessionStorage.removeItem(`req_draft_status_${activeRequest.id}`);
+        }
+      } catch {
+        // Ignora falhas em storage
+      }
+    }
+  };
+
+  const clearRequestDrafts = (requestId: string) => {
+    try {
+      sessionStorage.removeItem(`req_draft_notes_${requestId}`);
+      sessionStorage.removeItem(`req_draft_reason_${requestId}`);
+      sessionStorage.removeItem(`req_draft_value_${requestId}`);
+      sessionStorage.removeItem(`req_draft_status_${requestId}`);
+    } catch {
+      // Ignora falhas em storage
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    if (!activeRequest) return;
+    clearRequestDrafts(activeRequest.id);
+    setRestorableDraft(false);
+    setAgreedValueInput(activeRequest.agreedValue || '');
+    setMoneyDisplay(activeRequest.agreedValue ? activeRequest.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+    setNotesInput(activeRequest.notes || '');
+    setArchiveReason(activeRequest.archiveReason || '');
+    setDraftStatus(activeRequest.status);
+    showToast('Alterações descartadas. Dados originais restaurados.', 'warning');
+  };
+
+  const hasUnsavedChanges = Boolean(activeRequest) && (
+    agreedValueInput !== (activeRequest?.agreedValue || '') ||
+    notesInput !== (activeRequest?.notes || '') ||
+    draftStatus !== activeRequest?.status ||
+    (draftStatus === 'arquivada' && archiveReason !== (activeRequest?.archiveReason || ''))
+  );
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Intercepta navegação interna do React Router (navigate e <Link>)
+  useEffect(() => {
+    if (!navigator) return;
+    const nav = navigator as any;
+    const originalPush = nav.push;
+    const originalReplace = nav.replace;
+
+    nav.push = function(...args: any[]) {
+      if (hasUnsavedChangesRef.current && !isNavigatingConfirmedRef.current) {
+        const proceed = window.confirm('Há alterações não salvas nesta solicitação. Deseja sair e descartá-las?');
+        if (!proceed) return;
+      }
+      isNavigatingConfirmedRef.current = false;
+      return originalPush.apply(nav, args);
+    };
+
+    nav.replace = function(...args: any[]) {
+      if (hasUnsavedChangesRef.current && !isNavigatingConfirmedRef.current) {
+        const proceed = window.confirm('Há alterações não salvas nesta solicitação. Deseja sair e descartá-las?');
+        if (!proceed) return;
+      }
+      isNavigatingConfirmedRef.current = false;
+      return originalReplace.apply(nav, args);
+    };
+
+    return () => {
+      nav.push = originalPush;
+      nav.replace = originalReplace;
+    };
+  }, [navigator]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const confirmInternalNavigation = (event: MouseEvent) => {
+      const link = (event.target as Element | null)?.closest('a[href]') as HTMLAnchorElement | null;
+      if (!link || link.target === '_blank' || event.defaultPrevented) return;
+      const destination = new URL(link.href, window.location.href);
+      if (destination.origin !== window.location.origin
+          || (destination.pathname === window.location.pathname && destination.search === window.location.search)) return;
+      if (!window.confirm('Há alterações não salvas nesta solicitação. Deseja sair e descartá-las?')) {
+        event.preventDefault();
+        event.stopPropagation();
+      } else {
+        isNavigatingConfirmedRef.current = true;
+      }
+    };
+    document.addEventListener('click', confirmInternalNavigation, true);
+    return () => document.removeEventListener('click', confirmInternalNavigation, true);
+  }, [hasUnsavedChanges]);
+
+  const totalPages = Math.max(1, Math.ceil(listTotal / pageSize));
+  const paginatedRequests = listedRequests;
+
+  useEffect(() => {
+    if (requestId || authLoading) return;
+    let cancelled = false;
+    setListLoading(true);
+    setListError('');
+    queryRequests({page,pageSize,status:activeTab === 'todas' ? undefined : activeTab,
+      songId:selectedSongFilter === 'todas' ? undefined : selectedSongFilter,
+      search:debouncedSearchTerm,oldest:sortOrder === 'oldest'})
+      .then(result => {
+        if (cancelled) return;
+        setListedRequests(result.requests); setListTotal(result.total);
+        setStatusCounts(result.statusCounts); setSongCounts(result.songCounts);
+      })
+      .catch(() => { if (!cancelled) setListError('Não foi possível carregar as solicitações. Tente novamente.'); })
+      .finally(() => { if (!cancelled) setListLoading(false); });
+    return () => { cancelled = true; };
+  }, [requestId, authLoading, page, activeTab, selectedSongFilter, debouncedSearchTerm, sortOrder, queryRequests]);
+
+  useEffect(() => {
+    if (!requestId || requests.some(item => item.id === requestId)) { setLoadedRequest(null); setDetailLoading(false); return; }
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(false);
+    setLoadedRequest(null);
+    getRequestById(requestId).then(item => { if (!cancelled) setLoadedRequest(item); })
+      .catch(() => { if (!cancelled) { setLoadedRequest(null); setDetailError(true); } })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    return () => { cancelled = true; };
+  }, [requestId, requests, getRequestById]);
+
+  const isSyncingFromUrlRef = useRef(false);
+  const lastUrlParamsRef = useRef<string | null>(null);
+  const prevFiltersRef = useRef({ activeTab, selectedSongFilter, debouncedSearchTerm, sortOrder });
+
+  // 1. Sincronização e Validação URL -> Estado Local (Navegação externa, Back/Forward, links diretos)
+  useEffect(() => {
+    const currentParams = searchParams.toString();
+    if (lastUrlParamsRef.current !== null && currentParams === lastUrlParamsRef.current) return;
+
+    const validatedFilters = parseRequestFilters(searchParams);
+    const canonicalParams = serializeRequestFilters(validatedFilters);
+
+    lastUrlParamsRef.current = canonicalParams.toString();
+
+    // Se a URL contiver parâmetros inválidos (ex.: status desconhecido ou página fracionária),
+    // normaliza a URL no navegador para a versão válida
+    if (currentParams !== canonicalParams.toString()) {
+      setSearchParams(canonicalParams, { replace: true });
+    }
+
+    isSyncingFromUrlRef.current = true;
+    setActiveTab(validatedFilters.status);
+    setSelectedSongFilter(validatedFilters.song);
+    setSearchTerm(validatedFilters.query);
+    setSortOrder(validatedFilters.sort);
+    setPage(validatedFilters.page);
+    prevFiltersRef.current = {
+      activeTab: validatedFilters.status,
+      selectedSongFilter: validatedFilters.song,
+      debouncedSearchTerm: validatedFilters.query,
+      sortOrder: validatedFilters.sort
+    };
+  }, [searchParams, setSearchParams]);
+
+  // 2. Quando filtros materiais forem alterados na UI (não por navegação URL), reseta para a página 1
+  useEffect(() => {
+    if (isSyncingFromUrlRef.current) return;
+    const prev = prevFiltersRef.current;
+    if (prev.activeTab !== activeTab ||
+        prev.selectedSongFilter !== selectedSongFilter ||
+        prev.debouncedSearchTerm !== debouncedSearchTerm ||
+        prev.sortOrder !== sortOrder) {
+      prevFiltersRef.current = { activeTab, selectedSongFilter, debouncedSearchTerm, sortOrder };
+      setPage(1);
+    }
+  }, [activeTab, selectedSongFilter, debouncedSearchTerm, sortOrder]);
+
+  // 3. Ajuste de página quando o total de páginas for menor
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  // 4. Sincronização Estado Local -> URL (somente quando a alteração parte do usuário)
+  useEffect(() => {
+    if (isSyncingFromUrlRef.current) {
+      isSyncingFromUrlRef.current = false;
+      return;
+    }
+
+    const next = serializeRequestFilters({
+      status: activeTab,
+      song: selectedSongFilter,
+      query: debouncedSearchTerm,
+      sort: sortOrder,
+      page
+    });
+
+    const nextStr = next.toString();
+    if (lastUrlParamsRef.current === null || nextStr !== lastUrlParamsRef.current) {
+      lastUrlParamsRef.current = nextStr;
+      setSearchParams(next, { replace: true });
+    }
+  }, [activeTab, selectedSongFilter, debouncedSearchTerm, sortOrder, page, setSearchParams]);
+
+  useEffect(() => {
+    if (!activeRequest) { setHistoryRequestId(null); setRequestHistory([]); setHistoryError(''); setHistoryLoading(false); return; }
+    let cancelled = false;
+    setHistoryRequestId(activeRequest.id);
+    setRequestHistory([]);
+    setHistoryError('');
+    setHistoryLoading(true);
+    loadRequestHistory(activeRequest.id).then(items => {
+      if (!cancelled) { setRequestHistory(items); setHistoryError(''); }
+    }).catch(() => {
+      if (!cancelled) setHistoryError('Não foi possível carregar o histórico. Tente recarregar a página.');
+    }).finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeRequest?.id, activeRequest?.updatedAt]);
+
+  const formatDate = (date: string) => new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    ...(date.includes('T') ? { timeStyle: 'short' as const } : {})
+  }).format(new Date(date));
+
+  const maskDocument = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    return digits.length > 4 ? `${'•'.repeat(digits.length - 4)}${digits.slice(-4)}` : '••••';
+  };
+  const maskEmail = (value: string) => {
+    const [name, domain] = value.split('@');
+    return name && domain ? `${name.slice(0, 2)}•••@${domain}` : '••••';
+  };
+  const maskPhone = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    return digits.length >= 4 ? `(••) •••••-${digits.slice(-4)}` : '••••';
   };
 
   const formatCpfCnpj = (value: string) => {
@@ -126,54 +503,140 @@ export const RequestsTab: React.FC = () => {
     return value;
   };
 
-  const handleSaveDetails = () => {
+  const handleReloadCurrentVersion = async () => {
     if (!activeRequest) return;
-    if (!getAllowedStatuses(activeRequest.status).includes(activeRequest.status)) {
-      showToast('Essa mudança de status não é permitida no fluxo atual.');
-      return;
+    try {
+      const fresh = await getRequestById(activeRequest.id);
+      if (fresh) {
+        setConcurrencyConflict(false);
+        showToast('Versão atual carregada com sucesso! Seu rascunho de alterações foi preservado.', 'success');
+        return;
+      }
+    } catch {
+      // Fallback para reload de página
     }
-    if (agreedValueInput !== '' && Number(agreedValueInput) <= 0) {
-      showToast('O valor acordado deve ser maior que zero.');
-      return;
-    }
-
-    let finalNotes = notesInput;
-    if (activeRequest.status === 'arquivada' && archiveReason) {
-      finalNotes = finalNotes ? `${finalNotes}\n[Motivo do Arquivamento: ${archiveReason}]` : `[Motivo do Arquivamento: ${archiveReason}]`;
-    }
-
-    updateRequestStatus(activeRequest.id, activeRequest.status, {
-      agreedValue: agreedValueInput ? Number(agreedValueInput) : undefined,
-      notes: finalNotes
-    });
-    showToast("Detalhes e observações salvos com sucesso!");
+    window.location.reload();
   };
 
-  const handleStatusChange = (newStatus: RequestStatus) => {
+  const executeSaveDetails = async (nextStatus: RequestStatus = draftStatus) => {
     if (!activeRequest) return;
-    updateRequestStatus(activeRequest.id, newStatus, {
-      agreedValue: agreedValueInput ? Number(agreedValueInput) : undefined,
-      notes: notesInput
-    });
-    showToast(`Status alterado para "${statusLabels[newStatus]}"`);
+    if (activeRequest.status === 'liberacao_enviada'
+        && agreedValueInput !== (activeRequest.agreedValue || '')) {
+      showToast('O valor de uma liberação emitida não pode ser alterado.', 'warning');
+      return;
+    }
+    if (nextStatus === 'pagamento_confirmado' && activeRequest.status !== 'pagamento_confirmado') {
+      setDraftStatus(activeRequest.status);
+      showToast('Confirme o recebimento pelo botão dedicado para revisar o valor antes de concluir.', 'warning');
+      return;
+    }
+    if (!getAllowedStatuses(activeRequest.status).includes(nextStatus)) {
+      showToast('Essa mudança de status não é permitida no fluxo atual.', 'warning');
+      return;
+    }
+    if (agreedValueInput !== '') {
+      if (Number(agreedValueInput) <= 0) {
+        showToast('O valor acordado deve ser maior que zero.', 'warning');
+        return;
+      }
+      if (Number(agreedValueInput) > 10000000) {
+        showToast('O valor acordado não pode ultrapassar R$ 10.000.000,00.', 'warning');
+        return;
+      }
+    }
+
+    if (!beginMutation(setIsSaving)) return;
+    try {
+      const otherReleasesForSong = releases.filter(r => r.songId === activeRequest.songId && r.requestId !== activeRequest.id);
+      if ((nextStatus === 'pagamento_pendente' || nextStatus === 'pagamento_confirmado') && otherReleasesForSong.some(r => isActiveExclusiveRelease(r))) {
+        showToast('Esta obra já possui uma liberação com cláusula de exclusividade emitida para outro interessado.', 'error');
+        return;
+      }
+
+      const saved = await updateRequestStatus(activeRequest.id, nextStatus, {
+        agreedValue: agreedValueInput === '' ? 0 : Number(agreedValueInput),
+        clearAgreedValue: agreedValueInput === '',
+        notes: notesInput,
+        archiveReason: nextStatus === 'arquivada' ? archiveReason : undefined
+      });
+      if (saved) {
+        clearRequestDrafts(activeRequest.id);
+        setDraftStatus(nextStatus);
+        showToast("Detalhes e observações salvos com sucesso!");
+      }
+    } catch (err: any) {
+      const isConflict = Boolean(
+        err?.isConflict ||
+        err?.code === 'CONCURRENCY_CONFLICT' ||
+        /outra aba|foi alterada|recarregue/i.test(err?.message || '')
+      );
+      if (isConflict) setConcurrencyConflict(true);
+      showToast(err?.message || "Erro ao salvar as alterações. O texto digitado foi preservado.", isConflict ? 'warning' : 'error');
+    } finally {
+      endMutation(setIsSaving);
+    }
+  };
+
+  const handleSaveDetails = () => {
+    if (!activeRequest) return;
+    if (draftStatus === 'arquivada' && activeRequest.status !== 'arquivada') {
+      setShowArchiveConfirmation(true);
+      return;
+    }
+    void executeSaveDetails();
   };
 
   const handleMarkPaymentReceived = async () => {
     if (!activeRequest) return;
-    if (!agreedValueInput || Number(agreedValueInput) <= 0) {
-      showToast('Informe um valor acordado maior que zero antes de confirmar o pagamento.');
+    if (activeRequest.status !== 'pagamento_pendente') {
+      showToast('Salve a alteração de status para Pagamento Pendente antes de confirmar o pagamento.', 'warning');
+      setShowPaymentConfirmation(false);
       return;
     }
-    if (!window.confirm(`Confirmar o recebimento de R$ ${Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}?`)) return;
-    const saved = await updateRequestStatus(activeRequest.id, 'pagamento_confirmado', {
-      agreedValue: Number(agreedValueInput),
-      notes: notesInput,
-      paymentReceivedAt: new Date().toISOString()
-    });
-    showToast(saved ? "Pagamento marcado como recebido! O botão de Emitir Liberação está disponível." : 'Não foi possível confirmar o pagamento.');
+    const otherReleasesForSong = releases.filter(r => r.songId === activeRequest.songId && r.requestId !== activeRequest.id);
+    if (otherReleasesForSong.some(r => isActiveExclusiveRelease(r))) {
+      showToast('Esta obra já possui uma liberação com cláusula de exclusividade emitida para outro interessado.', 'error');
+      setShowPaymentConfirmation(false);
+      return;
+    }
+    if (!agreedValueInput || Number(agreedValueInput) <= 0) {
+      showToast('Informe um valor acordado maior que zero antes de confirmar o pagamento.', 'warning');
+      return;
+    }
+    if (Number(agreedValueInput) > 10000000) {
+      showToast('O valor acordado não pode ultrapassar R$ 10.000.000,00.', 'warning');
+      return;
+    }
+    const confirmedAgreedValue = Number(agreedValueInput);
+    if (!beginMutation(setIsConfirmingPayment)) return;
+    try {
+      const saved = await updateRequestStatus(activeRequest.id, 'pagamento_confirmado', {
+        agreedValue: confirmedAgreedValue,
+        notes: notesInput,
+        paymentReceivedAt: new Date().toISOString()
+      });
+      if (saved) {
+        setDraftStatus('pagamento_confirmado');
+        setAgreedValueInput(confirmedAgreedValue);
+        setMoneyDisplay(confirmedAgreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        clearRequestDrafts(activeRequest.id);
+        showToast("Pagamento marcado como recebido! O botão de Emitir Liberação está disponível.");
+        setShowPaymentConfirmation(false);
+      }
+    } catch (err: any) {
+      const isConflict = Boolean(
+        err?.isConflict ||
+        err?.code === 'CONCURRENCY_CONFLICT' ||
+        /outra aba|foi alterada|recarregue/i.test(err?.message || '')
+      );
+      if (isConflict) setConcurrencyConflict(true);
+      showToast(err?.message || "Erro ao confirmar pagamento. As alterações foram preservadas.", isConflict ? 'warning' : 'error');
+    } finally {
+      endMutation(setIsConfirmingPayment);
+    }
   };
 
-  const handleCreateRelease = async () => {
+  const handleCreateRelease = async (reviewConfirmed = false) => {
     if (!activeRequest) return;
     const existingRelease = releases.find(release => release.requestId === activeRequest.id);
     if (existingRelease) {
@@ -181,22 +644,65 @@ export const RequestsTab: React.FC = () => {
       return;
     }
     if (activeRequest.status !== 'pagamento_confirmado') {
-      showToast('A liberação só pode ser emitida após a confirmação do pagamento.');
+      showToast('A liberação só pode ser emitida após a confirmação do pagamento.', 'warning');
       return;
     }
-    const agreedValue = Number(agreedValueInput || activeRequest.agreedValue);
+    // A trigger capture_payment_financial_snapshot recusa qualquer alteração de
+    // valor depois do pagamento confirmado. Emitir com um valor editado no
+    // campo estourava um erro cru de constraint no meio da emissão.
+    const persistedAgreedValue = Number(activeRequest.agreedValue || 0);
+    const typedAgreedValue = agreedValueInput === '' ? persistedAgreedValue : Number(agreedValueInput);
+    if (Number.isFinite(typedAgreedValue) && typedAgreedValue !== persistedAgreedValue) {
+      showToast('O valor acordado não pode mais ser alterado: o pagamento já foi confirmado. Recarregue a solicitação para emitir com o valor registrado.', 'warning');
+      return;
+    }
+    const agreedValue = persistedAgreedValue;
     if (!agreedValue || agreedValue <= 0) {
-      showToast('Informe o valor acordado antes de emitir a liberação.');
+      showToast('Informe o valor acordado antes de emitir a liberação.', 'warning');
+      return;
+    }
+    if (agreedValue > 10000000) {
+      showToast('O valor acordado não pode ultrapassar R$ 10.000.000,00.', 'warning');
       return;
     }
     const requestedSong = songs.find(song => song.id === activeRequest.songId);
     if (!requestedSong) {
-      showToast('A música vinculada a esta solicitação não foi encontrada.');
+      showToast('A música vinculada a esta solicitação não foi encontrada.', 'error');
       return;
     }
 
-    const isExclusive = releaseTypeInput.toLowerCase().includes('exclusiv');
+    const otherReleasesForSong = releases.filter(r => r.songId === activeRequest.songId && r.requestId !== activeRequest.id);
+    const hasExclusiveReleaseForSong = otherReleasesForSong.some(r => isActiveExclusiveRelease(r));
+    const hasAnyOtherReleaseForSong = otherReleasesForSong.some(r => !isReleaseExpired(r.releaseType, r.issueDate, r.expiresAt));
 
+    if (hasExclusiveReleaseForSong) {
+      showToast('Esta obra já possui uma liberação com cláusula de exclusividade emitida para outro interessado.', 'error');
+      return;
+    }
+
+    const isExclusive = isExclusiveReleaseType(releaseTypeInput);
+    if (isExclusive && hasAnyOtherReleaseForSong) {
+      showToast('Não é possível conceder exclusividade para uma obra que já possui outras autorizações emitidas.', 'warning');
+      return;
+    }
+    const shouldCloseSong = isExclusive && closeSongForRelease;
+    if (isExclusive && !legalAcknowledged) {
+      showToast('Confirme a revisão das condições da autorização exclusiva.', 'warning');
+      return;
+    }
+
+    if (!reviewConfirmed) {
+      setShowReleaseReview(true);
+      return;
+    }
+
+    if (notesInput !== (activeRequest.notes || '')) {
+      showToast('Salve as observações antes de emitir a liberação.', 'warning');
+      setShowReleaseReview(false);
+      return;
+    }
+
+    if (!beginMutation(setIsIssuingRelease)) return;
     let newDoc;
     try {
       newDoc = await issueRelease(activeRequest.id, {
@@ -214,29 +720,57 @@ export const RequestsTab: React.FC = () => {
       authorizedPurpose: activeRequest.purpose,
       releaseType: releaseTypeInput,
       issueDate: new Date().toLocaleDateString('en-CA'),
-      additionalConditions: isExclusive 
-        ? "Liberação com cláusula de exclusividade. Créditos de autoria obrigatórios em todos os fonogramas e sistemas de arrecadação ECAD."
-        : "Créditos de autoria obrigatórios em todos os fonogramas e sistemas de arrecadação ECAD.",
+      additionalConditions: getReleaseConditions(isExclusive),
       digitalSignature: `${profile.name} (declaração eletrônica emitida pela conta autenticada)`
-      });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Não foi possível emitir a liberação.');
+      }, shouldCloseSong, activeRequest.updatedAt);
+
+      showToast(shouldCloseSong
+        ? "Liberação emitida! A música foi fechada para novas propostas e o intérprete recebe o link da cópia por e-mail."
+        : "Liberação emitida! O intérprete recebe o link da cópia por e-mail.");
+
+      clearRequestDrafts(activeRequest.id);
+      setDraftStatus('liberacao_enviada');
+      setShowReleaseReview(false);
+      setViewingReleaseDoc(newDoc);
+      setArchiveError('');
+      setArchivingRelease(true);
+      try {
+        const archived = await retryReleaseArchive(newDoc);
+        setViewingReleaseDoc(archived);
+      } catch (archiveFailure: any) {
+        setArchiveError(archiveFailure?.message || 'O PDF não pôde ser arquivado.');
+      } finally {
+        setArchivingRelease(false);
+      }
+    } catch (error: any) {
+      console.error('Erro ao emitir liberação:', error);
+      const msg = error?.message || error?.error_description || (typeof error === 'string' ? error : 'Não foi possível emitir a liberação.');
+      if (/outra aba|foi alterada|recarregue/i.test(msg)) setConcurrencyConflict(true);
+      showToast(msg, 'error');
       return;
+    } finally {
+      endMutation(setIsIssuingRelease);
     }
+  };
 
-    if (closeSongForRelease) {
-      await updateSong(requestedSong.id, { isAvailableForRelease: false });
-      showToast("Liberação emitida! A música foi fechada para novas propostas.");
-    } else {
-      showToast("Liberação emitida com sucesso!");
-    }
-
-    setViewingReleaseDoc(newDoc);
+  const handleRetryArchive = async (document: ReleaseDocument) => {
+    setArchivingRelease(true);
+    setArchiveError('');
+    try {
+      const archived = await retryReleaseArchive(document);
+      setViewingReleaseDoc(current => current?.id === archived.id ? archived : current);
+      showToast('PDF arquivado com sucesso.');
+    } catch (error: any) {
+      setArchiveError(error?.message || 'Não foi possível arquivar o PDF.');
+    } finally { setArchivingRelease(false); }
   };
 
   const handleSimulateWhatsApp = (phone: string, songTitle: string, buyerName?: string) => {
-    const digits = phone.replace(/\D/g, '');
-    const normalizedPhone = digits.startsWith('55') ? digits : `55${digits}`;
+    const normalizedPhone = normalizeBrazilianWhatsapp(phone);
+    if (!normalizedPhone) {
+      showToast('O WhatsApp informado nesta solicitação é inválido.', 'warning');
+      return;
+    }
     const greeting = buyerName ? `Olá, ${buyerName}!` : 'Olá!';
     const msg = encodeURIComponent(`${greeting} Sou ${profile.stageName || profile.name}, compositor cadastrado no Mercado do Compositor. Recebi sua solicitação para a música "${songTitle}". Vamos conversar sobre os detalhes da gravação?`);
     window.open(`https://wa.me/${normalizedPhone}?text=${msg}`, '_blank', 'noopener,noreferrer');
@@ -246,6 +780,64 @@ export const RequestsTab: React.FC = () => {
     const subject = encodeURIComponent(`Mercado do Compositor — Solicitação da música "${songTitle}"`);
     const body = encodeURIComponent(`Olá ${buyerName || ''},\n\nRecebi sua solicitação de gravação para a música "${songTitle}".\nEstou à disposição para combinarmos os detalhes e valores para emissão da autorização.\n\nAtenciosamente,\n${profile.stageName || profile.name}`);
     window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+  };
+
+  const handleSendReleaseWhatsApp = (doc: ReleaseDocument) => {
+    if (!activeRequest) return;
+    const normalizedPhone = normalizeBrazilianWhatsapp(activeRequest.buyerWhatsapp);
+    const validationUrl = `${window.location.origin}/validar-documento?codigo=${doc.documentCode}`;
+    const message = encodeURIComponent(
+      `Olá, ${doc.buyerName}! Segue o Termo de Liberação da música "${doc.songTitle}" emitido por ${doc.composerName}.\n\n` +
+      `Código do Documento: ${doc.documentCode}\n` +
+      `Tipo de Liberação: ${doc.releaseType}\n\n` +
+      `Você pode consultar a autenticidade e validade jurídica do documento no link oficial:\n${validationUrl}`
+    );
+    const whatsappUrl = normalizedPhone
+      ? `https://wa.me/${normalizedPhone}?text=${message}`
+      : `https://wa.me/?text=${message}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    showToast('Mensagem preparada no WhatsApp. Confirme o envio nesta página depois de enviá-la.', 'warning');
+  };
+
+  const handleSendReleaseEmail = (doc: ReleaseDocument) => {
+    if (!activeRequest) return;
+    const validationUrl = `${window.location.origin}/validar-documento?codigo=${doc.documentCode}`;
+    const subject = encodeURIComponent(`Termo de Liberação Oficial — Música "${doc.songTitle}"`);
+    const body = encodeURIComponent(
+      `Olá, ${doc.buyerName},\n\n` +
+      `Foi emitido o Termo de Liberação para a música "${doc.songTitle}".\n\n` +
+      `Código do Documento: ${doc.documentCode}\n` +
+      `Tipo de Liberação: ${doc.releaseType}\n` +
+      `Valor Oficial: R$ ${Number(doc.agreedValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\n` +
+      `Você pode verificar a autenticidade e baixar o termo oficial no link:\n${validationUrl}\n\n` +
+      `Atenciosamente,\n${doc.composerName}`
+    );
+    window.location.href = `mailto:${activeRequest.buyerEmail}?subject=${subject}&body=${body}`;
+    showToast('E-mail preparado. Confirme o envio nesta página depois de enviá-lo.', 'warning');
+  };
+
+  const handleCopyReleaseValidationLink = async (doc: ReleaseDocument) => {
+    const validationUrl = `${window.location.origin}/validar-documento?codigo=${doc.documentCode}`;
+    try {
+      // `navigator` do react-router sombreia o global neste componente (linha 43).
+      await window.navigator.clipboard.writeText(validationUrl);
+      showToast('Link oficial de autenticidade copiado para a área de transferência!');
+    } catch {
+      showToast('Não foi possível copiar o link automaticamente.', 'error');
+    }
+  };
+
+  const handleMarkReleaseAsSent = async (releaseId: string) => {
+    if (!beginMutation(setIsMarkingReleaseSent)) return;
+    try {
+      await markReleaseSent(releaseId);
+      setReleasePendingSentConfirmation(null);
+      showToast('Envio ao comprador registrado com sucesso!');
+    } catch (error: any) {
+      showToast(error?.message || 'Não foi possível registrar o envio. Tente novamente.', 'error');
+    } finally {
+      endMutation(setIsMarkingReleaseSent);
+    }
   };
 
   const getTimelineStep = (status: RequestStatus) => {
@@ -267,30 +859,152 @@ export const RequestsTab: React.FC = () => {
     { step: 5, label: 'Liberação Emitida', icon: FileCheck },
   ];
 
+  if (requestId && (authLoading || detailLoading)) {
+    return (
+      <div role="status" className="rounded-3xl border border-slate-800 bg-slate-900 p-12 text-center text-sm text-slate-300 animate-pulse space-y-4">
+        <LoaderCircle className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+        <p className="text-slate-300 font-semibold">Carregando detalhes da solicitação...</p>
+      </div>
+    );
+  }
+
+  if (requestId && !activeRequest) {
+    return (
+      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-10 text-center">
+        <AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-400" />
+        <h1 className="text-lg font-bold text-white">{detailError ? 'Falha ao carregar solicitação' : 'Solicitação não encontrada'}</h1>
+        <p className="mt-2 text-sm text-slate-400">{detailError ? 'Tente atualizar a página para carregar os dados.' : 'O link pode estar incorreto ou a solicitação não pertence a esta conta.'}</p>
+        <Link to="/dashboard/solicitacoes" className="mt-5 inline-flex rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950">Voltar para solicitações</Link>
+      </div>
+    );
+  }
+
   // ==========================================
   // VIEW 1: DEDICATED REQUEST DETAIL FULL PAGE
   // ==========================================
   if (activeRequest) {
     const song = songs.find(s => s.id === activeRequest.songId);
     const existingRelease = releases.find(r => r.requestId === activeRequest.id);
+    const otherReleasesForSong = releases.filter(r => r.songId === activeRequest.songId && r.requestId !== activeRequest.id);
+    const hasExclusiveReleaseForSong = otherReleasesForSong.some(r => isActiveExclusiveRelease(r));
+    const hasAnyOtherReleaseForSong = otherReleasesForSong.some(r => !isReleaseExpired(r.releaseType, r.issueDate, r.expiresAt));
 
     return (
       <div className="space-y-6 animate-fadeIn pb-12">
         {/* Toast Feedback */}
         {toastMessage && (
-          <div role="status" className="fixed top-20 right-5 z-50 max-w-sm bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn">
-            <CheckCircle2 className="w-5 h-5 shrink-0" />
-            <span className="flex-1">{toastMessage}</span>
+          <div role={toastMessage.type === 'error' ? 'alert' : 'status'} aria-live="polite" className={`fixed top-20 right-5 z-50 max-w-sm font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn ${toastMessage.type === 'success' ? 'bg-emerald-500 text-slate-950' : toastMessage.type === 'error' ? 'bg-red-600 text-white' : 'bg-amber-400 text-slate-950'}`}>
+            {toastMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+            <span className="flex-1">{toastMessage.message}</span>
             <button type="button" onClick={() => setToastMessage(null)} aria-label="Fechar aviso" className="p-1 hover:bg-emerald-600/20 rounded-lg">
               <X className="w-4 h-4" />
             </button>
           </div>
         )}
 
+        {concurrencyConflict && (
+          <div role="alert" className="rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-200 shadow-xs animate-fadeIn">
+            <strong className="block text-amber-950 dark:text-amber-100 font-bold">Esta solicitação foi alterada em outra aba ou sessão.</strong>
+            <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300">As observações digitadas permanecem salvas nesta sessão. Carregue a versão atual para consultar os dados mais recentes antes de tentar novamente, preservando seu rascunho.</p>
+            <button type="button" onClick={handleReloadCurrentVersion} className="mt-3 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 transition">Carregar versão atual</button>
+          </div>
+        )}
+
+        {showPaymentConfirmation && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !isConfirmingPayment) setShowPaymentConfirmation(false); }}>
+            <div ref={paymentDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-payment-title" className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+              <h2 id="confirm-payment-title" className="text-lg font-bold text-white">Confirmar recebimento</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">Confirma o recebimento de <strong className="text-emerald-400">R$ {Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>? Esta ação habilitará a emissão do termo.</p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" disabled={isConfirmingPayment} onClick={() => setShowPaymentConfirmation(false)} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Cancelar</button>
+                <button data-autofocus type="button" disabled={isConfirmingPayment} onClick={handleMarkPaymentReceived} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{isConfirmingPayment ? 'Confirmando...' : 'Sim, confirmar'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {releasePendingSentConfirmation && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) closeSentConfirmationModal(); }}>
+            <div ref={sentConfirmationDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-release-sent-title" className="w-full max-w-md rounded-3xl border border-blue-500/30 bg-slate-900 p-6 shadow-2xl">
+              <h2 id="confirm-release-sent-title" className="text-lg font-bold text-white">Confirmar envio realizado</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                Confirma que enviou o termo <strong className="text-blue-300">{releasePendingSentConfirmation.documentCode}</strong> para <strong className="text-white">{releasePendingSentConfirmation.buyerName}</strong>? O sistema registrará a data e a hora desta confirmação.
+              </p>
+              <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+                Confirme somente depois de concluir o envio no WhatsApp, no aplicativo de e-mail ou por outro canal.
+              </p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" disabled={isMarkingReleaseSent} onClick={closeSentConfirmationModal} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Cancelar</button>
+                <button data-autofocus type="button" disabled={isMarkingReleaseSent} onClick={() => void handleMarkReleaseAsSent(releasePendingSentConfirmation.id)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                  {isMarkingReleaseSent ? 'Registrando...' : 'Sim, o envio foi realizado'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showArchiveConfirmation && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !isSaving) setShowArchiveConfirmation(false); }}>
+            <div ref={archiveDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-archive-title" className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-amber-500/10 p-2 text-amber-400">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 id="confirm-archive-title" className="text-lg font-bold text-white">Arquivar solicitação?</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                    A negociação da música <strong className="text-amber-400">“{activeRequest.songTitle}”</strong> com <strong className="text-white break-all text-right">{activeRequest.buyerName}</strong> será arquivada. Você poderá reativá-la depois se necessário.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => setShowArchiveConfirmation(false)}
+                  className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => {
+                    setShowArchiveConfirmation(false);
+                    void executeSaveDetails();
+                  }}
+                  className="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+                >
+                  Sim, arquivar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showReleaseReview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) closeReviewModal(); }}>
+            <div ref={reviewDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="release-review-title" className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-amber-500/30 bg-slate-900 p-6 shadow-2xl">
+              <h2 id="release-review-title" className="text-lg font-bold text-white">Revisão final antes da emissão</h2>
+              <p className="mt-1 text-xs text-slate-400">Confira os dados. A emissão cria um documento definitivo.</p>
+              <dl className="mt-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm sm:grid-cols-2">
+                <div><dt className="text-xs text-slate-500">Comprador</dt><dd className="font-semibold text-white break-all">{activeRequest.buyerName}</dd></div>
+                <div><dt className="text-xs text-slate-500">Música</dt><dd className="font-semibold text-white break-all">{activeRequest.songTitle}</dd></div>
+                <div><dt className="text-xs text-slate-500">Valor quitado</dt><dd className="font-semibold text-emerald-400">R$ {Number(agreedValueInput || activeRequest.agreedValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</dd></div>
+                <div><dt className="text-xs text-slate-500">Tipo</dt><dd className="font-semibold text-amber-400">{releaseTypeInput}</dd></div>
+              </dl>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" disabled={isIssuingRelease} onClick={closeReviewModal} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Voltar e corrigir</button>
+                <button data-autofocus type="button" disabled={isIssuingRelease} onClick={() => void handleCreateRelease(true)} className="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">{isIssuingRelease ? 'Emitindo...' : 'Confirmar e emitir'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Top Breadcrumb / Back Button */}
         <div className="flex items-center justify-between">
           <Link
-            to="/dashboard/solicitacoes"
+            to={`/dashboard/solicitacoes${searchParams.toString() ? `?${searchParams.toString()}` : ''}`}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition"
           >
             <ArrowLeft className="w-4 h-4 text-amber-400" />
@@ -305,10 +1019,12 @@ export const RequestsTab: React.FC = () => {
               activeRequest.status === 'pagamento_confirmado' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
               activeRequest.status === 'em_negociacao' ? 'bg-orange-500/20 text-orange-300 border-orange-500/40' :
               activeRequest.status === 'pagamento_pendente' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' :
-              activeRequest.status === 'liberacao_enviada' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' :
+              activeRequest.status === 'liberacao_enviada' ? (existingRelease?.sentToBuyerAt ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40') :
               'bg-slate-800 text-slate-300 border-slate-700'
             }`}>
-              {statusLabels[activeRequest.status]}
+              {activeRequest.status === 'liberacao_enviada'
+                ? (existingRelease?.sentToBuyerAt ? 'Liberação Emitida (Enviada)' : 'Liberação Emitida (Aguardando Envio)')
+                : statusLabels[activeRequest.status]}
             </span>
           </div>
         </div>
@@ -329,11 +1045,11 @@ export const RequestsTab: React.FC = () => {
             </div>
 
             {/* Direct Contact Buttons Header */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => handleSimulateWhatsApp(activeRequest.buyerWhatsapp, activeRequest.songTitle, activeRequest.buyerName)}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"
+                className="flex-1 sm:flex-none justify-center px-4 sm:px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"
               >
                 <Phone className="w-4 h-4" />
                 <span>Conversar no WhatsApp</span>
@@ -342,7 +1058,7 @@ export const RequestsTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleEmail(activeRequest.buyerEmail, activeRequest.songTitle, activeRequest.buyerName)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2 border border-slate-700 transition"
+                className="flex-1 sm:flex-none justify-center px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2 border border-slate-700 transition"
               >
                 <Mail className="w-4 h-4 text-amber-400" />
                 <span>E-mail</span>
@@ -356,7 +1072,7 @@ export const RequestsTab: React.FC = () => {
               <span className="text-[11px] text-slate-400 uppercase font-bold tracking-wider block">
                 Progresso da Negociação
               </span>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3">
                 {timelineSteps.map(stepItem => {
                   const currentStepNum = getTimelineStep(activeRequest.status);
                   const isDone = currentStepNum >= stepItem.step;
@@ -364,8 +1080,8 @@ export const RequestsTab: React.FC = () => {
                   const IconComponent = stepItem.icon;
 
                   return (
-                    <div 
-                      key={stepItem.step} 
+                    <div
+                      key={stepItem.step}
                       className={`p-3 rounded-2xl border transition flex flex-col items-center text-center gap-2 ${
                         isCurrent
                           ? 'bg-amber-500/10 border-amber-500 text-amber-400 ring-2 ring-amber-500/20'
@@ -392,10 +1108,10 @@ export const RequestsTab: React.FC = () => {
 
         {/* 2-Column Responsive Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
+
           {/* LEFT COLUMN: Song & Buyer Info (5 Cols) */}
           <div className="lg:col-span-5 space-y-6">
-            
+
             {/* Song Card */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
               <span className="text-[11px] uppercase font-bold text-amber-400 tracking-wider block">
@@ -423,7 +1139,7 @@ export const RequestsTab: React.FC = () => {
                 <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
                   <span>Valor de Referência:</span>
                   <strong className="text-amber-300">
-                    {song.valueType === 'suggested' && song.suggestedValue 
+                    {song.valueType === 'suggested' && song.suggestedValue
                       ? `R$ ${song.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                       : 'Sob consulta'}
                   </strong>
@@ -438,39 +1154,44 @@ export const RequestsTab: React.FC = () => {
               </span>
 
               <div className="space-y-3 text-xs">
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                   <span className="text-slate-400">Nome Completo:</span>
-                  <strong className="text-white">{activeRequest.buyerName}</strong>
+                  <strong className="text-white break-all text-right">{activeRequest.buyerName}</strong>
                 </div>
 
                 {activeRequest.buyerStageName && (
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                     <span className="text-slate-400">Nome Artístico:</span>
-                    <strong className="text-amber-300">{activeRequest.buyerStageName}</strong>
+                    <strong className="text-amber-300 break-all text-right">{activeRequest.buyerStageName}</strong>
                   </div>
                 )}
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                   <span className="text-slate-400">CPF / CNPJ:</span>
-                  <strong className="text-slate-200 font-mono">{formatCpfCnpj(activeRequest.cpfCnpj)}</strong>
+                  <span className="flex items-center gap-2">
+                    <strong className="text-slate-200 font-mono">{showBuyerDocument ? formatCpfCnpj(activeRequest.cpfCnpj) : maskDocument(activeRequest.cpfCnpj)}</strong>
+                    <button type="button" onClick={() => setShowBuyerDocument(value => !value)} className="text-[10px] font-bold text-amber-400 hover:text-amber-300">
+                      {showBuyerDocument ? 'Ocultar dados' : 'Revelar dados'}
+                    </button>
+                  </span>
                 </div>
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                   <span className="text-slate-400">WhatsApp:</span>
-                  <strong className="text-emerald-400 font-mono">{activeRequest.buyerWhatsapp}</strong>
+                  <strong className="text-emerald-400 font-mono">{showBuyerDocument ? activeRequest.buyerWhatsapp : maskPhone(activeRequest.buyerWhatsapp)}</strong>
                 </div>
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                   <span className="text-slate-400">E-mail:</span>
-                  <strong className="text-slate-200 truncate max-w-[200px]">{activeRequest.buyerEmail}</strong>
+                  <strong className="text-slate-200 truncate max-w-[200px]">{showBuyerDocument ? activeRequest.buyerEmail : maskEmail(activeRequest.buyerEmail)}</strong>
                 </div>
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                   <span className="text-slate-400">Cidade / UF:</span>
                   <strong className="text-slate-200">{activeRequest.buyerCityState}</strong>
                 </div>
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex justify-between items-center">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                   <span className="text-slate-400">Data de Envio:</span>
                   <strong className="text-slate-200">{formatDate(activeRequest.createdAt)}</strong>
                 </div>
@@ -506,7 +1227,7 @@ export const RequestsTab: React.FC = () => {
 
           {/* RIGHT COLUMN: Negotiation, Payments, Release Configuration (7 Cols) */}
           <div className="lg:col-span-7 space-y-6">
-            
+
             {/* Negotiation & Agreement Card */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
               <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
@@ -519,37 +1240,77 @@ export const RequestsTab: React.FC = () => {
                 </div>
               </div>
 
+              {hasExclusiveReleaseForSong && (
+                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-xs text-red-200 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="text-red-300 font-bold block">Obra Liberada com Exclusividade para Outro Intérprete</strong>
+                    <p className="leading-relaxed">
+                      Esta música já possui uma liberação emitida com cláusula de exclusividade para outra solicitação. Novas autorizações e recebimentos estão bloqueados para esta composição.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {restorableDraft && <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+                H? um rascunho salvo nesta sess?o.
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={restoreDraft} className="rounded-lg bg-amber-500 px-3 py-2 font-bold text-slate-950">Restaurar rascunho</button>
+                  <button type="button" onClick={() => { clearRequestDrafts(activeRequest.id); setRestorableDraft(false); }} className="rounded-lg border border-slate-600 px-3 py-2">Descartar rascunho</button>
+                </div>
+              </div>}
+
               {/* Status and Value Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div>
                   <label className="block text-slate-400 mb-1.5 font-semibold">Status da Negociação</label>
                   <select
-                    value={activeRequest.status}
-                    onChange={e => handleStatusChange(e.target.value as RequestStatus)}
-                    disabled={activeRequest.status === 'pagamento_confirmado' || activeRequest.status === 'liberacao_enviada'}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-3 text-white font-medium focus:outline-none focus:border-amber-500"
+                    id="request-status"
+                    value={draftStatus}
+                    onChange={e => handleDraftStatusChange(e.target.value as RequestStatus)}
+                    disabled={isMutating || activeRequest.status === 'liberacao_enviada'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-3 text-white font-medium focus:outline-none focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {getAllowedStatuses(activeRequest.status).map(status => (
-                      <option key={status} value={status}>{statusLabels[status]}</option>
-                    ))}
+                    {getSelectableStatuses(activeRequest.status).map(status => {
+                      const isIncompatible = hasExclusiveReleaseForSong && (status === 'pagamento_pendente' || status === 'pagamento_confirmado');
+                      return (
+                        <option key={status} value={status} disabled={isIncompatible}>
+                          {statusLabels[status]}{isIncompatible ? ' (Indisponível: exclusividade emitida)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
+                  {draftStatus === 'pagamento_pendente' && activeRequest.status !== 'pagamento_pendente' && (
+                    <p className="text-[11px] text-amber-400/90 mt-1.5 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Salve as alterações para registrar o status como Pagamento Pendente e liberar a confirmação de recebimento.</span>
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1.5 font-semibold">Valor Acordado (R$)</label>
+                  <label htmlFor="agreed-value" className="block text-slate-400 mb-1.5 font-semibold">Valor Acordado (R$)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-3 text-slate-500 font-bold text-xs">R$</span>
                     <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={agreedValueInput}
-                      onChange={e => setAgreedValueInput(e.target.value ? Number(e.target.value) : '')}
+                      id="agreed-value"
+                      type="text"
+                      inputMode="numeric"
+                      aria-invalid={Boolean(moneyError)}
+                      aria-describedby={moneyError ? "agreed-value-error" : undefined}
+                      value={existingRelease ? existingRelease.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : moneyDisplay}
+                      onChange={e => handleMoneyTextChange(e.target.value)}
+                      disabled={isMutating || activeRequest.status === 'liberacao_enviada' || Boolean(existingRelease)}
                       placeholder="0,00"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-3 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-3 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                     />
                   </div>
-                  {agreedValueInput !== '' && (
+                  {moneyError && <p id="agreed-value-error" role="alert" className="mt-1 text-xs text-red-300">{moneyError}</p>}
+                  {existingRelease ? (
+                    <span className="text-[11px] text-blue-300 font-semibold mt-1 block">
+                      Valor fixado no termo {existingRelease.documentCode}.
+                    </span>
+                  ) : agreedValueInput !== '' && (
                     <span className="text-[11px] text-emerald-400 font-semibold mt-1 block">
                       = R$ {Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </span>
@@ -558,13 +1319,21 @@ export const RequestsTab: React.FC = () => {
               </div>
 
               {/* Archive reason helper */}
-              {activeRequest.status === 'arquivada' && (
-                <div className="space-y-1 text-xs animate-fadeIn bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <label className="block text-slate-400 font-semibold mb-1">Motivo do Arquivamento (Opcional):</label>
+              {draftStatus === 'arquivada' && (
+                <div className="space-y-2 text-xs animate-fadeIn bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-slate-400 font-semibold">Motivo do Arquivamento (Opcional):</label>
+                    {archiveReason !== (activeRequest.archiveReason || '') && (
+                      <span className="text-[10px] text-amber-400/90 font-medium">
+                        Alteração não salva
+                      </span>
+                    )}
+                  </div>
                   <select
-                    value={archiveReason}
-                    onChange={e => setArchiveReason(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-amber-500"
+                    value={['Valor não acordado', 'Interessado não respondeu', 'Obra já liberada para outro intérprete', 'Desistência mútua', 'Outro motivo'].includes(archiveReason) ? archiveReason : (archiveReason ? 'Outro motivo' : '')}
+                    onChange={e => handleArchiveReasonChange(e.target.value)}
+                    disabled={isMutating}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-300 focus:outline-none focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Selecione um motivo...</option>
                     <option value="Valor não acordado">Valor proposto não aceito</option>
@@ -573,23 +1342,64 @@ export const RequestsTab: React.FC = () => {
                     <option value="Desistência mútua">Desistência mútua das partes</option>
                     <option value="Outro motivo">Outro motivo</option>
                   </select>
+                  {(archiveReason === 'Outro motivo' || (archiveReason && !['Valor não acordado', 'Interessado não respondeu', 'Obra já liberada para outro intérprete', 'Desistência mútua'].includes(archiveReason))) && (
+                    <input
+                      type="text"
+                      maxLength={160}
+                      value={archiveReason === 'Outro motivo' ? '' : archiveReason}
+                      onChange={e => handleArchiveReasonChange(e.target.value || 'Outro motivo')}
+                      placeholder="Descreva o motivo do arquivamento (até 160 caracteres)..."
+                      disabled={isMutating}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-amber-500 text-xs placeholder:text-slate-500 disabled:opacity-60"
+                    />
+                  )}
                 </div>
               )}
 
               {/* Internal Notes */}
               <div>
-                <label className="block text-xs text-slate-400 mb-1.5 font-semibold">
-                  Observações Internas (Visíveis apenas para você)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs text-slate-400 font-semibold">
+                    Observações Internas (Visíveis apenas para você)
+                  </label>
+                  {notesInput !== (activeRequest.notes || '') && (
+                    <span className="text-[10px] text-amber-400/90 font-medium">
+                      Alteração não salva (preservada)
+                    </span>
+                  )}
+                </div>
                 <textarea
+                  id="request-notes"
                   rows={4}
                   maxLength={500}
                   value={notesInput}
-                  onChange={e => setNotesInput(e.target.value)}
+                  onChange={e => handleNotesChange(e.target.value)}
+                  disabled={isMutating}
                   placeholder="Ex: Conversa realizada por WhatsApp em 28/08. Pagamento de R$ 3.500 recebido na conta do compositor via PIX."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-xs text-white focus:outline-none focus:border-amber-500 leading-relaxed"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-xs text-white focus:outline-none focus:border-amber-500 leading-relaxed disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
+
+              <section aria-labelledby="request-history-title" className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                <h3 id="request-history-title" className="flex items-center gap-2 text-sm font-bold text-white"><Clock className="h-4 w-4 text-amber-400" />Histórico de mudanças</h3>
+                {historyRequestId !== activeRequest.id || historyLoading ? (
+                  <p role="status" className="mt-3 text-xs text-slate-400">Carregando histórico...</p>
+                ) : historyError ? (
+                  <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{historyError}</p>
+                ) : requestHistory.length === 0 ? (
+                  <p className="mt-3 text-xs text-slate-500">Nenhuma mudança de status ou valor registrada desde a ativação do histórico.</p>
+                ) : (
+                  <ol className="mt-3 space-y-3">
+                    {requestHistory.map(item => (
+                      <li key={item.id} className="border-l-2 border-slate-700 pl-3 text-xs text-slate-300">
+                        <p><strong className="text-white">{statusLabels[item.previousStatus]}</strong> → <strong className="text-amber-400">{statusLabels[item.newStatus]}</strong></p>
+                        {(item.previousAgreedValue !== item.newAgreedValue) && <p className="mt-1 text-slate-400">Valor: {item.previousAgreedValue ? `R$ ${item.previousAgreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'não informado'} → {item.newAgreedValue ? `R$ ${item.newAgreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'não informado'}</p>}
+                        <time className="mt-1 block text-[10px] text-slate-500" dateTime={item.changedAt}>{formatDate(item.changedAt)} · autor da conta {item.actorId.slice(0, 8)}</time>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
 
               {/* Release Configuration Section */}
               {(activeRequest.status === 'pagamento_confirmado' || activeRequest.status === 'liberacao_enviada') && (
@@ -602,59 +1412,171 @@ export const RequestsTab: React.FC = () => {
                   <div>
                     <label className="block text-slate-400 mb-1.5 font-semibold">Tipo de Autorização / Licença:</label>
                     <select
+                      id="release-type"
                       value={releaseTypeInput}
-                      onChange={e => setReleaseTypeInput(e.target.value)}
-                      disabled={Boolean(existingRelease)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-500"
+                      onChange={e => {
+                        setReleaseTypeInput(e.target.value);
+                        setLegalAcknowledged(false);
+                        setCloseSongForRelease(false);
+                      }}
+                      disabled={isMutating || Boolean(existingRelease)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <option value="Autorização de Gravação e Exploração Fonográfica (Não-Exclusiva)">
-                        Autorização Não-Exclusiva (Padrão para regravações fonográficas)
-                      </option>
-                      <option value="Autorização Exclusiva de Gravação e Fixação (12 meses)">
-                        Autorização Exclusiva por 12 meses
-                      </option>
-                      <option value="Autorização Exclusiva de Gravação e Fixação (24 meses)">
-                        Autorização Exclusiva por 24 meses
-                      </option>
-                      <option value="Cessão Exclusiva Definitiva de Direitos Patrimoniais">
-                        Cessão Exclusiva Definitiva de Direitos Patrimoniais
-                      </option>
+                      {RELEASE_TYPE_OPTIONS.map((type, index) => (
+                        <option key={type} value={type} disabled={index > 0 && hasAnyOtherReleaseForSong}>
+                          {type}{index > 0 && hasAnyOtherReleaseForSong ? ' (Indisponível: obra possui outras liberações)' : ''}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
-                  {!existingRelease && releaseTypeInput.toLowerCase().includes('exclusiv') && (
+                  {!existingRelease && isExclusiveReleaseType(releaseTypeInput) && (
+                    <label className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-slate-300">
+                      <input type="checkbox" checked={legalAcknowledged} onChange={e => setLegalAcknowledged(e.target.checked)} disabled={isMutating} className="mt-0.5" />
+                      <span>Confirmo que revisei autoria, prazo, território e modalidades de uso. Este registro não substitui orientação jurídica independente.</span>
+                    </label>
+                  )}
+
+                  {!existingRelease && isExclusiveReleaseType(releaseTypeInput) && (
                     <label className="flex items-start gap-2.5 pt-1 text-slate-300 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={closeSongForRelease}
                         onChange={e => setCloseSongForRelease(e.target.checked)}
+                        disabled={isMutating}
                         className="mt-0.5 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500"
                       />
                       <span>Fechar automaticamente a música para novos interessados no catálogo público após a emissão.</span>
                     </label>
                   )}
+
+                  {!existingRelease && (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 flex items-center justify-between text-xs">
+                      <span className="text-slate-300">Valor oficial no Termo de Liberação:</span>
+                      <strong className="text-emerald-400 font-mono font-bold text-sm">
+                        R$ {Number(agreedValueInput || activeRequest.agreedValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Release Dispatch Section (WhatsApp / Email / Verification link) */}
+              {existingRelease && (
+                <div className="bg-slate-950 p-5 rounded-2xl border border-blue-500/30 space-y-4 animate-fadeIn text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
+                      <FileCheck className="w-5 h-5" />
+                      <span>Termo de Liberação Emitido</span>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full font-bold text-[10px] tracking-wider uppercase border ${
+                      existingRelease.sentToBuyerAt
+                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                    }`}>
+                      {existingRelease.sentToBuyerAt ? 'Envio registrado' : 'Envio não confirmado'}
+                    </span>
+                  </div>
+
+                  <div role={archiveError ? "alert" : "status"} className={`rounded-xl border p-3 text-xs ${existingRelease.documentPath ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-200"}`}>
+                    {existingRelease.documentPath ? "PDF arquivado e disponível." : archivingRelease ? "Arquivando PDF..." : "Termo emitido. O PDF ainda precisa ser arquivado."}
+                    {archiveError && <p className="mt-1">Falha no arquivamento: {archiveError}</p>}
+                    {!existingRelease.documentPath && !archivingRelease && <button type="button" onClick={() => void handleRetryArchive(existingRelease)} className="mt-2 rounded-lg bg-amber-500 px-3 py-2 font-bold text-slate-950">Tentar arquivar novamente</button>}
+                  </div>
+
+                  <p className="text-slate-300 leading-relaxed">
+                    {existingRelease.sentToBuyerAt
+                      ? `O envio do termo ${existingRelease.documentCode} foi confirmado pelo compositor em ${new Date(existingRelease.sentToBuyerAt).toLocaleDateString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`
+                      : `O termo oficial ${existingRelease.documentCode} foi emitido e assinado digitalmente. Ele não é enviado automaticamente pelo sistema: utilize os canais abaixo para enviar o documento e o link de validação ao interessado.`
+                    }
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSendReleaseWhatsApp(existingRelease)}
+                      disabled={isMutating}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Abrir mensagem no WhatsApp</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendReleaseEmail(existingRelease)}
+                      disabled={isMutating}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition"
+                    >
+                      <Mail className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Preparar e-mail</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyReleaseValidationLink(existingRelease)}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 transition"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Copiar Link de Autenticidade</span>
+                    </button>
+
+                    {!existingRelease.sentToBuyerAt && (
+                      <button
+                        type="button"
+                        onClick={() => setReleasePendingSentConfirmation(existingRelease)}
+                        disabled={isMutating}
+                        className="px-3.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-bold text-xs flex items-center gap-1.5 border border-blue-500/30 transition"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Confirmar Envio Realizado</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Action Buttons Bar */}
               <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-800">
-                {activeRequest.status === 'pagamento_pendente' && (
+                {activeRequest.status === 'pagamento_pendente' && draftStatus === 'pagamento_pendente' && (
                   <button
                     type="button"
-                    onClick={handleMarkPaymentReceived}
-                    className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"
+                    onClick={() => {
+                      if (!agreedValueInput || Number(agreedValueInput) <= 0) {
+                        showToast('Informe um valor acordado maior que zero antes de confirmar o pagamento.', 'warning');
+                        return;
+                      }
+                      setShowPaymentConfirmation(true);
+                    }}
+                    disabled={isMutating}
+                    className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Confirmar Pagamento Recebido</span>
+                    <span>{isConfirmingPayment ? 'Confirmando pagamento...' : 'Confirmar Pagamento Recebido'}</span>
+                  </button>
+                )}
+
+                {activeRequest.status === 'nova' && <button type="button" disabled={isMutating} onClick={() => void executeSaveDetails('em_negociacao')} className="px-5 py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold text-xs">Iniciar negocia??o</button>}
+                {activeRequest.status === 'em_negociacao' && <button type="button" disabled={isMutating || Boolean(moneyError) || agreedValueInput === ''} onClick={() => void executeSaveDetails('pagamento_pendente')} className="px-5 py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold text-xs disabled:opacity-50">Registrar acordo</button>}
+
+                {hasUnsavedChanges && (
+                  <button
+                    type="button"
+                    onClick={handleDiscardChanges}
+                    disabled={isMutating}
+                    className="px-4 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Descartar alterações
                   </button>
                 )}
 
                 <button
                   type="button"
                   onClick={handleSaveDetails}
-                  className="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition"
+                  disabled={isMutating}
+                  className="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Salvar Alterações
+                  {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
 
                 {existingRelease ? (
@@ -669,11 +1591,12 @@ export const RequestsTab: React.FC = () => {
                 ) : activeRequest.status === 'pagamento_confirmado' ? (
                   <button
                     type="button"
-                    onClick={handleCreateRelease}
-                    className="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
+                    onClick={() => void handleCreateRelease(false)}
+                    disabled={isMutating || hasExclusiveReleaseForSong || (isExclusiveReleaseType(releaseTypeInput) && (hasAnyOtherReleaseForSong || !legalAcknowledged))}
+                    className="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <FileCheck className="w-4 h-4" />
-                    <span>Emitir Liberação Oficial</span>
+                    <span>{isIssuingRelease ? 'Emitindo liberação...' : 'Emitir termo de liberação'}</span>
                   </button>
                 ) : null}
               </div>
@@ -686,8 +1609,12 @@ export const RequestsTab: React.FC = () => {
 
         {/* Document Viewer Modal if user generates/views release */}
         {viewingReleaseDoc && (
-          <LiberacaoDocumentModal 
+          <LiberacaoDocumentModal
             document={viewingReleaseDoc}
+            buyerPhone={activeRequest.buyerWhatsapp}
+            archiveError={archiveError}
+            archiving={archivingRelease}
+            onRetryArchive={() => void handleRetryArchive(viewingReleaseDoc)}
             onClose={() => setViewingReleaseDoc(null)}
           />
         )}
@@ -700,12 +1627,12 @@ export const RequestsTab: React.FC = () => {
   // ==========================================
   return (
     <div className="space-y-6 animate-fadeIn">
-      
+
       {/* Toast Feedback */}
       {toastMessage && (
-        <div role="status" className="fixed top-20 right-5 z-50 max-w-sm bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn">
-          <CheckCircle2 className="w-5 h-5 shrink-0" />
-          <span className="flex-1">{toastMessage}</span>
+          <div role={toastMessage.type === 'error' ? 'alert' : 'status'} aria-live="polite" className={`fixed top-20 right-5 z-50 max-w-sm font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn ${toastMessage.type === 'success' ? 'bg-emerald-500 text-slate-950' : toastMessage.type === 'error' ? 'bg-red-600 text-white' : 'bg-amber-400 text-slate-950'}`}>
+            {toastMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+            <span className="flex-1">{toastMessage.message}</span>
           <button type="button" onClick={() => setToastMessage(null)} aria-label="Fechar aviso" className="p-1 hover:bg-emerald-600/20 rounded-lg">
             <X className="w-4 h-4" />
           </button>
@@ -728,7 +1655,7 @@ export const RequestsTab: React.FC = () => {
             <MessageSquare className="w-4 h-4 text-amber-400" />
             <div className="text-left">
               <span className="block text-[10px] text-slate-500 font-bold uppercase">Total</span>
-              <strong className="text-xs text-white">{requests.length}</strong>
+              <strong className="text-xs text-white">{Object.values(statusCounts).reduce<number>((sum, count) => sum + Number(count), 0)}</strong>
             </div>
           </div>
 
@@ -737,7 +1664,7 @@ export const RequestsTab: React.FC = () => {
             <div className="text-left">
               <span className="block text-[10px] text-slate-500 font-bold uppercase">Em Negociação</span>
               <strong className="text-xs text-amber-300">
-                {requests.filter(r => r.status === 'em_negociacao' || r.status === 'pagamento_pendente').length}
+                {Number(statusCounts.em_negociacao || 0) + Number(statusCounts.pagamento_pendente || 0)}
               </strong>
             </div>
           </div>
@@ -747,7 +1674,7 @@ export const RequestsTab: React.FC = () => {
             <div className="text-left">
               <span className="block text-[10px] text-slate-500 font-bold uppercase">Liberadas</span>
               <strong className="text-xs text-emerald-400">
-                {requests.filter(r => r.status === 'liberacao_enviada').length}
+                {Number(statusCounts.liberacao_enviada || 0)}
               </strong>
             </div>
           </div>
@@ -777,9 +1704,9 @@ export const RequestsTab: React.FC = () => {
             aria-label="Filtrar por música"
             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
-            <option value="todas">Todas as Músicas ({requests.length})</option>
+            <option value="todas">Todas as Músicas</option>
             {songs.map(s => {
-              const count = requests.filter(r => r.songId === s.id).length;
+              const count = Number(songCounts[s.id] || 0);
               return (
                 <option key={s.id} value={s.id}>
                   {s.title} ({count})
@@ -811,11 +1738,13 @@ export const RequestsTab: React.FC = () => {
           { id: 'em_negociacao', label: 'Em Negociação', badgeClass: 'bg-orange-500/20 text-orange-300 border border-orange-500/30' },
           { id: 'pagamento_pendente', label: 'Pagamento Pendente', badgeClass: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' },
           { id: 'pagamento_confirmado', label: 'Pagamento Confirmado', badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
-          { id: 'liberacao_enviada', label: 'Liberação Enviada', badgeClass: 'bg-blue-500/20 text-blue-300 border border-blue-500/30' },
+          { id: 'liberacao_enviada', label: 'Liberações Emitidas', badgeClass: 'bg-blue-500/20 text-blue-300 border border-blue-500/30' },
           { id: 'arquivada', label: 'Arquivadas', badgeClass: 'bg-slate-800 text-slate-400' }
         ].map(tab => {
           const isActive = activeTab === tab.id;
-          const count = tab.id === 'todas' ? requests.length : requests.filter(request => request.status === tab.id).length;
+          const count = tab.id === 'todas'
+            ? Object.values(statusCounts).reduce<number>((sum, value) => sum + Number(value), 0)
+            : Number(statusCounts[tab.id] || 0);
           return (
             <button
               type="button"
@@ -824,8 +1753,8 @@ export const RequestsTab: React.FC = () => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id as RequestStatus | 'todas')}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
-                isActive 
-                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/30 font-bold' 
+                isActive
+                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/30 font-bold'
                   : 'bg-slate-950/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80'
               }`}
             >
@@ -841,14 +1770,25 @@ export const RequestsTab: React.FC = () => {
       {/* Requests List */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="divide-y divide-slate-800/80">
-          {filteredRequests.length === 0 ? (
+          {authLoading || listLoading ? (
+            <div className="p-12 text-center text-slate-400 space-y-4 animate-pulse">
+              <LoaderCircle className="w-8 h-8 text-amber-400 animate-spin mx-auto" />
+              <p className="text-sm font-semibold text-slate-300">Carregando solicitações de liberação...</p>
+            </div>
+          ) : listError ? (
+            <div role="alert" className="p-12 text-center text-red-300">
+              <AlertCircle className="mx-auto mb-3 h-10 w-10" />
+              <p className="text-sm font-semibold">{listError}</p>
+              <button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white">Tentar novamente</button>
+            </div>
+          ) : listedRequests.length === 0 ? (
             <div className="p-12 text-center text-slate-500 space-y-3">
               <MessageSquare className="w-12 h-12 mx-auto stroke-1 text-slate-600" />
               <p className="text-sm font-medium">Nenhuma solicitação encontrada para os filtros selecionados.</p>
               {(searchTerm || selectedSongFilter !== 'todas' || activeTab !== 'todas') && (
-                <button 
-                  type="button" 
-                  onClick={() => { setSearchTerm(''); setSelectedSongFilter('todas'); setActiveTab('todas'); }} 
+                <button
+                  type="button"
+                  onClick={() => { setSearchTerm(''); setSelectedSongFilter('todas'); setActiveTab('todas'); }}
                   className="text-xs font-bold text-amber-400 hover:text-amber-300 underline"
                 >
                   Limpar todos os filtros
@@ -856,9 +1796,9 @@ export const RequestsTab: React.FC = () => {
               )}
             </div>
           ) : (
-            filteredRequests.map(req => (
+            paginatedRequests.map(req => (
               <div key={req.id} className="p-5 hover:bg-slate-800/40 transition flex flex-col md:flex-row md:items-center justify-between gap-4">
-                
+
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-amber-400 font-bold shrink-0 shadow-sm">
                     <Music className="w-6 h-6" />
@@ -883,7 +1823,7 @@ export const RequestsTab: React.FC = () => {
                     <p className="text-xs text-slate-400 line-clamp-1 italic">
                       “{req.purpose}”
                     </p>
-                    
+
                     <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 pt-1">
                       <span>Recebida em {formatDate(req.createdAt)}</span>
                       {req.agreedValue && (
@@ -924,7 +1864,15 @@ export const RequestsTab: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => navigate(`/dashboard/solicitacoes/${req.id}`)}
+                    onClick={() => {
+                      if (activeRequest && req.id !== activeRequest.id && hasUnsavedChanges) {
+                        if (!window.confirm('Há alterações não salvas nesta solicitação. Deseja sair e descartá-las?')) {
+                          return;
+                        }
+                        isNavigatingConfirmedRef.current = true;
+                      }
+                      navigate(`/dashboard/solicitacoes/${req.id}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
+                    }}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-400 font-bold text-xs transition flex items-center gap-1"
                   >
                     <span>Ver detalhes</span>
@@ -938,9 +1886,19 @@ export const RequestsTab: React.FC = () => {
         </div>
       </div>
 
+      {totalPages > 1 && (
+        <nav aria-label="Paginação das solicitações" className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-400">
+          <span>Página {page} de {totalPages} · {listTotal} resultados</span>
+          <div className="flex gap-2">
+            <button type="button" disabled={page === 1} onClick={() => setPage(value => value - 1)} className="rounded-xl bg-slate-800 px-4 py-2 font-bold text-white disabled:opacity-40">Anterior</button>
+            <button type="button" disabled={page === totalPages} onClick={() => setPage(value => value + 1)} className="rounded-xl bg-slate-800 px-4 py-2 font-bold text-white disabled:opacity-40">Próxima</button>
+          </div>
+        </nav>
+      )}
+
       {/* Document Viewer Modal if user generates/views release */}
       {viewingReleaseDoc && (
-        <LiberacaoDocumentModal 
+        <LiberacaoDocumentModal
           document={viewingReleaseDoc}
           onClose={() => setViewingReleaseDoc(null)}
         />
