@@ -1,6 +1,8 @@
 const configuredAppUrl = import.meta.env.VITE_APP_URL?.trim().replace(/\/$/, '');
 
-export const APP_URL = configuredAppUrl || window.location.origin;
+// Fora do navegador (testes/CI sem VITE_APP_URL) não existe window.
+export const APP_URL = configuredAppUrl
+  || (typeof window !== 'undefined' ? window.location.origin : 'https://mercadodocompositor.com.br');
 export const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_GOOGLE_AUTH_ENABLED !== 'false';
 
 export const APP_CONFIG = {
