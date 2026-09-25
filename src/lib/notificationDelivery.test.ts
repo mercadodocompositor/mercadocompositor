@@ -6,7 +6,6 @@ const worker = readFileSync('supabase/functions/process-notification-emails/inde
 const settings = readFileSync('src/pages/dashboard/SettingsTab.tsx', 'utf8');
 const context = readFileSync('src/context/AppContext.tsx', 'utf8');
 const essentials = readFileSync('supabase/essential_notifications_2026_09_22.sql', 'utf8');
-const webhook = readFileSync('supabase/functions/mercadopago-webhook/index.ts', 'utf8');
 const followUp = readFileSync('supabase/buyer_copy_and_payment_failure_2026_09_22.sql', 'utf8');
 
 describe('entrega de notificações de ponta a ponta', () => {
@@ -19,7 +18,7 @@ describe('entrega de notificações de ponta a ponta', () => {
   it('possui claim concorrente, retentativas e limite de falhas', () => {
     expect(migration).toContain('for update skip locked');
     expect(migration).toContain("attempts<5");
-    expect(worker).toContain("status:terminal?'failed':'retry'");
+    expect(worker).toContain("const failureStatus = terminal ? 'failed' : 'retry'");
     expect(worker).toContain("fetch('https://api.resend.com/emails'");
   });
 
@@ -38,13 +37,6 @@ describe('entrega de notificações de ponta a ponta', () => {
     // Termo: o e-mail leva à página pública com a cópia em PDF.
     expect(essentials).toContain("'/validar/' || new.document_code");
     expect(worker).toContain("startsWith('/validar/')");
-    // Faturas: renovação paga não chega como ativação.
-    expect(essentials).toContain("then 'Pagamento confirmado' else 'Assinatura ativada'");
-  });
-
-  it('não duplica o aviso de renovação automática em reentregas do webhook', () => {
-    expect(webhook).toContain("sub.mp_preapproval_id === pre.id && sub.mp_preapproval_status === 'authorized'");
-    expect(webhook).toContain("if (!alreadyNotified) await admin.from('user_notifications').insert(");
   });
 
   it('envia ao intérprete a cópia do termo uma única vez', () => {
@@ -53,11 +45,5 @@ describe('entrega de notificações de ponta a ponta', () => {
     expect(followUp).toMatch(/'buyer',\s+new\.id/);
     expect(followUp).toContain('on conflict (release_id) do nothing');
     expect(worker).toContain("job.audience === 'buyer'");
-  });
-
-  it('avisa a cobrança recusada sem repetir a cada tentativa', () => {
-    expect(followUp).toContain("if p_status = 'rejected' and v_previous_status is distinct from 'rejected'");
-    expect(followUp).toContain("created_at > now() - interval '20 hours'");
-    expect(followUp).toContain("v_already_approved := v_previous_status = 'approved';");
   });
 });

@@ -3,13 +3,16 @@ import { useParams, useNavigate, Link, useSearchParams, UNSAFE_NavigationContext
 import { useApp } from '../../context/AppContext';
 import { InterestRequest, RequestStatus, ReleaseDocument, RequestHistoryItem } from '../../types';
 import { LiberacaoDocumentModal } from '../../components/common/LiberacaoDocumentModal';
+import { ReleaseDeliveryStatus } from '../../components/dashboard/ReleaseDeliveryStatus';
 import { getRequestCode } from '../../lib/identifiers';
 import { normalizeBrazilianWhatsapp } from '../../lib/contact';
 import { useDebounce } from '../../hooks/useDebounce';
 import { isExclusiveReleaseType, isActiveExclusiveRelease, isReleaseExpired } from '../../lib/releaseTypes';
 import { DEFAULT_RELEASE_TYPE, RELEASE_TYPE_OPTIONS, REQUEST_STATUS_LABELS, getAllowedRequestStatuses, getManuallySelectableRequestStatuses, getReleaseConditions } from '../../lib/requestWorkflow';
-import { loadRequestHistory } from '../../lib/database';
-import { parseRequestFilters, serializeRequestFilters } from '../../lib/requestFilters';
+import { loadReleaseDeliveryStatuses, loadRequestHistory, resendReleaseDelivery, type ReleaseDeliveryStatus as ReleaseDeliveryInfo } from '../../lib/database';
+import { getFriendlyErrorMessage } from '../../lib/apiErrors';
+import { REQUEST_GROUP_STATUSES, isRequestGroup, parseRequestFilters, serializeRequestFilters, toStatusQuery, type RequestFilters } from '../../lib/requestFilters';
+import { formatBrlAmount, parseBrlAmount } from '../../lib/money';
 import { useModalFocus } from '../../hooks/useModalFocus';
 import {
   MessageSquare,
@@ -23,7 +26,6 @@ import {
   ChevronRight,
   FileText,
   Clock,
-  Send,
   ShieldCheck,
   Music,
   Filter,
@@ -42,9 +44,9 @@ export const RequestsTab: React.FC = () => {
   const navigate = useNavigate();
   const { navigator } = useContext(UNSAFE_NavigationContext);
   const [searchParams, setSearchParams] = useSearchParams();
-  const { requests, songs, updateRequestStatus, queryRequests, getRequestById, issueRelease, retryReleaseArchive, markReleaseSent, releases, profile, authLoading } = useApp();
+  const { requests, songs, updateRequestStatus, queryRequests, getRequestById, issueRelease, retryReleaseArchive, releases, profile, authLoading, currentUserId } = useApp();
 
-  const [activeTab, setActiveTab] = useState<RequestStatus | 'todas'>(() => parseRequestFilters(searchParams).status);
+  const [activeTab, setActiveTab] = useState<RequestFilters['status']>(() => parseRequestFilters(searchParams).status);
   const [selectedSongFilter, setSelectedSongFilter] = useState<string>(() => parseRequestFilters(searchParams).song);
   const [searchTerm, setSearchTerm] = useState(() => parseRequestFilters(searchParams).query);
   const [sortOrder, setSortOrder] = useState<'recent' | 'oldest'>(() => parseRequestFilters(searchParams).sort);
@@ -66,6 +68,8 @@ export const RequestsTab: React.FC = () => {
 
   // Detail page form state
   const [moneyDisplay, setMoneyDisplay] = useState('');
+  const [moneyTextInvalid, setMoneyTextInvalid] = useState(false);
+  const [releaseReviewError, setReleaseReviewError] = useState('');
   const [agreedValueInput, setAgreedValueInput] = useState<number | ''>('');
   const [notesInput, setNotesInput] = useState('');
   const [releaseTypeInput, setReleaseTypeInput] = useState<string>(DEFAULT_RELEASE_TYPE);
@@ -77,7 +81,8 @@ export const RequestsTab: React.FC = () => {
   const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
   const [showArchiveConfirmation, setShowArchiveConfirmation] = useState(false);
   const [showReleaseReview, setShowReleaseReview] = useState(false);
-  const [releasePendingSentConfirmation, setReleasePendingSentConfirmation] = useState<ReleaseDocument | null>(null);
+  const [deliveryStatuses, setDeliveryStatuses] = useState<Record<string, ReleaseDeliveryInfo>>({});
+  const [sendingDeliveryId, setSendingDeliveryId] = useState<string | null>(null);
   const [historyRequestId, setHistoryRequestId] = useState<string | null>(null);
   const [requestHistory, setRequestHistory] = useState<RequestHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -89,7 +94,6 @@ export const RequestsTab: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const [isIssuingRelease, setIsIssuingRelease] = useState(false);
-  const [isMarkingReleaseSent, setIsMarkingReleaseSent] = useState(false);
 
   // Document modal trigger state
   const [viewingReleaseDoc, setViewingReleaseDoc] = useState<ReleaseDocument | null>(null);
@@ -99,11 +103,9 @@ export const RequestsTab: React.FC = () => {
   const closePaymentModal = React.useCallback(() => { if (!isConfirmingPayment) setShowPaymentConfirmation(false); }, [isConfirmingPayment]);
   const closeArchiveModal = React.useCallback(() => { if (!isSaving) setShowArchiveConfirmation(false); }, [isSaving]);
   const closeReviewModal = React.useCallback(() => { if (!isIssuingRelease) setShowReleaseReview(false); }, [isIssuingRelease]);
-  const closeSentConfirmationModal = React.useCallback(() => { if (!isMarkingReleaseSent) setReleasePendingSentConfirmation(null); }, [isMarkingReleaseSent]);
   const paymentDialogRef = useModalFocus<HTMLDivElement>(showPaymentConfirmation, closePaymentModal);
   const archiveDialogRef = useModalFocus<HTMLDivElement>(showArchiveConfirmation, closeArchiveModal);
   const reviewDialogRef = useModalFocus<HTMLDivElement>(showReleaseReview, closeReviewModal);
-  const sentConfirmationDialogRef = useModalFocus<HTMLDivElement>(Boolean(releasePendingSentConfirmation), closeSentConfirmationModal);
 
   // Toast feedback
   const mutationInProgressRef = useRef(false);
@@ -120,11 +122,11 @@ export const RequestsTab: React.FC = () => {
     setPending(false);
   };
 
-  const isMutating = isSaving || isConfirmingPayment || isIssuingRelease || isMarkingReleaseSent;
+  const isMutating = isSaving || isConfirmingPayment || isIssuingRelease || Boolean(sendingDeliveryId);
 
   const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
     setToastMessage({ message, type });
-    if (type === 'success') setTimeout(() => setToastMessage(current => current?.message === message ? null : current), 3500);
+    if (type === 'success') setTimeout(() => setToastMessage(current => current?.message === message ? null : current), 5000);
   };
   const statusLabels = REQUEST_STATUS_LABELS;
   const getAllowedStatuses = getAllowedRequestStatuses;
@@ -161,6 +163,7 @@ export const RequestsTab: React.FC = () => {
       }
       setRestorableDraft(cachedNotes !== null || cachedReason !== null || cachedValue !== null || cachedStatus !== null);
       setAgreedValueInput(activeRequest.agreedValue || '');
+      setMoneyTextInvalid(false);
       setMoneyDisplay(activeRequest.agreedValue ? activeRequest.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
       setNotesInput(activeRequest.notes || '');
       setArchiveReason(activeRequest.archiveReason || '');
@@ -218,8 +221,9 @@ export const RequestsTab: React.FC = () => {
     }
   };
 
-  const handleAgreedValueChange = (value: number | '') => {
-    setMoneyDisplay(value === '' ? '' : value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const handleAgreedValueChange = (value: number | '', display?: string) => {
+    setMoneyDisplay(display ?? (value === '' ? '' : formatBrlAmount(value)));
+    setMoneyTextInvalid(false);
     setAgreedValueInput(value);
     if (activeRequest) {
       try {
@@ -235,15 +239,28 @@ export const RequestsTab: React.FC = () => {
     }
   };
 
+  // O texto é lido como reais ("3500" = R$ 3.500,00). A máscara anterior
+  // tratava os dígitos como centavos e gravava R$ 35,00 para quem digitava 3500.
   const handleMoneyTextChange = (text: string) => {
-    const digits = text.replace(/\D/g, '').slice(0, 10);
-    const amount = digits ? Number(digits) / 100 : '';
-    handleAgreedValueChange(amount);
+    const cleaned = text.replace(/[^\d.,R$\s]/gi, '').slice(0, 20);
+    const amount = parseBrlAmount(cleaned);
+    if (amount === null) {
+      setMoneyDisplay(cleaned);
+      setMoneyTextInvalid(true);
+      return;
+    }
+    handleAgreedValueChange(amount, cleaned);
   };
 
-  const moneyError = agreedValueInput !== '' && (agreedValueInput <= 0 || agreedValueInput > 10000000)
-    ? agreedValueInput <= 0 ? 'Informe um valor maior que zero.' : 'Limite: R$ 10.000.000,00.'
-    : '';
+  const handleMoneyBlur = () => {
+    if (!moneyTextInvalid && agreedValueInput !== '') setMoneyDisplay(formatBrlAmount(agreedValueInput));
+  };
+
+  const moneyError = moneyTextInvalid
+    ? 'Valor inválido. Use o formato 3.500,00.'
+    : agreedValueInput !== '' && (agreedValueInput <= 0 || agreedValueInput > 10000000)
+      ? agreedValueInput <= 0 ? 'Informe um valor maior que zero.' : 'Limite: R$ 10.000.000,00.'
+      : '';
 
   const handleDraftStatusChange = (status: RequestStatus) => {
     setDraftStatus(status);
@@ -276,6 +293,7 @@ export const RequestsTab: React.FC = () => {
     clearRequestDrafts(activeRequest.id);
     setRestorableDraft(false);
     setAgreedValueInput(activeRequest.agreedValue || '');
+    setMoneyTextInvalid(false);
     setMoneyDisplay(activeRequest.agreedValue ? activeRequest.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
     setNotesInput(activeRequest.notes || '');
     setArchiveReason(activeRequest.archiveReason || '');
@@ -358,7 +376,7 @@ export const RequestsTab: React.FC = () => {
     let cancelled = false;
     setListLoading(true);
     setListError('');
-    queryRequests({page,pageSize,status:activeTab === 'todas' ? undefined : activeTab,
+    queryRequests({page,pageSize,status:toStatusQuery(activeTab),
       songId:selectedSongFilter === 'todas' ? undefined : selectedSongFilter,
       search:debouncedSearchTerm,oldest:sortOrder === 'oldest'})
       .then(result => {
@@ -382,6 +400,33 @@ export const RequestsTab: React.FC = () => {
       .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
   }, [requestId, requests, getRequestById]);
+
+  const releaseIdsKey = releases.map(release => release.id).join(',');
+  useEffect(() => {
+    if (requestId || !releaseIdsKey) return;
+    let active = true;
+    loadReleaseDeliveryStatuses(releaseIdsKey.split(','))
+      .then(statuses => { if (active) setDeliveryStatuses(current => ({ ...current, ...statuses })); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [requestId, releaseIdsKey]);
+
+  const failedDeliveries = releases.filter(release => deliveryStatuses[release.id]?.emailStatus === 'failed');
+
+  const activeReleaseId = activeRequest
+    ? releases.find(release => release.requestId === activeRequest.id)?.id
+    : undefined;
+
+  useEffect(() => {
+    if (!activeReleaseId) return;
+    let active = true;
+    loadReleaseDeliveryStatuses([activeReleaseId])
+      .then(statuses => {
+        if (active) setDeliveryStatuses(current => ({ ...current, ...statuses }));
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [activeReleaseId]);
 
   const isSyncingFromUrlRef = useRef(false);
   const lastUrlParamsRef = useRef<string | null>(null);
@@ -562,7 +607,13 @@ export const RequestsTab: React.FC = () => {
       if (saved) {
         clearRequestDrafts(activeRequest.id);
         setDraftStatus(nextStatus);
-        showToast("Detalhes e observações salvos com sucesso!");
+        const statusChanged = nextStatus !== activeRequest.status;
+        showToast(!statusChanged ? 'Detalhes e observações salvos com sucesso!'
+          : nextStatus === 'em_negociacao' ? 'Negociação iniciada. Combine valores e condições com o interessado.'
+          : nextStatus === 'pagamento_pendente' ? `Acordo de R$ ${formatBrlAmount(Number(agreedValueInput))} registrado. Confirme o pagamento quando recebê-lo.`
+          : nextStatus === 'arquivada' ? 'Solicitação arquivada.'
+          : nextStatus === 'nova' ? 'Solicitação reaberta.'
+          : 'Status atualizado com sucesso!');
       }
     } catch (err: any) {
       const isConflict = Boolean(
@@ -670,6 +721,11 @@ export const RequestsTab: React.FC = () => {
       showToast('A música vinculada a esta solicitação não foi encontrada.', 'error');
       return;
     }
+    // O cliente recebe a faixa completa junto com o termo; o banco também recusa sem ela.
+    if (!requestedSong.originalAudioPath) {
+      showToast('Envie a música completa pelo Player Studio antes de emitir o termo. Ela é entregue ao cliente junto com o termo e a letra.', 'warning');
+      return;
+    }
 
     const otherReleasesForSong = releases.filter(r => r.songId === activeRequest.songId && r.requestId !== activeRequest.id);
     const hasExclusiveReleaseForSong = otherReleasesForSong.some(r => isActiveExclusiveRelease(r));
@@ -691,7 +747,13 @@ export const RequestsTab: React.FC = () => {
       return;
     }
 
+    if (!profile.name?.trim() || !profile.cpf?.trim()) {
+      showToast('Complete o nome civil e o CPF em Meu Perfil antes de emitir o termo de liberação.', 'warning');
+      return;
+    }
+
     if (!reviewConfirmed) {
+      setReleaseReviewError('');
       setShowReleaseReview(true);
       return;
     }
@@ -725,8 +787,8 @@ export const RequestsTab: React.FC = () => {
       }, shouldCloseSong, activeRequest.updatedAt);
 
       showToast(shouldCloseSong
-        ? "Liberação emitida! A música foi fechada para novas propostas e o intérprete recebe o link da cópia por e-mail."
-        : "Liberação emitida! O intérprete recebe o link da cópia por e-mail.");
+        ? "Liberação emitida! A música foi fechada para novas propostas e o intérprete recebe por e-mail o termo, a música completa e a letra."
+        : "Liberação emitida! O intérprete recebe por e-mail o termo, a música completa e a letra.");
 
       clearRequestDrafts(activeRequest.id);
       setDraftStatus('liberacao_enviada');
@@ -746,6 +808,7 @@ export const RequestsTab: React.FC = () => {
       console.error('Erro ao emitir liberação:', error);
       const msg = error?.message || error?.error_description || (typeof error === 'string' ? error : 'Não foi possível emitir a liberação.');
       if (/outra aba|foi alterada|recarregue/i.test(msg)) setConcurrencyConflict(true);
+      setReleaseReviewError(msg);
       showToast(msg, 'error');
       return;
     } finally {
@@ -782,40 +845,6 @@ export const RequestsTab: React.FC = () => {
     window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
   };
 
-  const handleSendReleaseWhatsApp = (doc: ReleaseDocument) => {
-    if (!activeRequest) return;
-    const normalizedPhone = normalizeBrazilianWhatsapp(activeRequest.buyerWhatsapp);
-    const validationUrl = `${window.location.origin}/validar-documento?codigo=${doc.documentCode}`;
-    const message = encodeURIComponent(
-      `Olá, ${doc.buyerName}! Segue o Termo de Liberação da música "${doc.songTitle}" emitido por ${doc.composerName}.\n\n` +
-      `Código do Documento: ${doc.documentCode}\n` +
-      `Tipo de Liberação: ${doc.releaseType}\n\n` +
-      `Você pode consultar a autenticidade e validade jurídica do documento no link oficial:\n${validationUrl}`
-    );
-    const whatsappUrl = normalizedPhone
-      ? `https://wa.me/${normalizedPhone}?text=${message}`
-      : `https://wa.me/?text=${message}`;
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-    showToast('Mensagem preparada no WhatsApp. Confirme o envio nesta página depois de enviá-la.', 'warning');
-  };
-
-  const handleSendReleaseEmail = (doc: ReleaseDocument) => {
-    if (!activeRequest) return;
-    const validationUrl = `${window.location.origin}/validar-documento?codigo=${doc.documentCode}`;
-    const subject = encodeURIComponent(`Termo de Liberação Oficial — Música "${doc.songTitle}"`);
-    const body = encodeURIComponent(
-      `Olá, ${doc.buyerName},\n\n` +
-      `Foi emitido o Termo de Liberação para a música "${doc.songTitle}".\n\n` +
-      `Código do Documento: ${doc.documentCode}\n` +
-      `Tipo de Liberação: ${doc.releaseType}\n` +
-      `Valor Oficial: R$ ${Number(doc.agreedValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\n` +
-      `Você pode verificar a autenticidade e baixar o termo oficial no link:\n${validationUrl}\n\n` +
-      `Atenciosamente,\n${doc.composerName}`
-    );
-    window.location.href = `mailto:${activeRequest.buyerEmail}?subject=${subject}&body=${body}`;
-    showToast('E-mail preparado. Confirme o envio nesta página depois de enviá-lo.', 'warning');
-  };
-
   const handleCopyReleaseValidationLink = async (doc: ReleaseDocument) => {
     const validationUrl = `${window.location.origin}/validar-documento?codigo=${doc.documentCode}`;
     try {
@@ -827,17 +856,87 @@ export const RequestsTab: React.FC = () => {
     }
   };
 
-  const handleMarkReleaseAsSent = async (releaseId: string) => {
-    if (!beginMutation(setIsMarkingReleaseSent)) return;
+  const handleResendDelivery = async (doc: ReleaseDocument) => {
+    if (sendingDeliveryId) return;
+    const isResend = Boolean(deliveryStatuses[doc.id]);
+    setSendingDeliveryId(doc.id);
     try {
-      await markReleaseSent(releaseId);
-      setReleasePendingSentConfirmation(null);
-      showToast('Envio ao comprador registrado com sucesso!');
-    } catch (error: any) {
-      showToast(error?.message || 'Não foi possível registrar o envio. Tente novamente.', 'error');
+      const result = await resendReleaseDelivery(doc.id);
+      setDeliveryStatuses(current => ({
+        ...current,
+        [doc.id]: {
+          ...(current[doc.id] || { releaseId: doc.id, emailQueuedAt: null, lastSentAt: null, emailFailedAt: null, emailLastError: null, views: 0, audioDownloads: 0, lyricsDownloads: 0, firstAudioDownloadAt: null, lastAccessAt: null }),
+          expiresAt: result.expiresAt,
+          emailStatus: result.emailStatus,
+          emailQueuedAt: result.queuedAt,
+          lastSentAt: result.lastSentAt,
+        },
+      }));
+      showToast(isResend
+        ? `Reenvio colocado na fila para ${doc.buyerName}. O novo link vale por 30 dias e o anterior deixou de funcionar.`
+        : `Entrega colocada na fila para ${doc.buyerName}. O link seguro vale por 30 dias.`);
+    } catch (error) {
+      showToast(getFriendlyErrorMessage(error, 'Não foi possível reenviar a entrega.'), 'error');
     } finally {
-      endMutation(setIsMarkingReleaseSent);
+      setSendingDeliveryId(null);
     }
+  };
+
+  const daysSince = (value?: string) => {
+    if (!value) return 0;
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? 0 : Math.floor((Date.now() - time) / 86_400_000);
+  };
+
+  const describeIdleTime = (req: InterestRequest) => {
+    if (req.status === 'liberacao_enviada' || req.status === 'arquivada') return null;
+    const days = daysSince(req.updatedAt || req.createdAt);
+    if (days < 1) return { text: 'Atualizada hoje', tone: 'text-slate-500' };
+    const text = req.status === 'nova'
+      ? `Cliente aguarda resposta há ${days} ${days === 1 ? 'dia' : 'dias'}`
+      : `Há ${days} ${days === 1 ? 'dia' : 'dias'} sem atualização`;
+    return { text, tone: days >= 3 ? 'text-red-300 font-semibold' : 'text-amber-300' };
+  };
+
+  const getRowAction = (req: InterestRequest) => {
+    const release = releases.find(item => item.requestId === req.id);
+    if (release && deliveryStatuses[release.id]?.emailStatus === 'failed') return { label: 'Reenviar entrega', release, urgent: true };
+    switch (req.status) {
+      case 'nova': return { label: 'Responder', urgent: true };
+      case 'em_negociacao': return { label: 'Registrar acordo', urgent: false };
+      case 'pagamento_pendente': return { label: 'Confirmar recebimento', urgent: false };
+      case 'pagamento_confirmado': return { label: 'Emitir termo', urgent: true };
+      case 'liberacao_enviada': return { label: 'Ver entrega', urgent: false };
+      default: return { label: 'Ver detalhes', urgent: false };
+    }
+  };
+
+  const openRequest = (req: InterestRequest) => {
+    navigate(`/dashboard/solicitacoes/${req.id}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
+  };
+
+  const groupCount = (group: keyof typeof REQUEST_GROUP_STATUSES) =>
+    REQUEST_GROUP_STATUSES[group].reduce((sum, status) => sum + Number(statusCounts[status] || 0), 0);
+
+  const brl = (value?: number | null) => `R$ ${formatBrlAmount(Number(value || 0))}`;
+
+  const describeHistoryItem = (item: RequestHistoryItem) => {
+    const who = item.actorId === currentUserId ? 'Você' : 'A administração da plataforma';
+    const valueChanged = item.previousAgreedValue !== item.newAgreedValue;
+    if (item.previousStatus !== item.newStatus) {
+      if (item.newStatus === 'liberacao_enviada') return `${who} emitiu o termo de liberação.`;
+      if (item.newStatus === 'pagamento_confirmado') return `${who} confirmou o recebimento de ${brl(item.newAgreedValue)}.`;
+      if (item.newStatus === 'pagamento_pendente' && item.newAgreedValue) return `${who} registrou o acordo de ${brl(item.newAgreedValue)} (${statusLabels[item.previousStatus]} → ${statusLabels[item.newStatus]}).`;
+      if (item.newStatus === 'arquivada') return `${who} arquivou a solicitação.`;
+      if (item.previousStatus === 'arquivada') return `${who} reabriu a solicitação.`;
+      return `${who} mudou de ${statusLabels[item.previousStatus]} para ${statusLabels[item.newStatus]}${valueChanged && item.newAgreedValue ? ` e registrou o valor de ${brl(item.newAgreedValue)}` : ''}.`;
+    }
+    if (valueChanged) {
+      if (!item.newAgreedValue) return `${who} removeu o valor de ${brl(item.previousAgreedValue)}.`;
+      if (!item.previousAgreedValue) return `${who} registrou o valor de ${brl(item.newAgreedValue)}.`;
+      return `${who} alterou o valor de ${brl(item.previousAgreedValue)} para ${brl(item.newAgreedValue)}.`;
+    }
+    return `${who} atualizou a solicitação.`;
   };
 
   const getTimelineStep = (status: RequestStatus) => {
@@ -885,6 +984,7 @@ export const RequestsTab: React.FC = () => {
   if (activeRequest) {
     const song = songs.find(s => s.id === activeRequest.songId);
     const existingRelease = releases.find(r => r.requestId === activeRequest.id);
+    const deliveryStatus = existingRelease ? deliveryStatuses[existingRelease.id] : undefined;
     const otherReleasesForSong = releases.filter(r => r.songId === activeRequest.songId && r.requestId !== activeRequest.id);
     const hasExclusiveReleaseForSong = otherReleasesForSong.some(r => isActiveExclusiveRelease(r));
     const hasAnyOtherReleaseForSong = otherReleasesForSong.some(r => !isReleaseExpired(r.releaseType, r.issueDate, r.expiresAt));
@@ -893,7 +993,7 @@ export const RequestsTab: React.FC = () => {
       <div className="space-y-6 animate-fadeIn pb-12">
         {/* Toast Feedback */}
         {toastMessage && (
-          <div role={toastMessage.type === 'error' ? 'alert' : 'status'} aria-live="polite" className={`fixed top-20 right-5 z-50 max-w-sm font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn ${toastMessage.type === 'success' ? 'bg-emerald-500 text-slate-950' : toastMessage.type === 'error' ? 'bg-red-600 text-white' : 'bg-amber-400 text-slate-950'}`}>
+          <div role={toastMessage.type === 'error' ? 'alert' : 'status'} aria-live="polite" className={`fixed top-20 right-5 z-[130] max-w-sm font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn ${toastMessage.type === 'success' ? 'bg-emerald-500 text-slate-950' : toastMessage.type === 'error' ? 'bg-red-600 text-white' : 'bg-amber-400 text-slate-950'}`}>
             {toastMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
             <span className="flex-1">{toastMessage.message}</span>
             <button type="button" onClick={() => setToastMessage(null)} aria-label="Fechar aviso" className="p-1 hover:bg-emerald-600/20 rounded-lg">
@@ -914,30 +1014,18 @@ export const RequestsTab: React.FC = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !isConfirmingPayment) setShowPaymentConfirmation(false); }}>
             <div ref={paymentDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-payment-title" className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
               <h2 id="confirm-payment-title" className="text-lg font-bold text-white">Confirmar recebimento</h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-300">Confirma o recebimento de <strong className="text-emerald-400">R$ {Number(agreedValueInput).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>? Esta ação habilitará a emissão do termo.</p>
+              <dl className="mt-4 grid grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm">
+                <div><dt className="text-xs text-slate-500">Valor recebido</dt><dd className="font-mono font-bold text-emerald-400">R$ {formatBrlAmount(Number(agreedValueInput || 0))}</dd></div>
+                <div><dt className="text-xs text-slate-500">Data do registro</dt><dd className="font-semibold text-white">{new Date().toLocaleDateString('pt-BR')}</dd></div>
+                <div className="col-span-2"><dt className="text-xs text-slate-500">Pagador</dt><dd className="font-semibold text-white">{activeRequest.buyerName}</dd></div>
+              </dl>
+              <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+                <strong className="block">A plataforma não recebe nem processa este pagamento.</strong>
+                Confirme só depois de conferir o valor na sua conta (Pix, transferência ou outro meio combinado). Esta confirmação libera a emissão do termo e não pode ser desfeita.
+              </p>
               <div className="mt-6 flex justify-end gap-3">
                 <button type="button" disabled={isConfirmingPayment} onClick={() => setShowPaymentConfirmation(false)} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Cancelar</button>
                 <button data-autofocus type="button" disabled={isConfirmingPayment} onClick={handleMarkPaymentReceived} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{isConfirmingPayment ? 'Confirmando...' : 'Sim, confirmar'}</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {releasePendingSentConfirmation && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) closeSentConfirmationModal(); }}>
-            <div ref={sentConfirmationDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-release-sent-title" className="w-full max-w-md rounded-3xl border border-blue-500/30 bg-slate-900 p-6 shadow-2xl">
-              <h2 id="confirm-release-sent-title" className="text-lg font-bold text-white">Confirmar envio realizado</h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                Confirma que enviou o termo <strong className="text-blue-300">{releasePendingSentConfirmation.documentCode}</strong> para <strong className="text-white">{releasePendingSentConfirmation.buyerName}</strong>? O sistema registrará a data e a hora desta confirmação.
-              </p>
-              <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
-                Confirme somente depois de concluir o envio no WhatsApp, no aplicativo de e-mail ou por outro canal.
-              </p>
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" disabled={isMarkingReleaseSent} onClick={closeSentConfirmationModal} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Cancelar</button>
-                <button data-autofocus type="button" disabled={isMarkingReleaseSent} onClick={() => void handleMarkReleaseAsSent(releasePendingSentConfirmation.id)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
-                  {isMarkingReleaseSent ? 'Registrando...' : 'Sim, o envio foi realizado'}
-                </button>
               </div>
             </div>
           </div>
@@ -954,6 +1042,9 @@ export const RequestsTab: React.FC = () => {
                   <h2 id="confirm-archive-title" className="text-lg font-bold text-white">Arquivar solicitação?</h2>
                   <p className="mt-2 text-sm leading-relaxed text-slate-300">
                     A negociação da música <strong className="text-amber-400">“{activeRequest.songTitle}”</strong> com <strong className="text-white break-all text-right">{activeRequest.buyerName}</strong> será arquivada. Você poderá reativá-la depois se necessário.
+                  </p>
+                  <p className={`mt-2 text-xs ${archiveReason && archiveReason !== 'Outro motivo' ? 'text-slate-400' : 'text-amber-300'}`}>
+                    {archiveReason && archiveReason !== 'Outro motivo' ? `Motivo: ${archiveReason}.` : 'Nenhum motivo informado. Recomendamos escolher um antes de arquivar.'}
                   </p>
                 </div>
               </div>
@@ -988,11 +1079,20 @@ export const RequestsTab: React.FC = () => {
               <h2 id="release-review-title" className="text-lg font-bold text-white">Revisão final antes da emissão</h2>
               <p className="mt-1 text-xs text-slate-400">Confira os dados. A emissão cria um documento definitivo.</p>
               <dl className="mt-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm sm:grid-cols-2">
-                <div><dt className="text-xs text-slate-500">Comprador</dt><dd className="font-semibold text-white break-all">{activeRequest.buyerName}</dd></div>
-                <div><dt className="text-xs text-slate-500">Música</dt><dd className="font-semibold text-white break-all">{activeRequest.songTitle}</dd></div>
+                <div><dt className="text-xs text-slate-500">Comprador</dt><dd className="font-semibold text-white break-words">{activeRequest.buyerName}</dd></div>
+                <div><dt className="text-xs text-slate-500">Música</dt><dd className="font-semibold text-white break-words">{activeRequest.songTitle}</dd></div>
                 <div><dt className="text-xs text-slate-500">Valor quitado</dt><dd className="font-semibold text-emerald-400">R$ {Number(agreedValueInput || activeRequest.agreedValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</dd></div>
                 <div><dt className="text-xs text-slate-500">Tipo</dt><dd className="font-semibold text-amber-400">{releaseTypeInput}</dd></div>
               </dl>
+              {releaseReviewError && (
+                <div role="alert" className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-3 text-xs leading-relaxed text-red-200">
+                  <strong className="block text-red-300">O termo não foi emitido.</strong>
+                  {releaseReviewError}
+                  {/CPF|nome/i.test(releaseReviewError) && (
+                    <Link to="/dashboard/perfil" className="mt-2 inline-block font-bold text-amber-300 underline">Completar Meu Perfil</Link>
+                  )}
+                </div>
+              )}
               <div className="mt-6 flex justify-end gap-3">
                 <button type="button" disabled={isIssuingRelease} onClick={closeReviewModal} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Voltar e corrigir</button>
                 <button data-autofocus type="button" disabled={isIssuingRelease} onClick={() => void handleCreateRelease(true)} className="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">{isIssuingRelease ? 'Emitindo...' : 'Confirmar e emitir'}</button>
@@ -1019,11 +1119,11 @@ export const RequestsTab: React.FC = () => {
               activeRequest.status === 'pagamento_confirmado' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
               activeRequest.status === 'em_negociacao' ? 'bg-orange-500/20 text-orange-300 border-orange-500/40' :
               activeRequest.status === 'pagamento_pendente' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' :
-              activeRequest.status === 'liberacao_enviada' ? (existingRelease?.sentToBuyerAt ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40') :
+              activeRequest.status === 'liberacao_enviada' ? (deliveryStatus?.audioDownloads ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40') :
               'bg-slate-800 text-slate-300 border-slate-700'
             }`}>
               {activeRequest.status === 'liberacao_enviada'
-                ? (existingRelease?.sentToBuyerAt ? 'Liberação Emitida (Enviada)' : 'Liberação Emitida (Aguardando Envio)')
+                ? (deliveryStatus?.audioDownloads ? 'Liberação entregue' : 'Liberação emitida')
                 : statusLabels[activeRequest.status]}
             </span>
           </div>
@@ -1105,6 +1205,81 @@ export const RequestsTab: React.FC = () => {
             </div>
           )}
         </div>
+
+        {(() => {
+          const value = Number(agreedValueInput || activeRequest.agreedValue || 0);
+          const needsProfile = !profile.name?.trim() || !profile.cpf?.trim();
+          const needsAudio = Boolean(song) && !song?.originalAudioPath;
+          const primaryClass = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50';
+          let title = ''; let detail = ''; let action: React.ReactNode = null;
+          if (activeRequest.status === 'nova') {
+            title = 'Próxima ação: responda o interessado';
+            detail = 'Fale com ele pelo WhatsApp ou e-mail. Ao começar a conversa, marque a negociação como iniciada.';
+            action = <button type="button" disabled={isMutating} onClick={() => void executeSaveDetails('em_negociacao')} className={primaryClass}>Iniciar negociação</button>;
+          } else if (activeRequest.status === 'em_negociacao') {
+            if (agreedValueInput === '' || moneyError) {
+              title = 'Próxima ação: informe o valor combinado';
+              detail = 'Digite o valor acordado com o interessado no campo "Valor acordado", logo abaixo.';
+              action = <button type="button" onClick={() => document.getElementById('agreed-value')?.focus()} className={primaryClass}>Informar valor</button>;
+            } else {
+              title = `Próxima ação: confirme o acordo de ${brl(value)}`;
+              detail = 'Depois disso, você poderá registrar o recebimento do pagamento.';
+              action = <button type="button" disabled={isMutating} onClick={() => void executeSaveDetails('pagamento_pendente')} className={primaryClass}>Registrar acordo</button>;
+            }
+          } else if (activeRequest.status === 'pagamento_pendente') {
+            title = `Próxima ação: confirme o recebimento de ${brl(value)}`;
+            detail = 'A plataforma não recebe nem processa o pagamento. Confirme só depois de ver o valor na sua conta.';
+            action = <button type="button" disabled={isMutating || !value} onClick={() => setShowPaymentConfirmation(true)} className={primaryClass}>Confirmar recebimento</button>;
+          } else if (activeRequest.status === 'pagamento_confirmado' && !existingRelease) {
+            if (needsProfile) {
+              title = 'Próxima ação: complete seu perfil';
+              detail = 'O termo exige seu nome civil e CPF.';
+              action = <Link to="/dashboard/perfil" className={primaryClass}>Completar Meu Perfil</Link>;
+            } else if (needsAudio && song) {
+              title = 'Próxima ação: envie a música completa';
+              detail = 'O cliente recebe a música completa e a letra junto com o termo.';
+              action = <Link to={`/dashboard/musicas?studio=${song.id}`} className={primaryClass}>Enviar música completa</Link>;
+            } else {
+              title = 'Próxima ação: emita o termo de liberação';
+              detail = 'Revise o tipo de autorização abaixo. O cliente recebe por e-mail o termo, a música completa e a letra.';
+              action = <button type="button" disabled={isMutating || hasExclusiveReleaseForSong || (isExclusiveReleaseType(releaseTypeInput) && (hasAnyOtherReleaseForSong || !legalAcknowledged))} onClick={() => void handleCreateRelease(false)} className={primaryClass}>{isIssuingRelease ? 'Emitindo...' : 'Emitir termo'}</button>;
+            }
+          } else if (existingRelease) {
+            if (deliveryStatus?.emailStatus === 'failed') {
+              title = 'Próxima ação: reenvie a entrega';
+              detail = 'O e-mail com o termo, a música e a letra não chegou ao cliente. Confira o e-mail dele e reenvie.';
+              action = <button type="button" disabled={Boolean(sendingDeliveryId)} onClick={() => void handleResendDelivery(existingRelease)} className={primaryClass}>Reenviar entrega</button>;
+            } else {
+              title = 'Negociação concluída';
+              detail = `Termo ${existingRelease.documentCode} emitido. Acompanhe abaixo se o cliente abriu a entrega e baixou a música.`;
+              action = <button type="button" onClick={() => setViewingReleaseDoc(existingRelease)} className={primaryClass}>Ver termo</button>;
+            }
+          } else if (activeRequest.status === 'arquivada') {
+            title = 'Solicitação arquivada';
+            detail = activeRequest.archiveReason ? `Motivo: ${activeRequest.archiveReason}.` : 'Nenhum motivo foi informado.';
+            action = <button type="button" disabled={isMutating} onClick={() => void executeSaveDetails('nova')} className={primaryClass}>Reabrir solicitação</button>;
+          }
+          if (!title) return null;
+          // Antes do pagamento confirmado, as exigências do termo aparecem só como aviso;
+          // depois, viram a própria próxima ação (com o botão).
+          const earlyStage = ['nova', 'em_negociacao', 'pagamento_pendente'].includes(activeRequest.status);
+          const pending = earlyStage ? [needsProfile && 'seu nome civil e CPF no perfil', needsAudio && 'a música completa pelo Player Studio'].filter(Boolean) : [];
+          return (
+            <section aria-label="Próxima ação" className="flex flex-col gap-4 rounded-3xl border-2 border-amber-500/50 bg-amber-500/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
+                <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{detail}</p>
+                {pending.length > 0 && (
+                  <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>Antes de emitir o termo, você vai precisar de {pending.join(' e ')}.</span>
+                  </p>
+                )}
+              </div>
+              <div className="shrink-0">{action}</div>
+            </section>
+          );
+        })()}
 
         {/* 2-Column Responsive Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1195,6 +1370,29 @@ export const RequestsTab: React.FC = () => {
                   <span className="text-slate-400">Data de Envio:</span>
                   <strong className="text-slate-200">{formatDate(activeRequest.createdAt)}</strong>
                 </div>
+
+                {activeRequest.consentAcceptedAt ? (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-emerald-200">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <ShieldCheck className="h-4 w-4 shrink-0" />
+                      <span>Consentimento registrado</span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-emerald-200/70">
+                      Aceite registrado pelo servidor em {new Date(activeRequest.consentAcceptedAt).toLocaleString('pt-BR')}
+                      {activeRequest.consentPolicyVersion ? ` · Política versão ${activeRequest.consentPolicyVersion}` : ''}.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-200">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>Evidência de consentimento indisponível</span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-amber-200/70">
+                      Esta solicitação é anterior ao registro de aceite. O sistema não atribui consentimento retroativamente.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1235,8 +1433,8 @@ export const RequestsTab: React.FC = () => {
                   <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Gestão Financeira e Status</h3>
-                  <p className="text-xs text-slate-400">Controle os valores acordados e registre o recebimento do pagamento</p>
+                  <h3 className="text-lg font-bold text-white">Negociação e pagamento</h3>
+                  <p className="text-xs text-slate-400">Valor combinado, etapa e suas anotações. A plataforma não recebe nem processa o pagamento.</p>
                 </div>
               </div>
 
@@ -1253,7 +1451,7 @@ export const RequestsTab: React.FC = () => {
               )}
 
               {restorableDraft && <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-                H? um rascunho salvo nesta sess?o.
+                Há um rascunho salvo nesta sessão.
                 <div className="mt-2 flex gap-2">
                   <button type="button" onClick={restoreDraft} className="rounded-lg bg-amber-500 px-3 py-2 font-bold text-slate-950">Restaurar rascunho</button>
                   <button type="button" onClick={() => { clearRequestDrafts(activeRequest.id); setRestorableDraft(false); }} className="rounded-lg border border-slate-600 px-3 py-2">Descartar rascunho</button>
@@ -1261,9 +1459,18 @@ export const RequestsTab: React.FC = () => {
               </div>}
 
               {/* Status and Value Grid */}
+              {existingRelease ? (
+                <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-xs sm:grid-cols-2">
+                  <div><dt className="text-slate-500">Etapa</dt><dd className="mt-0.5 font-semibold text-white">{statusLabels[activeRequest.status]}</dd></div>
+                  <div><dt className="text-slate-500">Valor acordado</dt><dd className="mt-0.5 font-mono font-bold text-emerald-400">{brl(existingRelease.agreedValue)}</dd></div>
+                  <div><dt className="text-slate-500">Pagamento confirmado em</dt><dd className="mt-0.5 text-white">{activeRequest.paymentReceivedAt ? formatDate(activeRequest.paymentReceivedAt) : 'não registrado'}</dd></div>
+                  <div><dt className="text-slate-500">Termo</dt><dd className="mt-0.5 text-white"><span className="font-mono text-amber-400">{existingRelease.documentCode}</span> · emitido em {new Date(`${existingRelease.issueDate}T12:00:00`).toLocaleDateString('pt-BR')}</dd></div>
+                  <div className="sm:col-span-2"><dt className="text-slate-500">Tipo de autorização</dt><dd className="mt-0.5 text-white">{existingRelease.releaseType}</dd></div>
+                </dl>
+              ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div>
-                  <label className="block text-slate-400 mb-1.5 font-semibold">Status da Negociação</label>
+                  <label htmlFor="request-status" className="block text-slate-400 mb-1.5 font-semibold">Etapa (ajuste manual)</label>
                   <select
                     id="request-status"
                     value={draftStatus}
@@ -1289,19 +1496,20 @@ export const RequestsTab: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="agreed-value" className="block text-slate-400 mb-1.5 font-semibold">Valor Acordado (R$)</label>
+                  <label htmlFor="agreed-value" className="block text-slate-400 mb-1.5 font-semibold">Valor acordado (R$)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-3 text-slate-500 font-bold text-xs">R$</span>
                     <input
                       id="agreed-value"
                       type="text"
-                      inputMode="numeric"
+                      inputMode="decimal"
                       aria-invalid={Boolean(moneyError)}
                       aria-describedby={moneyError ? "agreed-value-error" : undefined}
                       value={existingRelease ? existingRelease.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : moneyDisplay}
                       onChange={e => handleMoneyTextChange(e.target.value)}
+                      onBlur={handleMoneyBlur}
                       disabled={isMutating || activeRequest.status === 'liberacao_enviada' || Boolean(existingRelease)}
-                      placeholder="0,00"
+                      placeholder="Ex.: 3.500,00"
                       className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-3 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                     />
                   </div>
@@ -1317,18 +1525,20 @@ export const RequestsTab: React.FC = () => {
                   )}
                 </div>
               </div>
+              )}
 
               {/* Archive reason helper */}
               {draftStatus === 'arquivada' && (
                 <div className="space-y-2 text-xs animate-fadeIn bg-slate-950 p-4 rounded-2xl border border-slate-800">
                   <div className="flex items-center justify-between">
-                    <label className="block text-slate-400 font-semibold">Motivo do Arquivamento (Opcional):</label>
+                    <label className="block text-slate-400 font-semibold">Motivo do arquivamento (recomendado)</label>
                     {archiveReason !== (activeRequest.archiveReason || '') && (
                       <span className="text-[10px] text-amber-400/90 font-medium">
                         Alteração não salva
                       </span>
                     )}
                   </div>
+                  <p className="text-[11px] text-slate-500">Opcional, mas ajuda você a entender por que as negociações não avançam.</p>
                   <select
                     value={['Valor não acordado', 'Interessado não respondeu', 'Obra já liberada para outro intérprete', 'Desistência mútua', 'Outro motivo'].includes(archiveReason) ? archiveReason : (archiveReason ? 'Outro motivo' : '')}
                     onChange={e => handleArchiveReasonChange(e.target.value)}
@@ -1392,9 +1602,8 @@ export const RequestsTab: React.FC = () => {
                   <ol className="mt-3 space-y-3">
                     {requestHistory.map(item => (
                       <li key={item.id} className="border-l-2 border-slate-700 pl-3 text-xs text-slate-300">
-                        <p><strong className="text-white">{statusLabels[item.previousStatus]}</strong> → <strong className="text-amber-400">{statusLabels[item.newStatus]}</strong></p>
-                        {(item.previousAgreedValue !== item.newAgreedValue) && <p className="mt-1 text-slate-400">Valor: {item.previousAgreedValue ? `R$ ${item.previousAgreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'não informado'} → {item.newAgreedValue ? `R$ ${item.newAgreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'não informado'}</p>}
-                        <time className="mt-1 block text-[10px] text-slate-500" dateTime={item.changedAt}>{formatDate(item.changedAt)} · autor da conta {item.actorId.slice(0, 8)}</time>
+                        <p>{describeHistoryItem(item)}</p>
+                        <time className="mt-1 block text-[10px] text-slate-500" dateTime={item.changedAt}>{formatDate(item.changedAt)}</time>
                       </li>
                     ))}
                   </ol>
@@ -1402,7 +1611,7 @@ export const RequestsTab: React.FC = () => {
               </section>
 
               {/* Release Configuration Section */}
-              {(activeRequest.status === 'pagamento_confirmado' || activeRequest.status === 'liberacao_enviada') && (
+              {activeRequest.status === 'pagamento_confirmado' && !existingRelease && (
                 <div className="bg-slate-950 p-5 rounded-2xl border border-amber-500/30 space-y-4 animate-fadeIn text-xs">
                   <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
                     <ShieldCheck className="w-5 h-5" />
@@ -1461,7 +1670,7 @@ export const RequestsTab: React.FC = () => {
                 </div>
               )}
 
-              {/* Release Dispatch Section (WhatsApp / Email / Verification link) */}
+              {/* Automatic release delivery status */}
               {existingRelease && (
                 <div className="bg-slate-950 p-5 rounded-2xl border border-blue-500/30 space-y-4 animate-fadeIn text-xs">
                   <div className="flex items-center justify-between">
@@ -1469,13 +1678,6 @@ export const RequestsTab: React.FC = () => {
                       <FileCheck className="w-5 h-5" />
                       <span>Termo de Liberação Emitido</span>
                     </div>
-                    <span className={`px-2.5 py-1 rounded-full font-bold text-[10px] tracking-wider uppercase border ${
-                      existingRelease.sentToBuyerAt
-                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                    }`}>
-                      {existingRelease.sentToBuyerAt ? 'Envio registrado' : 'Envio não confirmado'}
-                    </span>
                   </div>
 
                   <div role={archiveError ? "alert" : "status"} className={`rounded-xl border p-3 text-xs ${existingRelease.documentPath ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-200"}`}>
@@ -1484,34 +1686,13 @@ export const RequestsTab: React.FC = () => {
                     {!existingRelease.documentPath && !archivingRelease && <button type="button" onClick={() => void handleRetryArchive(existingRelease)} className="mt-2 rounded-lg bg-amber-500 px-3 py-2 font-bold text-slate-950">Tentar arquivar novamente</button>}
                   </div>
 
-                  <p className="text-slate-300 leading-relaxed">
-                    {existingRelease.sentToBuyerAt
-                      ? `O envio do termo ${existingRelease.documentCode} foi confirmado pelo compositor em ${new Date(existingRelease.sentToBuyerAt).toLocaleDateString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`
-                      : `O termo oficial ${existingRelease.documentCode} foi emitido e assinado digitalmente. Ele não é enviado automaticamente pelo sistema: utilize os canais abaixo para enviar o documento e o link de validação ao interessado.`
-                    }
-                  </p>
+                  <ReleaseDeliveryStatus
+                    status={deliveryStatus}
+                    isSending={sendingDeliveryId === existingRelease.id}
+                    onSend={() => void handleResendDelivery(existingRelease)}
+                  />
 
                   <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleSendReleaseWhatsApp(existingRelease)}
-                      disabled={isMutating}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>Abrir mensagem no WhatsApp</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSendReleaseEmail(existingRelease)}
-                      disabled={isMutating}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition"
-                    >
-                      <Mail className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Preparar e-mail</span>
-                    </button>
-
                     <button
                       type="button"
                       onClick={() => void handleCopyReleaseValidationLink(existingRelease)}
@@ -1520,45 +1701,21 @@ export const RequestsTab: React.FC = () => {
                       <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
                       <span>Copiar Link de Autenticidade</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewingReleaseDoc(existingRelease)}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 transition"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Ver termo</span>
+                    </button>
 
-                    {!existingRelease.sentToBuyerAt && (
-                      <button
-                        type="button"
-                        onClick={() => setReleasePendingSentConfirmation(existingRelease)}
-                        disabled={isMutating}
-                        className="px-3.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-bold text-xs flex items-center gap-1.5 border border-blue-500/30 transition"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Confirmar Envio Realizado</span>
-                      </button>
-                    )}
                   </div>
                 </div>
               )}
 
               {/* Action Buttons Bar */}
               <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-800">
-                {activeRequest.status === 'pagamento_pendente' && draftStatus === 'pagamento_pendente' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!agreedValueInput || Number(agreedValueInput) <= 0) {
-                        showToast('Informe um valor acordado maior que zero antes de confirmar o pagamento.', 'warning');
-                        return;
-                      }
-                      setShowPaymentConfirmation(true);
-                    }}
-                    disabled={isMutating}
-                    className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>{isConfirmingPayment ? 'Confirmando pagamento...' : 'Confirmar Pagamento Recebido'}</span>
-                  </button>
-                )}
-
-                {activeRequest.status === 'nova' && <button type="button" disabled={isMutating} onClick={() => void executeSaveDetails('em_negociacao')} className="px-5 py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold text-xs">Iniciar negocia??o</button>}
-                {activeRequest.status === 'em_negociacao' && <button type="button" disabled={isMutating || Boolean(moneyError) || agreedValueInput === ''} onClick={() => void executeSaveDetails('pagamento_pendente')} className="px-5 py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold text-xs disabled:opacity-50">Registrar acordo</button>}
-
                 {hasUnsavedChanges && (
                   <button
                     type="button"
@@ -1576,29 +1733,10 @@ export const RequestsTab: React.FC = () => {
                   disabled={isMutating}
                   className="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+                  {isSaving ? 'Salvando...' : 'Salvar alterações'}
                 </button>
 
-                {existingRelease ? (
-                  <button
-                    type="button"
-                    onClick={() => setViewingReleaseDoc(existingRelease)}
-                    className="px-6 py-3 rounded-2xl bg-blue-500 hover:bg-blue-400 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>Visualizar Documento de Liberação</span>
-                  </button>
-                ) : activeRequest.status === 'pagamento_confirmado' ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleCreateRelease(false)}
-                    disabled={isMutating || hasExclusiveReleaseForSong || (isExclusiveReleaseType(releaseTypeInput) && (hasAnyOtherReleaseForSong || !legalAcknowledged))}
-                    className="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <FileCheck className="w-4 h-4" />
-                    <span>{isIssuingRelease ? 'Emitindo liberação...' : 'Emitir termo de liberação'}</span>
-                  </button>
-                ) : null}
+
               </div>
 
             </div>
@@ -1630,7 +1768,7 @@ export const RequestsTab: React.FC = () => {
 
       {/* Toast Feedback */}
       {toastMessage && (
-          <div role={toastMessage.type === 'error' ? 'alert' : 'status'} aria-live="polite" className={`fixed top-20 right-5 z-50 max-w-sm font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn ${toastMessage.type === 'success' ? 'bg-emerald-500 text-slate-950' : toastMessage.type === 'error' ? 'bg-red-600 text-white' : 'bg-amber-400 text-slate-950'}`}>
+          <div role={toastMessage.type === 'error' ? 'alert' : 'status'} aria-live="polite" className={`fixed top-20 right-5 z-[130] max-w-sm font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-xs animate-fadeIn ${toastMessage.type === 'success' ? 'bg-emerald-500 text-slate-950' : toastMessage.type === 'error' ? 'bg-red-600 text-white' : 'bg-amber-400 text-slate-950'}`}>
             {toastMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
             <span className="flex-1">{toastMessage.message}</span>
           <button type="button" onClick={() => setToastMessage(null)} aria-label="Fechar aviso" className="p-1 hover:bg-emerald-600/20 rounded-lg">
@@ -1639,52 +1777,34 @@ export const RequestsTab: React.FC = () => {
         </div>
       )}
 
-      {/* Header & KPI Summary */}
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">
-            Gestão de Solicitações & Liberações
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Central de negociação com intérpretes, controle de pagamentos diretos e emissão de autorizações fonográficas.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="bg-slate-950 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-amber-400" />
-            <div className="text-left">
-              <span className="block text-[10px] text-slate-500 font-bold uppercase">Total</span>
-              <strong className="text-xs text-white">{Object.values(statusCounts).reduce<number>((sum, count) => sum + Number(count), 0)}</strong>
-            </div>
-          </div>
-
-          <div className="bg-slate-950 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-300" />
-            <div className="text-left">
-              <span className="block text-[10px] text-slate-500 font-bold uppercase">Em Negociação</span>
-              <strong className="text-xs text-amber-300">
-                {Number(statusCounts.em_negociacao || 0) + Number(statusCounts.pagamento_pendente || 0)}
-              </strong>
-            </div>
-          </div>
-
-          <div className="bg-slate-950 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center gap-2">
-            <FileCheck className="w-4 h-4 text-emerald-400" />
-            <div className="text-left">
-              <span className="block text-[10px] text-slate-500 font-bold uppercase">Liberadas</span>
-              <strong className="text-xs text-emerald-400">
-                {Number(statusCounts.liberacao_enviada || 0)}
-              </strong>
-            </div>
-          </div>
-        </div>
+      {/* Cabeçalho */}
+      <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl">
+        <h1 className="text-2xl font-extrabold text-white tracking-tight">Solicitações</h1>
+        <p className="text-xs text-slate-400 mt-1">
+          Pedidos de liberação recebidos pelo seu perfil. Comece pelo que precisa da sua ação.
+        </p>
       </div>
+
+      {failedDeliveries.length > 0 && (
+        <div role="alert" className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4">
+          <strong className="flex items-center gap-2 text-sm text-red-200"><AlertCircle className="h-4 w-4" />{failedDeliveries.length === 1 ? 'Uma entrega não chegou ao cliente' : `${failedDeliveries.length} entregas não chegaram aos clientes`}</strong>
+          <ul className="mt-3 space-y-2">
+            {failedDeliveries.map(release => (
+              <li key={release.id} className="flex flex-col gap-2 rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+                <span><strong className="text-white">{release.buyerName}</strong> · “{release.songTitle}” · termo {release.documentCode}</span>
+                <button type="button" disabled={Boolean(sendingDeliveryId)} onClick={() => void handleResendDelivery(release)} className="rounded-lg bg-red-600 px-3 py-1.5 font-bold text-white hover:bg-red-500 disabled:opacity-50">
+                  {sendingDeliveryId === release.id ? 'Reenviando...' : 'Reenviar'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-12 gap-3">
         {/* Search */}
-        <div className="relative sm:col-span-6">
+        <div className="relative sm:col-span-5">
           <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
           <input
             type="search"
@@ -1697,7 +1817,7 @@ export const RequestsTab: React.FC = () => {
         </div>
 
         {/* Music Filter */}
-        <div className="sm:col-span-4">
+        <div className="sm:col-span-3">
           <select
             value={selectedSongFilter}
             onChange={e => setSelectedSongFilter(e.target.value)}
@@ -1716,6 +1836,21 @@ export const RequestsTab: React.FC = () => {
           </select>
         </div>
 
+        {/* Status específico (opção secundária aos grupos) */}
+        <div className="sm:col-span-2">
+          <select
+            value={isRequestGroup(activeTab) || activeTab === 'todas' ? '' : activeTab}
+            onChange={event => setActiveTab((event.target.value || 'todas') as RequestFilters['status'])}
+            aria-label="Filtrar por etapa"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+          >
+            <option value="">Todas as etapas</option>
+            {(Object.keys(statusLabels) as RequestStatus[]).map(status => (
+              <option key={status} value={status}>{statusLabels[status]} ({Number(statusCounts[status] || 0)})</option>
+            ))}
+          </select>
+        </div>
+
         {/* Sort */}
         <div className="sm:col-span-2">
           <select
@@ -1730,37 +1865,31 @@ export const RequestsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Status Tabs with Colored Badges (Wrapped - No Horizontal Scroll) */}
-      <div role="tablist" aria-label="Filtrar solicitações por status" className="bg-slate-900 border border-slate-800 p-2.5 rounded-2xl flex flex-wrap items-center gap-2">
-        {[
-          { id: 'todas', label: 'Todas', badgeClass: 'bg-slate-800 text-slate-300' },
-          { id: 'nova', label: 'Novas', badgeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
-          { id: 'em_negociacao', label: 'Em Negociação', badgeClass: 'bg-orange-500/20 text-orange-300 border border-orange-500/30' },
-          { id: 'pagamento_pendente', label: 'Pagamento Pendente', badgeClass: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' },
-          { id: 'pagamento_confirmado', label: 'Pagamento Confirmado', badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
-          { id: 'liberacao_enviada', label: 'Liberações Emitidas', badgeClass: 'bg-blue-500/20 text-blue-300 border border-blue-500/30' },
-          { id: 'arquivada', label: 'Arquivadas', badgeClass: 'bg-slate-800 text-slate-400' }
-        ].map(tab => {
+      {/* Grupos operacionais */}
+      <div role="tablist" aria-label="Agrupar solicitações" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {([
+          { id: 'acao', label: 'Precisa de ação', hint: 'Novas e pagamentos confirmados', count: groupCount('acao') + failedDeliveries.length, accent: 'text-amber-300' },
+          { id: 'andamento', label: 'Em andamento', hint: 'Negociação e pagamento pendente', count: groupCount('andamento'), accent: 'text-blue-300' },
+          { id: 'concluidas', label: 'Concluídas', hint: 'Termos emitidos e arquivadas', count: groupCount('concluidas'), accent: 'text-emerald-300' },
+          { id: 'todas', label: 'Todas', hint: 'Todas as solicitações', count: Object.values(statusCounts).reduce<number>((sum, value) => sum + Number(value), 0), accent: 'text-slate-300' },
+        ] as const).map(tab => {
           const isActive = activeTab === tab.id;
-          const count = tab.id === 'todas'
-            ? Object.values(statusCounts).reduce<number>((sum, value) => sum + Number(value), 0)
-            : Number(statusCounts[tab.id] || 0);
           return (
             <button
               type="button"
               role="tab"
               aria-selected={isActive}
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as RequestStatus | 'todas')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 ${
-                isActive
-                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400/30 font-bold'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/80'
-              }`}
+              onClick={() => setActiveTab(tab.id)}
+              aria-label={`${tab.label}: ${tab.count}`}
+              className={`rounded-2xl border p-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 ${isActive ? 'border-amber-500 bg-amber-500 shadow-lg shadow-amber-500/20' : 'border-slate-800 bg-slate-900 hover:border-amber-500/50 hover:bg-slate-800'}`}
             >
-              <span>{tab.label}</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isActive ? 'bg-slate-950 text-amber-400' : tab.badgeClass}`}>
-                {count}
+              <span className="flex items-center justify-between gap-2">
+                <span className={`text-sm font-bold ${isActive ? 'text-slate-950' : 'text-white'}`}>{tab.label}</span>
+                <strong className={`text-xl leading-none ${isActive ? 'text-slate-950' : tab.count > 0 ? tab.accent : 'text-slate-500'}`}>{tab.count}</strong>
+              </span>
+              <span className={`mt-1 block text-[11px] ${isActive ? 'font-medium text-slate-900' : 'text-slate-400'}`}>
+                {tab.id === 'acao' && tab.count === 0 ? 'Nada pendente agora' : tab.hint}
               </span>
             </button>
           );
@@ -1826,6 +1955,9 @@ export const RequestsTab: React.FC = () => {
 
                     <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 pt-1">
                       <span>Recebida em {formatDate(req.createdAt)}</span>
+                      {describeIdleTime(req) && (
+                        <span className={`flex items-center gap-1 ${describeIdleTime(req)!.tone}`}><Clock className="h-3 w-3" />{describeIdleTime(req)!.text}</span>
+                      )}
                       {req.agreedValue && (
                         <span className="text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                           Valor: R$ {req.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -1863,21 +1995,23 @@ export const RequestsTab: React.FC = () => {
                     <span className="hidden sm:inline text-xs">WhatsApp</span>
                   </button>
 
-                  <button
-                    onClick={() => {
-                      if (activeRequest && req.id !== activeRequest.id && hasUnsavedChanges) {
-                        if (!window.confirm('Há alterações não salvas nesta solicitação. Deseja sair e descartá-las?')) {
-                          return;
-                        }
-                        isNavigatingConfirmedRef.current = true;
-                      }
-                      navigate(`/dashboard/solicitacoes/${req.id}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-400 font-bold text-xs transition flex items-center gap-1"
-                  >
-                    <span>Ver detalhes</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                  {(() => {
+                    const action = getRowAction(req);
+                    return (
+                      <button
+                        type="button"
+                        disabled={'release' in action && Boolean(sendingDeliveryId)}
+                        onClick={() => {
+                          if ('release' in action && action.release) { void handleResendDelivery(action.release); return; }
+                          openRequest(req);
+                        }}
+                        className={`px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1 disabled:opacity-50 ${action.urgent ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-slate-800 text-amber-400 hover:bg-amber-500 hover:text-slate-950'}`}
+                      >
+                        <span>{action.label}</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    );
+                  })()}
                 </div>
 
               </div>

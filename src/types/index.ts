@@ -55,6 +55,10 @@ export interface InterestRequest {
   buyerCityState: string;
   purpose: string;
   message: string;
+  consentAccepted?: boolean;
+  consentPolicyVersion?: string;
+  consentAcceptedAt?: string;
+  consentStatement?: string;
   status: RequestStatus;
   createdAt: string;
   agreedValue?: number;
@@ -112,7 +116,11 @@ export interface Invoice {
   id: string;
   date: string;
   value: number;
-  status: 'pago' | 'pendente' | 'cancelado' | 'estornado';
+  status: 'pago' | 'pendente' | 'falhou' | 'cancelado' | 'estornado';
+  /** Número oficial da fatura no Stripe (ex.: "A1B2C3-0001"). */
+  number?: string;
+  /** Página da fatura no Stripe, onde também é possível pagar uma cobrança recusada. */
+  hostedUrl?: string;
   pdfUrl?: string;
 }
 
@@ -127,13 +135,14 @@ export interface Subscription {
   cardLast4?: string;
   cardBrand?: string;
   invoices: Invoice[];
-  /** Renovação automática no cartão (Assinaturas do Mercado Pago) autorizada. */
-  autoRenew?: boolean;
-  /** Status do preapproval no Mercado Pago: pending, authorized, paused, cancelled. */
-  recurringStatus?: string;
   /** Datas do teste grátis, quando a conta já utilizou a oferta. */
   trialStartedAt?: string;
   trialEndsAt?: string;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  stripeSubscriptionStatus?: string;
+  /** Data em que uma assinatura cancelada pelo usuário deixa de valer (acesso segue até lá). */
+  cancelAt?: string;
   /** Valor inicial do contexto antes de a assinatura real carregar do banco. */
   isPlaceholder?: boolean;
 }

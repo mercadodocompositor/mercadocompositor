@@ -5,10 +5,8 @@ import { APP_CONFIG } from '../config/appConfig';
  * Fonte única de verdade para exibir planos.
  *
  * O catálogo real vive em `subscription_plans` e é editável pelo painel
- * administrativo — é ele que a Edge Function `mercadopago-checkout` usa para
- * definir o preço cobrado. As telas liam `APP_CONFIG.plans` (valores de
- * fábrica), então mudar o preço no painel fazia a tela mostrar um valor e o
- * Mercado Pago cobrar outro. `APP_CONFIG.plans` só vale como fallback para o
+ * administrativo e alimenta as telas públicas e administrativas.
+ * `APP_CONFIG.plans` só vale como fallback para o
  * modo sem Supabase (desenvolvimento/testes) e enquanto o catálogo carrega.
  */
 export interface ResolvedPlan {
@@ -31,7 +29,7 @@ export const formatMoneyBR = (value: number | string | null | undefined): string
 /**
  * `subscriptions.monthly_price` é uma coluna de texto que recebeu formatos
  * diferentes ao longo do tempo: `'24,90'` (default do schema e fallback do
- * webhook) e `'24.90'` (`to_char` de process_mercadopago_payment). Os dois
+ * integrações antigas) e `'24.90'`. Os dois
  * precisam virar o mesmo número.
  */
 export const parseMoneyBR = (value: number | string | null | undefined): number | null => {

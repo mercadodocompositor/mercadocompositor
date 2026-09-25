@@ -102,6 +102,8 @@ export const DashboardLayout: React.FC = () => {
 
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [isNotifOpen, setIsNotifOpen] = React.useState(false);
+  const [avatarFailed, setAvatarFailed] = React.useState(false);
+  React.useEffect(() => setAvatarFailed(false), [profile.photo]);
   const notifRef = React.useRef<HTMLDivElement>(null);
   const notifButtonRef = React.useRef<HTMLButtonElement>(null);
 
@@ -136,8 +138,8 @@ export const DashboardLayout: React.FC = () => {
 
   const menuItems = [
     { path: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard },
-    { path: '/dashboard/musicas', label: 'Minhas Músicas', icon: Music2 },
     { path: '/dashboard/musicas/nova', label: 'Adicionar Música', icon: PlusCircle },
+    { path: '/dashboard/musicas', label: 'Minhas Músicas', icon: Music2 },
     { path: '/dashboard/solicitacoes', label: 'Solicitações', icon: MessageSquare },
     { path: '/dashboard/liberacoes', label: 'Liberações', icon: FileCheck },
     { path: '/dashboard/perfil', label: 'Meu Perfil', icon: User },
@@ -339,11 +341,19 @@ export const DashboardLayout: React.FC = () => {
             {/* Profile Avatar */}
             <div className="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-slate-800">
               <div className="relative">
-                <img
-                  src={profile.photo}
-                  alt={profile.stageName}
-                  className="w-10 h-10 rounded-full object-cover border-2 border-amber-400 shadow-sm"
-                />
+                {profile.photo && !avatarFailed ? (
+                  <img
+                    src={profile.photo}
+                    alt={profile.stageName}
+                    onError={() => setAvatarFailed(true)}
+                    className="w-10 h-10 rounded-full object-cover border-2 border-amber-400 shadow-sm"
+                  />
+                ) : (
+                  // Sem foto (ou com URL quebrada) o navegador exibia o texto alternativo cortado.
+                  <div role="img" aria-label={profile.stageName} className="flex w-10 h-10 items-center justify-center rounded-full border-2 border-amber-400 bg-slate-900 text-xs font-bold text-amber-400 shadow-sm">
+                    {(profile.stageName || profile.name || 'MC').split(/\s+/).map(word => word[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+                  </div>
+                )}
                 <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
               </div>
               <div className="hidden md:block text-left">
@@ -410,8 +420,15 @@ export const DashboardLayout: React.FC = () => {
             </nav>
 
             {/* Editorial Plan Summary Block */}
+            {subscription.status === 'pending' ? (
+            <div className="p-4 bg-slate-900/80 rounded-2xl border border-amber-500/30 space-y-2">
+              <p className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Sem assinatura ativa</p>
+              <p className="text-[11px] leading-relaxed text-slate-300">Escolha um plano e comece com 7 dias grátis para publicar suas músicas.</p>
+              <Link to="/dashboard/assinatura" className="mt-1 inline-flex w-full justify-center rounded-xl bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400">Ver planos</Link>
+            </div>
+            ) : (
             <div className="p-4 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-2">
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{subscription.status === 'active' ? 'Plano atual' : 'Plano selecionado'}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{subscription.status === 'active' ? 'Plano atual' : 'Plano contratado'}</p>
                <p className="text-white font-serif font-bold text-sm">{currentPlan.name}</p>
                <p className="text-amber-400 text-xs font-semibold">
                  R$ {formatMoneyBR(currentPlan.monthlyPrice)}/mês
@@ -423,6 +440,7 @@ export const DashboardLayout: React.FC = () => {
                 {currentPlan.maxSongs ? `${songs.length} / ${currentPlan.maxSongs} músicas no catálogo` : `${songs.length} músicas • uso ilimitado`}
               </p>
             </div>
+            )}
 
             <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
               {isAdminAuthenticated && (

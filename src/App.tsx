@@ -15,6 +15,7 @@ const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ 
 const LegalPage = lazy(() => import('./pages/LegalPage').then(m => ({ default: m.LegalPage })));
 const InterestRequestPage = lazy(() => import('./pages/InterestRequestPage').then(m => ({ default: m.InterestRequestPage })));
 const ValidarDocumentoPage = lazy(() => import('./pages/ValidarDocumentoPage').then(m => ({ default: m.ValidarDocumentoPage })));
+const ReleaseDeliveryPage = lazy(() => import('./pages/ReleaseDeliveryPage').then(m => ({ default: m.ReleaseDeliveryPage })));
 const ComposersPage = lazy(() => import('./pages/ComposersPage').then(m => ({ default: m.ComposersPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
@@ -63,6 +64,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/validar-documento" element={<ValidarDocumentoPage />} />
         <Route path="/validar-documento/:code" element={<ValidarDocumentoPage />} />
         <Route path="/validar/:code" element={<ValidarDocumentoPage />} />
+        <Route path="/entrega/:token" element={<ReleaseDeliveryPage />} />
         <Route path="/dashboard/*" element={<ComposerRoute><DashboardLayout /></ComposerRoute>} />
         <Route path="/admin/*" element={<AdminRoute><AdminLayout /></AdminRoute>} />
         <Route path="*" element={<NotFoundPage />} />

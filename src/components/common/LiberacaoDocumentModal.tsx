@@ -5,6 +5,7 @@ import { APP_CONFIG } from '../../config/appConfig';
 import { downloadReleaseDocument } from '../../lib/releaseArchive';
 import { normalizeBrazilianWhatsapp } from '../../lib/contact';
 import { useModalFocus } from '../../hooks/useModalFocus';
+import { ModalPortal } from './ModalPortal';
 
 interface LiberacaoDocumentModalProps {
   document: ReleaseDocument;
@@ -100,6 +101,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   };
 
   return (
+    <ModalPortal>
     <div className="release-print-root fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:p-0 print:static print:bg-white">
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="release-document-title" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-4 sm:p-8 shadow-2xl relative my-6 text-slate-100 print:border-none print:shadow-none print:bg-white print:text-slate-900 print:my-0 print:max-w-none max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
         
@@ -337,5 +339,6 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
 
       </div>
     </div>
+    </ModalPortal>
   );
 };

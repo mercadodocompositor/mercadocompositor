@@ -98,8 +98,7 @@ export const APP_CONFIG = {
     jurisdiction: "Comarca de Goiânia — Estado de Goiás",
     dpoEmail: "contato@mercadodocompositor.com.br",
     supportEmail: "contato@mercadodocompositor.com.br",
-    serviceHours: "Segunda a sexta-feira, das 09h às 18h (Horário de Brasília)",
-    paymentProcessor: "Mercado Pago Instituição de Pagamento Ltda."
+    serviceHours: "Segunda a sexta-feira, das 09h às 18h (Horário de Brasília)"
   },
 
   social: {

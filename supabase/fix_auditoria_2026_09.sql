@@ -745,6 +745,8 @@ grant execute on function public.increment_profile_view(text,text) to anon, auth
 
 -- Solicitação de interesse: mesma validação, identidade de rate limit estável e
 -- notificação para o compositor (que antes só descobria o pedido ao logar).
+-- LEGADO: esta definição não registra consentimento. Em deploys atuais, execute
+-- request_consent_evidence_2026_09_24.sql depois deste arquivo.
 create or replace function public.create_interest_request(p_song_id uuid, p_data jsonb)
 returns uuid language plpgsql security definer set search_path='' as $$
 declare

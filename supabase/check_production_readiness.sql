@@ -28,7 +28,7 @@ declare
     'get_my_song_stats', 'get_platform_settings', 'get_public_composer',
     'get_public_composers', 'increment_profile_view', 'increment_song_play',
     'issue_release', 'list_interest_requests', 'list_my_releases', 'mark_release_sent',
-    'process_mercadopago_payment', 'record_terms_acceptance', 'register_release_document',
+    'record_terms_acceptance', 'register_release_document',
     'update_interest_request', 'validate_release_document', 'write_system_audit_log',
     -- Rotinas internas
     'handle_new_user', 'expire_overdue_subscriptions'

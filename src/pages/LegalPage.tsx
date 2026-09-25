@@ -16,7 +16,6 @@ import {
   Database,
   Music,
   UserCheck,
-  CreditCard,
   Building2,
   Phone,
   Search,
@@ -169,12 +168,12 @@ export const LegalPage: React.FC = () => {
     {
       id: 'planos-pagamentos',
       number: '6',
-      title: 'Planos de Assinatura, Mercado Pago e Direito de Arrependimento (CDC)',
-      keywords: 'planos assinatura precos mercado pago cartao credito renovacao automatica recorrente cancelamento reembolso estorno arrependimento cdc',
+      title: 'Planos de Assinatura e Direito de Arrependimento (CDC)',
+      keywords: 'planos assinatura precos cancelamento reembolso estorno arrependimento cdc',
       content: (
         <div className="space-y-3">
           <p>
-            O acesso às ferramentas profissionais da plataforma é estruturado mediante planos de assinatura mensal com renovação automática:
+            O acesso às ferramentas profissionais da plataforma é estruturado mediante planos de assinatura mensal, contratados por meio do checkout seguro do Stripe:
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
             {offeredPlans.map(p => (
@@ -187,19 +186,19 @@ export const LegalPage: React.FC = () => {
           </div>
           <div className="space-y-2 pt-2 text-slate-300">
             <p>
-              <strong>Cobrança Mensal Recorrente e Teste Grátis:</strong> A assinatura é contratada exclusivamente com <strong>renovação automática mensal no Cartão de Crédito</strong>. Contas elegíveis recebem uma única vez 7 (sete) dias grátis, contados da autorização do cartão no ambiente do Mercado Pago. A primeira cobrança ocorre ao fim desse período; se o usuário cancelar antes, não haverá cobrança. Para contas que já utilizaram o benefício, trocas de plano ou reativações, a cobrança ocorre na contratação — ou, se ainda houver período pago em vigor, ao término dele. As cobranças seguintes ocorrem mensalmente, e cada pagamento aprovado libera os recursos do plano por mais um ciclo.
+              <strong>Contratação:</strong> Valores e período de vigência são apresentados antes do redirecionamento ao Stripe. A plataforma não recebe nem armazena números de cartão.
             </p>
             <p>
-              <strong>Processamento Seguro via Mercado Pago:</strong> Todas as cobranças são processadas pela instituição autorizada <strong>{APP_CONFIG.company.paymentProcessor}</strong>. Os dados do cartão são informados diretamente ao Mercado Pago; a plataforma não recebe nem armazena números de cartão em seus servidores, operando em conformidade com as normas PCI-DSS.
+              <strong>Vigência e renovação:</strong> Cada pagamento confirmado pelo Stripe libera os recursos do plano por um mês. A assinatura é renovada mensalmente até o cancelamento no Portal do Cliente.
             </p>
             <p>
-              <strong>Falha na Cobrança:</strong> Caso uma cobrança mensal seja recusada, o Mercado Pago poderá realizar novas tentativas nos dias seguintes. Não havendo pagamento aprovado em até <strong>7 (sete) dias</strong> após o vencimento, o perfil público e as obras do usuário deixam de ser exibidos no catálogo até a regularização, sem perda dos dados cadastrados no painel. O usuário é avisado pelo painel e pode regularizar a qualquer momento contratando novamente a assinatura.
+              <strong>Vencimento:</strong> Sem renovação confirmada, o perfil público e as obras do usuário podem deixar de ser exibidos no catálogo após o fim da vigência, sem perda dos dados cadastrados no painel.
             </p>
             <p>
-              <strong>Cancelamento Sem Multas:</strong> O usuário pode cancelar a renovação automática a qualquer momento, diretamente na tela de Assinatura do painel, sem necessidade de contato com o suporte. O cancelamento interrompe as cobranças futuras e o acesso aos recursos contratados é mantido até o final do período mensal já pago, sem aplicação de multas, penalidades ou taxas rescisórias. Não há reembolso proporcional do período em curso, ressalvado o Direito de Arrependimento abaixo.
+              <strong>Cancelamento Sem Multas:</strong> O usuário pode cancelar a renovação a qualquer momento pelo Portal do Cliente Stripe. O acesso é mantido até o final do período pago, sem multas ou taxas rescisórias. Não há reembolso proporcional do período em curso, ressalvado o Direito de Arrependimento abaixo.
             </p>
             <p>
-              <strong>Direito de Arrependimento (Art. 49 do CDC):</strong> Nos termos do art. 49 da Lei Federal nº 8.078/1990 (Código de Defesa do Consumidor), o usuário tem o direito de desistir da contratação no prazo de até <strong>7 (sete) dias corridos</strong> a contar da assinatura inicial, com restituição imediata e integral dos valores pagos mediante simples solicitação ao suporte, e cancelamento da renovação automática.
+              <strong>Direito de Arrependimento (Art. 49 do CDC):</strong> Nos termos do art. 49 da Lei Federal nº 8.078/1990 (Código de Defesa do Consumidor), o usuário pode desistir da contratação no prazo de até <strong>7 (sete) dias corridos</strong> a contar da assinatura inicial, mediante solicitação ao suporte, com restituição dos valores pagos.
             </p>
             <p>
               <strong>Estornos e Contestações:</strong> O estorno de uma cobrança ou sua contestação junto à operadora do cartão (chargeback) suspende a exibição pública do perfil e das obras até a regularização da assinatura.
@@ -273,15 +272,14 @@ export const LegalPage: React.FC = () => {
       id: 'agentes-tratamento',
       number: '2',
       title: 'Controlador e Operadores de Dados Qualificados',
-      keywords: 'controlador operador supabase aws mercado pago encarregado dpo',
+      keywords: 'controlador operador supabase aws encarregado dpo',
       content: (
         <div className="space-y-3">
           <p>
             Na qualidade de <strong>Controlador de Dados</strong>, o Mercado do Compositor toma as decisões sobre o tratamento de dados pessoais. Para operacionalizar a plataforma com nível corporativo de confiabilidade, atuam como <strong>Operadores de Dados</strong> os seguintes parceiros certificados:
           </p>
           <ul className="list-disc pl-5 space-y-2 text-slate-300 text-xs">
-            <li><strong>Supabase Inc. / Amazon Web Services (AWS):</strong> Hospedagem em nuvem de alto desempenho, banco de dados PostgreSQL relacional seguro, autenticação multifator e armazenamento criptografado de áudios com certificações ISO 27001 e SOC 2 Type II;</li>
-            <li><strong>Mercado Pago Instituição de Pagamento Ltda.:</strong> Processamento das cobranças recorrentes da assinatura em cartão de crédito e faturamento, com certificação de segurança PCI-DSS nível 1.</li>
+            <li><strong>Supabase Inc. / Amazon Web Services (AWS):</strong> Hospedagem em nuvem de alto desempenho, banco de dados PostgreSQL relacional seguro, autenticação multifator e armazenamento criptografado de áudios com certificações ISO 27001 e SOC 2 Type II.</li>
           </ul>
         </div>
       )
@@ -513,13 +511,6 @@ export const LegalPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <CreditCard className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-white block font-semibold">Gateway Financeiro Credenciado</strong>
-                  <span>{APP_CONFIG.company.paymentProcessor}</span>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
                 <Mail className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-white block font-semibold">Canais Oficiais de Contato</strong>
@@ -536,7 +527,7 @@ export const LegalPage: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder={`Filtrar cláusula ou palavra-chave em ${activeTab === 'termos' ? 'Termos de Uso' : 'Privacidade'} (ex: direitos autorais, cancelamento, mercado pago, lgpd)...`}
+              placeholder={`Filtrar cláusula ou palavra-chave em ${activeTab === 'termos' ? 'Termos de Uso' : 'Privacidade'} (ex: direitos autorais, cancelamento, lgpd)...`}
               className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-11 pr-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
             />
             {searchQuery && (

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { ReleaseDocument } from '../../types';
 import { LiberacaoDocumentModal } from '../../components/common/LiberacaoDocumentModal';
+import { ReleaseDeliveryStatus } from '../../components/dashboard/ReleaseDeliveryStatus';
 import { downloadReleaseDocument } from '../../lib/releaseArchive';
 import { normalizeBrazilianWhatsapp } from '../../lib/contact';
 import { 
@@ -31,7 +32,8 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { calculateReleaseExpiration, isExclusiveRelease, isReleaseExpired } from '../../lib/releaseTypes';
-import { loadReleaseMetrics, ReleaseMetrics } from '../../lib/database';
+import { loadReleaseDeliveryStatuses, loadReleaseMetrics, ReleaseMetrics, resendReleaseDelivery, type ReleaseDeliveryStatus as ReleaseDeliveryInfo } from '../../lib/database';
+import { getFriendlyErrorMessage } from '../../lib/apiErrors';
 import { useModalFocus } from '../../hooks/useModalFocus';
 export const ReleasesTab: React.FC = () => {
   const { requests, queryReleases, retryReleaseArchive, authLoading, currentUserId } = useApp();
@@ -177,6 +179,40 @@ export const ReleasesTab: React.FC = () => {
   }, [authLoading, page, pageSize, queryReleases, refreshToken, searchTerm, selectedSongFilter, selectedTypeFilter, selectedPeriodFilter, sortBy]);
 
   const filteredReleases = pageReleases;
+
+  const [deliveryStatuses, setDeliveryStatuses] = useState<Record<string, ReleaseDeliveryInfo>>({});
+  const [sendingDeliveryId, setSendingDeliveryId] = useState<string | null>(null);
+  const visibleReleaseIds = filteredReleases.map(doc => doc.id).join(',');
+
+  useEffect(() => {
+    if (!visibleReleaseIds) return;
+    let active = true;
+    loadReleaseDeliveryStatuses(visibleReleaseIds.split(','))
+      .then(statuses => { if (active) setDeliveryStatuses(current => ({ ...current, ...statuses })); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [visibleReleaseIds]);
+
+  const handleSendDelivery = async (doc: ReleaseDocument) => {
+    if (sendingDeliveryId) return;
+    setSendingDeliveryId(doc.id);
+    try {
+      const result = await resendReleaseDelivery(doc.id);
+      setDeliveryStatuses(current => ({
+        ...current,
+        [doc.id]: {
+          ...(current[doc.id] || { releaseId: doc.id, emailQueuedAt: null, lastSentAt: null, emailFailedAt: null, emailLastError: null, views: 0, audioDownloads: 0, lyricsDownloads: 0, firstAudioDownloadAt: null, lastAccessAt: null }),
+          expiresAt: result.expiresAt, emailStatus: result.emailStatus, emailQueuedAt: result.queuedAt, lastSentAt: result.lastSentAt,
+        },
+      }));
+      showToast(`Entrega colocada na fila para o e-mail de ${doc.buyerName}. O link vale por 30 dias; o anterior deixou de funcionar.`);
+    } catch (error) {
+      showToast(getFriendlyErrorMessage(error, 'Não foi possível enviar a entrega.'), 'error');
+    } finally {
+      setSendingDeliveryId(null);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(totalReleases / pageSize));
 
   const formatDate = (date: string) => {
@@ -235,7 +271,7 @@ export const ReleasesTab: React.FC = () => {
 
     const message = encodeURIComponent(getWhatsAppMessageText(doc));
     window.open(`https://wa.me/${normalizedPhone}?text=${message}`, '_blank', 'noopener,noreferrer');
-    showToast('WhatsApp aberto com a mensagem. Confirme o envio após enviá-la.', 'warning');
+    showToast('WhatsApp aberto com o link público de autenticidade. A entrega completa continua sendo feita por e-mail.', 'warning');
   };
 
   const handleSendToCustomWhatsapp = () => {
@@ -248,7 +284,7 @@ export const ReleasesTab: React.FC = () => {
     const message = encodeURIComponent(getWhatsAppMessageText(whatsAppModalDoc));
     window.open(`https://wa.me/${normalized}?text=${message}`, '_blank', 'noopener,noreferrer');
     setWhatsAppModalDoc(null);
-    showToast('WhatsApp aberto com a mensagem. Confirme o envio após enviá-la.', 'warning');
+    showToast('WhatsApp aberto com o link público de autenticidade. A entrega completa continua sendo feita por e-mail.', 'warning');
   };
 
   const handleOpenWhatsAppWithoutPhone = () => {
@@ -256,7 +292,7 @@ export const ReleasesTab: React.FC = () => {
     const message = encodeURIComponent(getWhatsAppMessageText(whatsAppModalDoc));
     window.open(`https://wa.me/?text=${message}`, '_blank', 'noopener,noreferrer');
     setWhatsAppModalDoc(null);
-    showToast('WhatsApp aberto com a mensagem. Confirme o envio após enviá-la.', 'warning');
+    showToast('WhatsApp aberto com o link público de autenticidade. A entrega completa continua sendo feita por e-mail.', 'warning');
   };
 
   const handleCopyWhatsAppMessage = async () => {
@@ -847,16 +883,16 @@ export const ReleasesTab: React.FC = () => {
                     </div>
 
                     <div className="flex justify-between items-start gap-2">
-                      <span className="text-slate-400">Envio:</span>
-                      <span className={doc.sentToBuyerAt ? 'font-semibold text-emerald-300' : 'font-semibold text-amber-300'}>
-                        {doc.sentToBuyerAt ? `Confirmado pelo compositor em ${new Date(doc.sentToBuyerAt).toLocaleDateString('pt-BR')}` : 'Não confirmado; confirme na proposta após enviar'}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-start gap-2">
                       <span className="text-slate-400">Validade:</span>
                       <span className="text-right text-slate-200">{getValidityLabel(doc)}</span>
                     </div>
+
+                    <ReleaseDeliveryStatus
+                      compact
+                      status={deliveryStatuses[doc.id]}
+                      isSending={sendingDeliveryId === doc.id}
+                      onSend={() => void handleSendDelivery(doc)}
+                    />
 
                     <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 truncate">
                       <span>Finalidade: </span>
@@ -927,7 +963,7 @@ export const ReleasesTab: React.FC = () => {
                       type="button"
                       onClick={() => handleSendWhatsApp(doc)}
                       className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition"
-                      title="Abrir mensagem no WhatsApp; o envio não é confirmado automaticamente"
+                      title="Compartilhar o link público de autenticidade pelo WhatsApp"
                     >
                       <Phone className="w-3.5 h-3.5" />
                       <span className="hidden sm:inline">WhatsApp</span>
@@ -972,6 +1008,7 @@ export const ReleasesTab: React.FC = () => {
                   <th className="p-4">Modalidade</th>
                   <th className="p-4">Valor Acordado</th>
                   <th className="p-4">Emissão</th>
+                  <th className="p-4 min-w-64">Entrega</th>
                   <th className="p-4 text-center">Autenticidade</th>
                   <th className="p-4 text-right">Ações</th>
                 </tr>
@@ -994,9 +1031,6 @@ export const ReleasesTab: React.FC = () => {
                       <td className="p-4">
                         <strong className="text-slate-200 block">{doc.buyerName}</strong>
                         <span className="text-[11px] text-slate-500">{doc.buyerCityState}</span>
-                        <span className={`block text-[10px] font-semibold ${doc.sentToBuyerAt ? 'text-emerald-300' : 'text-amber-300'}`}>
-                          Envio {doc.sentToBuyerAt ? 'confirmado pelo compositor' : 'não confirmado; confirme na proposta'}
-                        </span>
                       </td>
 
                       <td className="p-4">
@@ -1014,6 +1048,15 @@ export const ReleasesTab: React.FC = () => {
 
                       <td className="p-4 text-slate-300">
                         {formatDate(doc.issueDate)}
+                      </td>
+
+                      <td className="p-4">
+                        <ReleaseDeliveryStatus
+                          compact
+                          status={deliveryStatuses[doc.id]}
+                          isSending={sendingDeliveryId === doc.id}
+                          onSend={() => void handleSendDelivery(doc)}
+                        />
                       </td>
 
                       <td className="p-4 text-center">

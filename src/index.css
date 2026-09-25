@@ -90,9 +90,15 @@ button:not(:disabled),
   -webkit-overflow-scrolling: touch;
 }
 
+/* Animações de transform NUNCA usam fill `forwards`/`both`: uma animação que
+   continua "em efeito" depois de terminar faz o navegador tratar o elemento
+   como bloco de contenção de todo descendente `position: fixed` (mesmo com
+   `transform: none` no fim). Como .tab-content-enter e .animate-fadeIn envolvem
+   todas as páginas do painel, modais e avisos fixos eram centralizados na
+   altura da página, e não na tela. `backwards` só preenche antes de começar. */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes slideLeft {
@@ -107,23 +113,23 @@ button:not(:disabled),
 
 @keyframes scaleUp {
   from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  to { opacity: 1; transform: none; }
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.25s ease-out forwards;
+  animation: fadeIn 0.25s ease-out backwards;
 }
 
 .animate-slideLeft {
-  animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .animate-slideUp {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .animate-scaleUp {
-  animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 @keyframes shimmer {
@@ -133,16 +139,16 @@ button:not(:disabled),
 
 @keyframes tabFadeIn {
   from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 
 .tab-content-enter {
-  animation: tabFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: tabFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 /* Skeleton delayed reveal: prevents flash if loading is faster than 80ms */
 .skeleton-delayed {
-  animation: fadeIn 0.2s ease-out 0.08s both;
+  animation: fadeIn 0.2s ease-out 0.08s backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -230,4 +236,118 @@ html:not(.dark) .settings-page .border-slate-700 {
 html:not(.dark) .settings-page input {
   background-color: #ffffff !important;
   color: #0f172a !important;
+}
+
+/* ------------------------------------------------------------------------------
+   Avisos translúcidos no tema claro.
+   As caixas de aviso usam fundo translúcido (bg-amber-500/10) com texto claro
+   (text-amber-100/200), pensadas para o fundo escuro. Sobre o fundo claro da
+   página o texto ficava quase invisível. No tema claro, quando a caixa NÃO está
+   dentro de um card escuro, ela ganha fundo sólido suave, borda visível e texto
+   escuro do mesmo tom, herdado pelos textos internos. Botões, links e abas com
+   fundo translúcido não são alterados (o texto interno deles não herdaria a cor).
+   Dentro dos cards escuros e no tema escuro, nada muda.
+   ------------------------------------------------------------------------------ */
+
+html:not(.dark) :is([class^="bg-amber-500/"],[class*=" bg-amber-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-amber-500/"],[class*=" bg-amber-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #fffbeb !important;
+  border-color: #fcd34d !important;
+  color: #78350f !important;
+}
+
+html:not(.dark) :is([class^="bg-yellow-500/"],[class*=" bg-yellow-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-yellow-500/"],[class*=" bg-yellow-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #fefce8 !important;
+  border-color: #fde047 !important;
+  color: #713f12 !important;
+}
+
+html:not(.dark) :is([class^="bg-orange-500/"],[class*=" bg-orange-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-orange-500/"],[class*=" bg-orange-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #fff7ed !important;
+  border-color: #fdba74 !important;
+  color: #7c2d12 !important;
+}
+
+html:not(.dark) :is([class^="bg-red-500/"],[class*=" bg-red-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-red-500/"],[class*=" bg-red-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #fef2f2 !important;
+  border-color: #fca5a5 !important;
+  color: #7f1d1d !important;
+}
+
+html:not(.dark) :is([class^="bg-rose-500/"],[class*=" bg-rose-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-rose-500/"],[class*=" bg-rose-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #fff1f2 !important;
+  border-color: #fda4af !important;
+  color: #881337 !important;
+}
+
+html:not(.dark) :is([class^="bg-emerald-500/"],[class*=" bg-emerald-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-emerald-500/"],[class*=" bg-emerald-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #ecfdf5 !important;
+  border-color: #6ee7b7 !important;
+  color: #064e3b !important;
+}
+
+html:not(.dark) :is([class^="bg-green-500/"],[class*=" bg-green-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-green-500/"],[class*=" bg-green-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #f0fdf4 !important;
+  border-color: #86efac !important;
+  color: #14532d !important;
+}
+
+html:not(.dark) :is([class^="bg-blue-500/"],[class*=" bg-blue-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-blue-500/"],[class*=" bg-blue-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1e3a8a !important;
+}
+
+html:not(.dark) :is([class^="bg-sky-500/"],[class*=" bg-sky-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-sky-500/"],[class*=" bg-sky-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #f0f9ff !important;
+  border-color: #7dd3fc !important;
+  color: #0c4a6e !important;
+}
+
+html:not(.dark) :is([class^="bg-indigo-500/"],[class*=" bg-indigo-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-indigo-500/"],[class*=" bg-indigo-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #eef2ff !important;
+  border-color: #a5b4fc !important;
+  color: #312e81 !important;
+}
+
+html:not(.dark) :is([class^="bg-purple-500/"],[class*=" bg-purple-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-purple-500/"],[class*=" bg-purple-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #faf5ff !important;
+  border-color: #d8b4fe !important;
+  color: #581c87 !important;
+}
+
+html:not(.dark) :is([class^="bg-violet-500/"],[class*=" bg-violet-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-violet-500/"],[class*=" bg-violet-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #f5f3ff !important;
+  border-color: #c4b5fd !important;
+  color: #4c1d95 !important;
+}
+
+html:not(.dark) :is([class^="bg-teal-500/"],[class*=" bg-teal-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-teal-500/"],[class*=" bg-teal-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #f0fdfa !important;
+  border-color: #5eead4 !important;
+  color: #134e4a !important;
+}
+
+html:not(.dark) :is([class^="bg-cyan-500/"],[class*=" bg-cyan-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *),
+html:not(.dark) .settings-page :is([class^="bg-cyan-500/"],[class*=" bg-cyan-500/"]):not(button,a,[role="button"],[role="tab"]) {
+  background-color: #ecfeff !important;
+  border-color: #67e8f9 !important;
+  color: #164e63 !important;
+}
+
+html:not(.dark) :is([class^="bg-amber-500/"],[class*=" bg-amber-500/"],[class^="bg-yellow-500/"],[class*=" bg-yellow-500/"],[class^="bg-orange-500/"],[class*=" bg-orange-500/"],[class^="bg-red-500/"],[class*=" bg-red-500/"],[class^="bg-rose-500/"],[class*=" bg-rose-500/"],[class^="bg-emerald-500/"],[class*=" bg-emerald-500/"],[class^="bg-green-500/"],[class*=" bg-green-500/"],[class^="bg-blue-500/"],[class*=" bg-blue-500/"],[class^="bg-sky-500/"],[class*=" bg-sky-500/"],[class^="bg-indigo-500/"],[class*=" bg-indigo-500/"],[class^="bg-purple-500/"],[class*=" bg-purple-500/"],[class^="bg-violet-500/"],[class*=" bg-violet-500/"],[class^="bg-teal-500/"],[class*=" bg-teal-500/"],[class^="bg-cyan-500/"],[class*=" bg-cyan-500/"]):not(button,a,[role="button"],[role="tab"]):not(:is(.bg-slate-800,.bg-slate-800\/40,.bg-slate-800\/60,.bg-slate-800\/80,.bg-slate-900,.bg-slate-900\/60,.bg-slate-900\/80,.bg-slate-900\/90,.bg-slate-900\/95,.bg-slate-950,.bg-slate-950\/60,.bg-slate-950\/80,.bg-slate-950\/90,.bg-\[\#0A1128\],.bg-\[\#060B18\]) *) [class*="text-"]:not(:is(button,a,[role="button"],input,select,textarea)):not(:is(button,a,[role="button"]) *),
+html:not(.dark) .settings-page :is([class^="bg-amber-500/"],[class*=" bg-amber-500/"],[class^="bg-yellow-500/"],[class*=" bg-yellow-500/"],[class^="bg-orange-500/"],[class*=" bg-orange-500/"],[class^="bg-red-500/"],[class*=" bg-red-500/"],[class^="bg-rose-500/"],[class*=" bg-rose-500/"],[class^="bg-emerald-500/"],[class*=" bg-emerald-500/"],[class^="bg-green-500/"],[class*=" bg-green-500/"],[class^="bg-blue-500/"],[class*=" bg-blue-500/"],[class^="bg-sky-500/"],[class*=" bg-sky-500/"],[class^="bg-indigo-500/"],[class*=" bg-indigo-500/"],[class^="bg-purple-500/"],[class*=" bg-purple-500/"],[class^="bg-violet-500/"],[class*=" bg-violet-500/"],[class^="bg-teal-500/"],[class*=" bg-teal-500/"],[class^="bg-cyan-500/"],[class*=" bg-cyan-500/"]):not(button,a,[role="button"],[role="tab"]) [class*="text-"]:not(:is(button,a,[role="button"],input,select,textarea)):not(:is(button,a,[role="button"]) *) {
+  color: inherit !important;
 }

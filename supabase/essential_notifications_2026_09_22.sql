@@ -1,3 +1,6 @@
+-- ⚠️  notify_release_issued deste arquivo foi SUPERADA por release_delivery_2026_09_24.sql
+--     (e-mail do cliente com o link de entrega: termo, música completa e letra).
+--     Se rodar este arquivo de novo, rode release_delivery_2026_09_24.sql em seguida.
 -- ==============================================================================
 -- Comunicações essenciais — pagamentos e documentos
 -- Execute DEPOIS de notification_delivery_2026_09_22.sql (usa a fila de e-mails).
@@ -49,6 +52,7 @@ execute function public.notify_request_payment_confirmed();
 -- ------------------------------------------------------------------------------
 -- 2. CÓPIA DO TERMO DE LIBERAÇÃO
 -- ------------------------------------------------------------------------------
+-- LEGADO: release_delivery_2026_09_24.sql deve ser executado depois deste arquivo.
 create or replace function public.notify_release_issued() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin

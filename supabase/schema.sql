@@ -82,6 +82,7 @@ create table if not exists public.interest_requests (
   composer_id uuid not null references public.profiles(user_id) on delete cascade,
   buyer_name text not null, buyer_stage_name text, cpf_cnpj text not null, buyer_email text not null,
   buyer_whatsapp text not null, buyer_city_state text not null, purpose text not null, message text not null,
+  consent_accepted_at timestamptz, consent_policy_version text, consent_statement text, consent_source text,
   status text not null default 'nova' check(status in ('nova','em_negociacao','pagamento_pendente','pagamento_confirmado','liberacao_enviada','arquivada')),
   agreed_value numeric(12,2), notes text, payment_received_at timestamptz,
   archive_reason text, archived_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
@@ -306,11 +307,13 @@ begin
   if (
     new.song_id, new.composer_id, new.buyer_name, new.buyer_stage_name,
     new.cpf_cnpj, new.buyer_email, new.buyer_whatsapp,
-    new.buyer_city_state, new.purpose, new.message, new.created_at
+    new.buyer_city_state, new.purpose, new.message, new.created_at,
+    new.consent_accepted_at, new.consent_policy_version, new.consent_statement, new.consent_source
   ) is distinct from (
     old.song_id, old.composer_id, old.buyer_name, old.buyer_stage_name,
     old.cpf_cnpj, old.buyer_email, old.buyer_whatsapp,
-    old.buyer_city_state, old.purpose, old.message, old.created_at
+    old.buyer_city_state, old.purpose, old.message, old.created_at,
+    old.consent_accepted_at, old.consent_policy_version, old.consent_statement, old.consent_source
   ) then
     raise exception using
       errcode = '42501',
@@ -324,6 +327,45 @@ drop trigger if exists preserve_interest_request_identity on public.interest_req
 create trigger preserve_interest_request_identity
 before update on public.interest_requests
 for each row execute function public.preserve_interest_request_identity();
+
+create or replace function public.is_valid_cpf_cnpj(p_value text)
+returns boolean language plpgsql immutable set search_path = '' as $$
+declare
+  d text := regexp_replace(coalesce(p_value, ''), '[^0-9]', '', 'g');
+  total integer; remainder integer; expected integer; i integer; weights integer[];
+begin
+  if length(d) not in (11,14) or d = repeat(substr(d,1,1),length(d)) then return false; end if;
+  if length(d)=11 then
+    total:=0; for i in 1..9 loop total:=total+substr(d,i,1)::integer*(11-i); end loop;
+    remainder:=(total*10)%11; expected:=case when remainder=10 then 0 else remainder end;
+    if expected<>substr(d,10,1)::integer then return false; end if;
+    total:=0; for i in 1..10 loop total:=total+substr(d,i,1)::integer*(12-i); end loop;
+    remainder:=(total*10)%11; expected:=case when remainder=10 then 0 else remainder end;
+    return expected=substr(d,11,1)::integer;
+  end if;
+  weights:=array[5,4,3,2,9,8,7,6,5,4,3,2]; total:=0;
+  for i in 1..12 loop total:=total+substr(d,i,1)::integer*weights[i]; end loop;
+  remainder:=total%11; expected:=case when remainder<2 then 0 else 11-remainder end;
+  if expected<>substr(d,13,1)::integer then return false; end if;
+  weights:=array[6,5,4,3,2,9,8,7,6,5,4,3,2]; total:=0;
+  for i in 1..13 loop total:=total+substr(d,i,1)::integer*weights[i]; end loop;
+  remainder:=total%11; expected:=case when remainder<2 then 0 else 11-remainder end;
+  return expected=substr(d,14,1)::integer;
+end $$;
+revoke execute on function public.is_valid_cpf_cnpj(text) from public,anon,authenticated;
+
+create or replace function public.require_valid_interest_request_document()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if not public.is_valid_cpf_cnpj(new.cpf_cnpj) then
+    raise exception using errcode='23514', message='CPF ou CNPJ inválido. Verifique os números e os dígitos verificadores.';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.require_valid_interest_request_document() from public,anon,authenticated;
+drop trigger if exists require_valid_interest_request_document on public.interest_requests;
+create trigger require_valid_interest_request_document before insert on public.interest_requests
+for each row execute function public.require_valid_interest_request_document();
 
 revoke execute on function public.preserve_interest_request_identity() from public, anon, authenticated;
 
@@ -941,7 +983,7 @@ with own as (
   select r.*,s.title song_title,s.cover_url song_cover from public.interest_requests r
   left join public.songs s on s.id=r.song_id where r.composer_id=auth.uid()
 ), filtered as (
-  select * from own o where (p_status is null or o.status=p_status) and (p_song_id is null or o.song_id=p_song_id)
+  select * from own o where (p_status is null or o.status=any(string_to_array(p_status,','))) and (p_song_id is null or o.song_id=p_song_id)
   and (nullif(btrim(p_query),'') is null or position(lower(btrim(p_query)) in lower(concat_ws(' ',o.buyer_name,o.buyer_stage_name,o.song_title,o.buyer_city_state,o.buyer_email,o.cpf_cnpj,split_part(o.id::text,'-',1))))>0)
 ), numbered as (
   select f.*,row_number() over(order by case when p_oldest then f.created_at end asc,case when not p_oldest then f.created_at end desc,f.id desc) rn from filtered f
@@ -1130,17 +1172,23 @@ revoke execute on function public.increment_profile_view(text,text) from public;
 grant execute on function public.increment_profile_view(text,text) to anon,authenticated;
 
 create or replace function public.get_featured_composers(p_limit integer default 6) returns jsonb language sql stable security definer set search_path='' as $$
-select coalesce(jsonb_agg(item),'[]'::jsonb) from(select jsonb_build_object('id',p.user_id,'username',p.username,'name',p.stage_name,'cityState',concat_ws(' - ',p.city,p.state),'genres',p.genres,'songCount',(select count(*) from public.songs s where s.composer_id=p.user_id and s.status='published'),'photo',p.photo_url,'bio',p.bio) item from public.profiles p join public.subscriptions sub on sub.user_id=p.user_id where sub.status='active' order by p.is_verified desc,p.views_count desc limit greatest(1,least(p_limit,24))) q
+select coalesce(jsonb_agg(item),'[]'::jsonb) from(select jsonb_build_object('id',p.user_id,'username',p.username,'name',p.stage_name,'cityState',concat_ws(' - ',p.city,p.state),'genres',p.genres,'songCount',(select count(*) from public.songs s where s.composer_id=p.user_id and s.status='published'),'photo',p.photo_url,'bio',p.bio) item from public.profiles p join public.subscriptions sub on sub.user_id=p.user_id where sub.status='active' and exists(select 1 from public.songs s where s.composer_id=p.user_id and s.status='published') order by p.is_verified desc,p.views_count desc limit greatest(1,least(p_limit,24))) q
 $$;
 grant execute on function public.get_featured_composers(integer) to anon,authenticated;
 
 create or replace function public.create_interest_request(p_song_id uuid,p_data jsonb) returns uuid language plpgsql security definer set search_path='' as $$
 declare owner_id uuid; new_id uuid; email_value text; document_digits text; phone_digits text; origin_value text;
+  consent_version constant text := '2026-09-24';
+  consent_text constant text := 'Declaro que os dados informados são verdadeiros, autorizo seu tratamento para registrar e conduzir esta solicitação de liberação e estou ciente de que valores e autorização serão negociados diretamente com o compositor.';
 begin
   email_value:=lower(btrim(coalesce(p_data->>'buyerEmail','')));
   document_digits:=regexp_replace(coalesce(p_data->>'cpfCnpj',''),'[^0-9]','','g');
   phone_digits:=regexp_replace(coalesce(p_data->>'buyerWhatsapp',''),'[^0-9]','','g');
   origin_value:=coalesce(auth.uid()::text,current_setting('request.headers',true),'anonymous');
+  if coalesce(p_data->>'consentAccepted','')<>'true'
+     or coalesce(p_data->>'consentPolicyVersion','')<>consent_version then
+    raise exception using errcode='23514',message='Confirme a declaração de veracidade e a Política de Privacidade antes de enviar.';
+  end if;
   if length(btrim(coalesce(p_data->>'buyerName',''))) not between 2 and 160
      or email_value !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
      or length(document_digits) not in (11,14)
@@ -1159,8 +1207,10 @@ begin
   join public.subscriptions sub on sub.user_id=s.composer_id and sub.status='active'
   where s.id=p_song_id and s.status='published' and s.is_available_for_release;
   if owner_id is null then raise exception 'Música indisponível'; end if;
-  insert into public.interest_requests(song_id,composer_id,buyer_name,buyer_stage_name,cpf_cnpj,buyer_email,buyer_whatsapp,buyer_city_state,purpose,message)
-  values(p_song_id,owner_id,p_data->>'buyerName',p_data->>'buyerStageName',p_data->>'cpfCnpj',p_data->>'buyerEmail',p_data->>'buyerWhatsapp',p_data->>'buyerCityState',p_data->>'purpose',p_data->>'message') returning id into new_id;
+  insert into public.interest_requests(song_id,composer_id,buyer_name,buyer_stage_name,cpf_cnpj,buyer_email,buyer_whatsapp,buyer_city_state,purpose,message,
+    consent_accepted_at,consent_policy_version,consent_statement,consent_source)
+  values(p_song_id,owner_id,p_data->>'buyerName',p_data->>'buyerStageName',p_data->>'cpfCnpj',p_data->>'buyerEmail',p_data->>'buyerWhatsapp',p_data->>'buyerCityState',p_data->>'purpose',p_data->>'message',
+    clock_timestamp(),consent_version,consent_text,'public_interest_request_form') returning id into new_id;
   update public.songs set interested_count=interested_count+1 where id=p_song_id; return new_id;
 end $$;
 grant execute on function public.create_interest_request(uuid,jsonb) to anon,authenticated;
@@ -1815,7 +1865,7 @@ begin
     email=concat('removido-',tag,'@invalido.local'), phone=null,
     encrypted_password=concat('removido-',gen_random_uuid()::text),
     email_change='', phone_change='', raw_user_meta_data='{}'::jsonb,
-    banned_until='infinity'::timestamptz, updated_at=clock_timestamp()
+    banned_until=now()+interval '100 years', updated_at=clock_timestamp()
   where id=uid;
 
   update public.account_deletion_requests set status='concluida',
@@ -1842,7 +1892,10 @@ notify pgrst,'reload schema';
 create or replace function public.guard_composer_identity() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin
-  if auth.uid() is distinct from new.user_id or public.is_admin() then
+  -- A exclusão da conta (delete_my_account) anonimiza o nome com o login do
+  -- próprio titular; ela sinaliza isso só dentro da transação.
+  if auth.uid() is distinct from new.user_id or public.is_admin()
+     or current_setting('app.account_deletion', true) = 'on' then
     return new;
   end if;
   if not exists(select 1 from public.releases r where r.composer_id = new.user_id) then

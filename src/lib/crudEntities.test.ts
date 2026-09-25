@@ -1,4 +1,36 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// Sem este mock o cliente real (configurado pelo .env.local) consultava o
+// Supabase de produção: os testes ficavam lentos, falhavam offline e dependiam
+// dos planos cadastrados no banco. Cada tabela devolve um resultado fixo.
+const tableResults = vi.hoisted((): Record<string, { data: unknown; error: unknown }> => ({
+  subscription_plans: {
+    data: [
+      { id: 'Plano Bronze', name: 'Plano Bronze', monthly_price: '29.90', max_songs: 10, is_active: true, sort_order: 1, features: [], description: '' },
+      { id: 'Plano Ouro', name: 'Plano Ouro', monthly_price: '99.90', max_songs: null, is_active: true, sort_order: 2, features: [], description: '' }
+    ],
+    error: null
+  },
+  user_roles: { data: [], error: null },
+  account_deletion_requests: { data: null, error: new Error('falha de persistência simulada') },
+  user_notifications: { data: [], error: null }
+}));
+
+vi.mock('./supabase', () => {
+  const queryFor = (table: string) => {
+    const result = tableResults[table] ?? { data: null, error: new Error(`tabela sem mock: ${table}`) };
+    const query: any = {
+      then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject)
+    };
+    for (const method of ['select', 'insert', 'update', 'eq', 'in', 'order', 'limit', 'maybeSingle', 'single']) {
+      query[method] = () => query;
+    }
+    return query;
+  };
+  return { supabase: { from: queryFor }, isSupabaseConfigured: true };
+});
+
 import {
   DEFAULT_SUBSCRIPTION_PLANS,
   loadSubscriptionPlans,
@@ -29,7 +61,7 @@ describe('CRUD de Entidades do Sistema: Planos de Assinatura', () => {
     const ouro = plans.find(p => p.name === 'Plano Ouro' || p.id === 'Plano Ouro');
     expect(ouro).toBeDefined();
     expect(ouro?.maxSongs).toBeNull();
-  }, 15000);
+  });
 
   it('valida regras de negócio para criação de novos planos', () => {
     const validatePlan = (plan: Partial<SubscriptionPlanItem>) => {

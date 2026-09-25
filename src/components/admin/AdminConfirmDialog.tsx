@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { AlertTriangle, Info, Trash2, X } from 'lucide-react';
+import { ModalPortal } from '../common/ModalPortal';
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -97,6 +98,7 @@ export const AdminConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const styles = getVariantStyles();
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
@@ -164,5 +166,6 @@ export const AdminConfirmDialog: React.FC<ConfirmDialogProps> = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };

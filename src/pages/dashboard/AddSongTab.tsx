@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { ValueType, SongStatus } from '../../types';
+import { ValueType, SongStatus, type Song } from '../../types';
 import { resolvePlan } from '../../lib/plans';
 import { MUSIC_GENRES, getSubgenresForGenre } from '../../config/musicGenres';
 import { DEFAULT_SONG_COVER_URL } from '../../config/media';
@@ -32,6 +32,24 @@ const getAudioDuration = (file: File) => new Promise<number>((resolve, reject) =
   audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível ler a duração da prévia.')); };
   audio.src = url;
 });
+
+// Campos do formulário que, quando diferentes da obra salva, indicam alteração
+// não concluída. A disponibilidade para propostas fica de fora: ela também é
+// fechada pela emissão de uma liberação exclusiva.
+const editDraftDiffersFromSong = (draft: Partial<SongDraftPayload>, song: Song) => {
+  const text = (value: unknown) => (typeof value === 'string' ? value : '').trim();
+  const fields: Array<[unknown, unknown]> = [
+    [draft.title, song.title], [draft.genre, song.genre], [draft.subgenre, song.subgenre],
+    [draft.authors, song.authors], [draft.dateComposed, song.dateComposed], [draft.lyrics, song.lyrics],
+    [draft.registryCode, song.registryCode], [draft.notes, song.notes]
+  ];
+  if (fields.some(([a, b]) => a !== undefined && text(a) !== text(b))) return true;
+  if (draft.valueType !== undefined && draft.valueType !== song.valueType) return true;
+  if (draft.suggestedValue !== undefined && (draft.suggestedValue === '' ? null : Number(draft.suggestedValue)) !== (song.suggestedValue ?? null)) return true;
+  if (typeof draft.coverUrl === 'string' && draft.coverUrl && draft.coverUrl !== DEFAULT_SONG_COVER_URL && draft.coverUrl !== song.coverUrl) return true;
+  if (typeof draft.previewAudioUrl === 'string' && draft.previewAudioUrl && draft.previewAudioUrl !== song.previewAudioUrl) return true;
+  return false;
+};
 
 type UploadKind = 'preview' | 'cover';
 type UploadState = { stage: 'idle' | MediaUploadStage | 'error' | 'cancelled'; message?: string };
@@ -104,6 +122,10 @@ export const AddSongTab: React.FC = () => {
   const submissionLockRef = useRef(false);
   const draftRevisionRef = useRef(0);
   const previewProcessingLockRef = useRef(false);
+  const formErrorRef = useRef<HTMLDivElement | null>(null);
+  const [pendingEditDraft, setPendingEditDraft] = useState<Partial<SongDraftPayload> | null>(null);
+  const editDraftSavedRef = useRef(false);
+  const redirectTimerRef = useRef<number | null>(null);
 
   const draftKey = songId || 'new';
   const legacyDraftStorageKey = currentUserId ? `composer-song-draft-${currentUserId}-${draftKey}` : null;
@@ -236,27 +258,14 @@ export const AddSongTab: React.FC = () => {
           : cloudDraft;
         if (cancelled || !parsedDraft) return;
 
-        if (typeof parsedDraft.title === 'string') setTitle(parsedDraft.title);
-        if (typeof parsedDraft.genre === 'string') setGenre(parsedDraft.genre);
-        if (typeof parsedDraft.subgenre === 'string') setSubgenre(parsedDraft.subgenre);
-        if (typeof parsedDraft.authors === 'string') setAuthors(parsedDraft.authors);
-        if (typeof parsedDraft.dateComposed === 'string') setDateComposed(parsedDraft.dateComposed);
-        if (typeof parsedDraft.lyrics === 'string') setLyrics(parsedDraft.lyrics);
-        if (typeof parsedDraft.registryCode === 'string') setRegistryCode(parsedDraft.registryCode);
-        if (typeof parsedDraft.notes === 'string') setNotes(parsedDraft.notes);
-        // song_drafts guarda somente o formulário; não comprova que a obra foi enviada.
-        // Um status antigo salvo após uma tentativa falha não pode virar selo público.
-        setStatus(existingSong?.status || 'draft');
-        if (typeof parsedDraft.isAvailableForRelease === 'boolean') setIsAvailableForRelease(parsedDraft.isAvailableForRelease);
-        if (parsedDraft.valueType === 'suggested' || parsedDraft.valueType === 'consultation') setValueType(parsedDraft.valueType);
-        if (typeof parsedDraft.suggestedValue === 'number' || parsedDraft.suggestedValue === '') setSuggestedValue(parsedDraft.suggestedValue ?? '');
-        if (typeof parsedDraft.coverUrl === 'string' && !parsedDraft.coverUrl.startsWith('blob:') && parsedDraft.coverUrl.trim().length > 0) setCoverUrl(parsedDraft.coverUrl);
-        if (typeof parsedDraft.previewAudioUrl === 'string' && !parsedDraft.previewAudioUrl.startsWith('blob:') && parsedDraft.previewAudioUrl.trim().length > 0) {
-          setPreviewObjectUrl(parsedDraft.previewAudioUrl);
-          setRecoveredPreviewMediaId(parsedDraft.previewMediaId || null);
+        // Na edição, o banco é a fonte da verdade: um rascunho esquecido de
+        // outra sessão não pode sobrescrever a obra em silêncio.
+        if (isEditing && existingSong) {
+          if (editDraftDiffersFromSong(parsedDraft, existingSong)) setPendingEditDraft(parsedDraft);
+          else window.localStorage.removeItem(legacyDraftStorageKey);
+          return;
         }
-        if (typeof parsedDraft.previewFileName === 'string') setPreviewFileName(parsedDraft.previewFileName);
-        if (typeof parsedDraft.coverFileName === 'string') setCoverFileName(parsedDraft.coverFileName);
+        applyDraft(parsedDraft);
       } catch {
         window.localStorage.removeItem(legacyDraftStorageKey);
         if (!cancelled) setFormError('A cópia local do rascunho estava inválida e foi descartada.');
@@ -268,6 +277,48 @@ export const AddSongTab: React.FC = () => {
     void hydrateDraft();
     return () => { cancelled = true; };
   }, [currentUserId, draftKey, existingSong?.status, isEditing, legacyDraftStorageKey, songLookupComplete]);
+
+  function applyDraft(parsedDraft: Partial<SongDraftPayload>) {
+        if (typeof parsedDraft.title === 'string') setTitle(parsedDraft.title);
+        if (typeof parsedDraft.genre === 'string') setGenre(parsedDraft.genre);
+        if (typeof parsedDraft.subgenre === 'string') setSubgenre(parsedDraft.subgenre);
+        if (typeof parsedDraft.authors === 'string') setAuthors(parsedDraft.authors);
+        if (typeof parsedDraft.dateComposed === 'string') setDateComposed(parsedDraft.dateComposed);
+        if (typeof parsedDraft.lyrics === 'string') setLyrics(parsedDraft.lyrics);
+        if (typeof parsedDraft.registryCode === 'string') setRegistryCode(parsedDraft.registryCode);
+        if (typeof parsedDraft.notes === 'string') setNotes(parsedDraft.notes);
+        // song_drafts guarda somente o formulário; não comprova que a obra foi enviada.
+        // Um status antigo salvo após uma tentativa falha não pode virar selo público.
+        setStatus(existingSong?.status || 'draft');
+        // Uma obra fechada para propostas (ex.: liberação exclusiva) não é reaberta por um rascunho.
+        if (typeof parsedDraft.isAvailableForRelease === 'boolean' && existingSong?.isAvailableForRelease !== false) setIsAvailableForRelease(parsedDraft.isAvailableForRelease);
+        if (parsedDraft.valueType === 'suggested' || parsedDraft.valueType === 'consultation') setValueType(parsedDraft.valueType);
+        if (typeof parsedDraft.suggestedValue === 'number' || parsedDraft.suggestedValue === '') setSuggestedValue(parsedDraft.suggestedValue ?? '');
+        if (typeof parsedDraft.coverUrl === 'string' && !parsedDraft.coverUrl.startsWith('blob:') && parsedDraft.coverUrl.trim().length > 0) setCoverUrl(parsedDraft.coverUrl);
+        if (typeof parsedDraft.previewAudioUrl === 'string' && !parsedDraft.previewAudioUrl.startsWith('blob:') && parsedDraft.previewAudioUrl.trim().length > 0) {
+          setPreviewObjectUrl(parsedDraft.previewAudioUrl);
+          setRecoveredPreviewMediaId(parsedDraft.previewMediaId || null);
+        }
+        if (typeof parsedDraft.previewFileName === 'string') setPreviewFileName(parsedDraft.previewFileName);
+        if (typeof parsedDraft.coverFileName === 'string') setCoverFileName(parsedDraft.coverFileName);
+  }
+
+  const discardEditDraft = () => {
+    setPendingEditDraft(null);
+    if (legacyDraftStorageKey) window.localStorage.removeItem(legacyDraftStorageKey);
+    if (currentUserId) {
+      draftSaveQueueRef.current = draftSaveQueueRef.current
+        .catch(() => undefined)
+        .then(() => deleteSongDraft(currentUserId, draftKey));
+      void draftSaveQueueRef.current.catch(() => setFormError('Não foi possível descartar as alterações salvas.'));
+    }
+  };
+
+  const restoreEditDraft = () => {
+    if (!pendingEditDraft) return;
+    applyDraft(pendingEditDraft);
+    setPendingEditDraft(null);
+  };
 
   useEffect(() => {
     if (!currentUserId || !isDraftHydrated) return;
@@ -294,6 +345,26 @@ export const AddSongTab: React.FC = () => {
       previewFileName,
       coverFileName,
     };
+
+    if (isEditing && existingSong) {
+      if (!editDraftDiffersFromSong(payload, existingSong)) {
+        // Sem alteração em relação à obra: não cria rascunho, e desfaz o que
+        // esta sessão tinha salvo se o compositor voltou aos valores originais.
+        if (editDraftSavedRef.current && !pendingEditDraft) {
+          editDraftSavedRef.current = false;
+          draftRevisionRef.current += 1;
+          if (legacyDraftStorageKey) window.localStorage.removeItem(legacyDraftStorageKey);
+          draftSaveQueueRef.current = draftSaveQueueRef.current
+            .catch(() => undefined)
+            .then(() => deleteSongDraft(currentUserId, draftKey));
+          setDraftSaveState('idle');
+        }
+        return;
+      }
+      // Editar enquanto o aviso está aberto equivale a descartar a versão antiga.
+      if (pendingEditDraft) setPendingEditDraft(null);
+      editDraftSavedRef.current = true;
+    }
 
     const revision = ++draftRevisionRef.current;
     setDraftSaveState('saving');
@@ -328,6 +399,16 @@ export const AddSongTab: React.FC = () => {
       if (draftSaveTimeoutRef.current === timeoutId) draftSaveTimeoutRef.current = null;
     };
   }, [authors, coverFileName, coverUrl, currentUserId, dateComposed, draftKey, existingSong?.status, genre, isAvailableForRelease, isDraftHydrated, legacyDraftStorageKey, lyrics, notes, previewFileName, previewObjectUrl, recoveredPreviewMediaId, registryCode, subgenre, suggestedValue, title, valueType]);
+
+  // Os botões de envio ficam no fim do formulário e o aviso, no topo: sem
+  // rolar até ele, uma falha parecia um clique que não fez nada.
+  useEffect(() => {
+    if (formError) formErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [formError]);
+
+  useEffect(() => () => {
+    if (redirectTimerRef.current !== null) window.clearTimeout(redirectTimerRef.current);
+  }, []);
 
   useEffect(() => {
     return () => { if (previewObjectUrl?.startsWith('blob:')) URL.revokeObjectURL(previewObjectUrl); };
@@ -565,7 +646,16 @@ export const AddSongTab: React.FC = () => {
 
     const currentPlan = resolvePlan(subscriptionPlans, subscription.planName);
     if (!isEditing) {
-      const capacity = await checkUserPlanCapacity(currentUserId);
+      // Fora do try principal: se esta consulta falhasse, a trava de envio
+      // nunca era liberada e os botões deixavam de responder sem aviso.
+      let capacity: PlanCapacityInfo;
+      try {
+        capacity = await checkUserPlanCapacity(currentUserId);
+      } catch (error) {
+        setFormError(getFriendlyErrorMessage(error, 'Não foi possível verificar a capacidade do seu plano. Tente novamente.'));
+        unlockSubmission();
+        return;
+      }
       setPlanCapacity(capacity);
       if (!capacity.canAddSong) {
         setFormError(capacity.message || `O ${capacity.planName || currentPlan.name} permite até ${capacity.maxSongs || currentPlan.maxSongs} músicas. Altere seu plano para ampliar o catálogo.`);
@@ -665,8 +755,7 @@ export const AddSongTab: React.FC = () => {
 
     let completedSongId = existingSong?.id || null;
     if (existingSong) {
-      const updated = await updateSong(existingSong.id, songData);
-      if (!updated) throw new Error('Não foi possível salvar as alterações da música.');
+      await updateSong(existingSong.id, songData);
 
       const replacedFiles = [
         ...(previewFile ? [{ bucket: 'song-previews', value: existingSong.previewAudioUrl }] : []),
@@ -693,7 +782,7 @@ export const AddSongTab: React.FC = () => {
       await deleteSongDraft(currentUserId, draftKey).catch(() => undefined);
     }
 
-    setTimeout(() => navigate('/dashboard/musicas'), 5000);
+    redirectTimerRef.current = window.setTimeout(() => navigate('/dashboard/musicas'), 5000);
     } catch (error) {
       console.error('[AddSongTab.handleSubmit failure]', error);
       if (activeQuarantinePathsRef.current.size > 0) {
@@ -795,7 +884,16 @@ export const AddSongTab: React.FC = () => {
               ? 'Atualize as informações da obra e salve as alterações no catálogo.'
               : 'Preencha as informações para adicionar a música ao seu perfil e liberar a prévia protegida.'}
           </p>
-          {!isEditing && !successMessage && <p className="mt-2 text-xs text-amber-200">Este formulário ainda não é uma música cadastrada. Para aparecer em Minhas Músicas, use “Salvar rascunho privado” ou “Enviar para aprovação”.</p>}
+          {!isEditing && !successMessage && <p className="mt-2 text-xs text-amber-200">Este formulário ainda não é uma música cadastrada. Para aparecer em Minhas Músicas, use “Salvar rascunho privado” ou “Publicar no perfil”.</p>}
+          {subscription.status !== 'active' && !successMessage && (
+            <div role="status" className="mt-3 flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <strong className="block">Sua assinatura não está ativa</strong>
+                <span className="text-xs text-amber-100/80">Você pode cadastrar e salvar como rascunho, mas só consegue publicar no perfil com uma assinatura ativa.</span>
+              </div>
+              <button type="button" onClick={() => navigate('/dashboard/assinatura')} className="shrink-0 rounded-xl bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-amber-300">Ver assinatura</button>
+            </div>
+          )}
         </div>
 
         {/* Rejection Feedback Banner for the Composer */}
@@ -852,8 +950,21 @@ export const AddSongTab: React.FC = () => {
           </div>
         )}
 
+        {pendingEditDraft && (
+          <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <strong className="block">Há alterações desta música que não foram salvas</strong>
+              <span className="text-xs text-amber-100/80">Elas ficaram de uma edição anterior. O formulário mostra a versão atual da obra até você decidir.</span>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button type="button" onClick={restoreEditDraft} className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-amber-300">Restaurar alterações</button>
+              <button type="button" onClick={discardEditDraft} className="rounded-xl border border-amber-400/40 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-500/10">Descartar</button>
+            </div>
+          </div>
+        )}
+
         {formError && (
-          <div role="alert" className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-200 text-sm flex items-start gap-3">
+          <div ref={formErrorRef} role="alert" className="scroll-mt-28 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-200 text-sm flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
             <span className="flex-1">{formError}</span>
             <button type="button" onClick={() => setFormError(null)} aria-label="Fechar mensagem de erro" className="text-red-300 hover:text-white">
@@ -1162,7 +1273,7 @@ export const AddSongTab: React.FC = () => {
           {(activePreviewUrl || coverUrl) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-300">{previewObjectUrl ? 'Prévia processada (máx. 60s)' : 'Prévia pública (máx. 60s)'}</span>{previewObjectUrl && <button type="button" onClick={() => { URL.revokeObjectURL(previewObjectUrl); setPreviewObjectUrl(null); setPreviewFile(null); setPreviewFileName(null); setPreviewSourceFile(null); setPreviewSourceDuration(0); setPreviewStartSeconds(0); }} className="text-xs text-red-400 hover:text-red-300">Remover</button>}</div>
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-300">{previewObjectUrl ? 'Prévia processada (máx. 60s)' : 'Prévia pública (máx. 60s)'}</span>{previewObjectUrl && <button type="button" onClick={() => { URL.revokeObjectURL(previewObjectUrl); setPreviewObjectUrl(null); setRecoveredPreviewMediaId(null); setPreviewFile(null); setPreviewFileName(null); setPreviewSourceFile(null); setPreviewSourceDuration(0); setPreviewStartSeconds(0); }} className="text-xs text-red-400 hover:text-red-300">Remover</button>}</div>
                 {activePreviewUrl ? <audio controls src={activePreviewUrl} className="w-full h-10" aria-label="Prévia pública selecionada" onTimeUpdate={event => { if (previewObjectUrl && event.currentTarget.currentTime >= 60) { event.currentTarget.pause(); event.currentTarget.currentTime = 60; } }} /> : <p className="text-xs text-slate-500">Nenhuma prévia pública selecionada.</p>}
                 {previewObjectUrl && <p className="text-[11px] text-emerald-300/80">Somente esta nova prévia será publicada ao salvar.</p>}
               </div>
@@ -1193,9 +1304,7 @@ export const AddSongTab: React.FC = () => {
           {(previewObjectUrl?.startsWith('blob:') || coverUrl.startsWith('blob:')) && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>{status === 'draft'
-                ? 'No rascunho privado, áudio e capa ficam somente nesta tela e não são enviados. Se sair, selecione os arquivos novamente antes de publicar.'
-                : 'A capa e somente a prévia de 60 segundos serão armazenadas quando você salvar. A faixa completa será descartada após o recorte.'}</span>
+              <span>A capa e somente a prévia de 60 segundos serão enviadas quando você salvar, inclusive no rascunho. A faixa completa é descartada após o recorte. Se sair sem salvar, selecione os arquivos novamente.</span>
             </div>
           )}
 

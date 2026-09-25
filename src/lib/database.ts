@@ -131,6 +131,8 @@ const camelRequest = (r: any): InterestRequest => ({
   songId:r.song_id,songTitle:r.songs?.title||r.song_title||'',songCover:r.songs?.cover_url||r.song_cover,
   buyerName:r.buyer_name,buyerStageName:r.buyer_stage_name,cpfCnpj:r.cpf_cnpj,buyerEmail:r.buyer_email,
   buyerWhatsapp:r.buyer_whatsapp,buyerCityState:r.buyer_city_state,purpose:r.purpose,message:r.message,
+  consentAccepted:Boolean(r.consent_accepted_at),consentPolicyVersion:r.consent_policy_version||undefined,
+  consentAcceptedAt:r.consent_accepted_at||undefined,consentStatement:r.consent_statement||undefined,
   status:r.status,createdAt:r.created_at,agreedValue:r.agreed_value==null?undefined:Number(r.agreed_value),
   notes:r.notes,paymentReceivedAt:r.payment_received_at,archiveReason:r.archive_reason,
   archivedAt:r.archived_at,releaseId:r.release_id||undefined,updatedAt:r.updated_at,
@@ -179,7 +181,7 @@ export async function loadRequestPage(params: RequestPageQuery): Promise<Request
   let query = supabase.from('interest_requests')
     .select('*,songs(title,cover_url)', { count: 'exact' });
 
-  if (params.status) query = query.eq('status', params.status);
+  if (params.status) query = query.in('status', params.status.split(','));
   if (params.songId) query = query.eq('song_id', params.songId);
   if (params.search && params.search.trim()) {
     // Vírgula, parêntese e ponto são metacaracteres do filtro `or` do PostgREST:
@@ -282,8 +284,8 @@ export async function loadPrivateData(userId: string) {
     releases:(releases.data||[]).map(camelRelease),
     subscription:{status:sub.status||'pending',planName:sub.plan_name||'Plano Bronze',monthlyPrice:sub.monthly_price||'0,00',nextBillingDate:sub.next_billing_date||'',
       paymentMethod:sub.payment_method||'Pix',cardLast4:sub.card_last4,cardBrand:sub.card_brand,invoices:sub.invoices||[],
-      autoRenew:Boolean(sub.auto_renew),recurringStatus:sub.mp_preapproval_status||undefined,
-      trialStartedAt:sub.trial_started_at||undefined,trialEndsAt:sub.trial_ends_at||undefined} as Subscription,
+      trialStartedAt:sub.trial_started_at||undefined,trialEndsAt:sub.trial_ends_at||undefined,
+      stripeCustomerId:sub.stripe_customer_id||undefined,stripeSubscriptionId:sub.stripe_subscription_id||undefined,stripeSubscriptionStatus:sub.stripe_subscription_status||undefined,cancelAt:sub.stripe_cancel_at||undefined} as Subscription,
     isAdmin:(role.data||[]).some((r:any)=>['admin','moderator','financial'].includes(r.role)),
     adminRole:((role.data||[]).some((r:any)=>r.role==='admin')?'master':(role.data||[]).some((r:any)=>r.role==='moderator')?'moderator':(role.data||[]).some((r:any)=>r.role==='financial')?'financial':'master') as 'master'|'moderator'|'financial'};
 }
@@ -301,10 +303,12 @@ export async function loadUserSubscription(userId: string): Promise<Subscription
     cardLast4: data.card_last4,
     cardBrand: data.card_brand,
     invoices: data.invoices || [],
-    autoRenew: Boolean(data.auto_renew),
-    recurringStatus: data.mp_preapproval_status || undefined,
     trialStartedAt: data.trial_started_at || undefined,
-    trialEndsAt: data.trial_ends_at || undefined
+    trialEndsAt: data.trial_ends_at || undefined,
+    stripeCustomerId: data.stripe_customer_id || undefined,
+    stripeSubscriptionId: data.stripe_subscription_id || undefined,
+    stripeSubscriptionStatus: data.stripe_subscription_status || undefined,
+    cancelAt: data.stripe_cancel_at || undefined
   } as Subscription;
 }
 
@@ -1466,6 +1470,25 @@ export async function updateAccountDeletionRequestStatus(
 }
 
 /**
+ * Autoexclusão: cancela a assinatura no Stripe e conclui a eliminação pela Edge
+ * Function delete-my-account.
+ */
+export async function deleteMyAccount(): Promise<{ archivedRequests: number }> {
+  if (!supabase) throw new Error('Supabase não configurado.');
+  const { data, error } = await supabase.functions.invoke('delete-my-account', { body: {} });
+  if (error) {
+    // Respostas não-2xx chegam como FunctionsHttpError; a mensagem útil está no corpo.
+    const response = (error as { context?: Response }).context;
+    const detail = response && typeof response.json === 'function'
+      ? await response.json().then((b: { message?: string }) => b?.message).catch(() => undefined)
+      : undefined;
+    captureException(error, { operation: 'deleteMyAccount', status: response?.status });
+    throw new Error(detail || 'Não foi possível excluir sua conta. Tente novamente.');
+  }
+  return { archivedRequests: Number(data?.archivedRequests || 0) };
+}
+
+/**
  * Conclui de fato a solicitação: elimina os dados pessoais sem base de retenção,
  * pseudonimiza o perfil, tira as obras do ar e invalida as credenciais. Exige
  * administrador com sessão reautenticada nos últimos 5 minutos.
@@ -1583,4 +1606,60 @@ export async function markAllNotificationsAsRead(userId: string): Promise<void> 
     captureException(error, { operation: 'markAllNotificationsAsRead', userId });
     throw error;
   }
+}
+
+// ------------------------------------------------------------------------------
+// Entrega da obra ao cliente (termo, música completa e letra)
+// ------------------------------------------------------------------------------
+export type ReleaseDeliveryInfo = {
+  songTitle: string; authors: string; composerName: string; buyerName: string;
+  documentCode: string; issueDate: string; releaseType: string; lyrics: string;
+  hasAudio: boolean; expiresAt: string;
+};
+
+export type ReleaseDeliveryStatus = {
+  releaseId: string; expiresAt: string; emailStatus: 'pending' | 'retry' | 'sent' | 'failed';
+  emailQueuedAt: string | null; lastSentAt: string | null; emailFailedAt: string | null; emailLastError: string | null; views: number;
+  audioDownloads: number; lyricsDownloads: number; firstAudioDownloadAt: string | null; lastAccessAt: string | null;
+};
+
+// A Edge Function devolve a mensagem de erro no corpo; o invoke só expõe o status.
+const invokeDelivery = async <T,>(token: string, action: 'info' | 'audio' | 'lyrics'): Promise<T> => {
+  if (!supabase) throw new Error('Supabase não configurado.');
+  const { data, error } = await supabase.functions.invoke('release-delivery', { body: { token, action } });
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    const detail = context && typeof context.json === 'function' ? await context.json().catch(() => null) : null;
+    const failure = new Error(detail?.message || 'Não foi possível abrir a entrega. Tente novamente.') as Error & { expired?: boolean };
+    failure.expired = Boolean(detail?.expired);
+    throw failure;
+  }
+  return data as T;
+};
+
+export const loadReleaseDelivery = (token: string) => invokeDelivery<ReleaseDeliveryInfo>(token, 'info');
+export const requestDeliveryAudioUrl = (token: string) => invokeDelivery<{ url: string }>(token, 'audio');
+export const registerDeliveryLyricsDownload = (token: string) => invokeDelivery<{ ok: boolean }>(token, 'lyrics');
+
+export async function loadReleaseDeliveryStatuses(releaseIds: string[]): Promise<Record<string, ReleaseDeliveryStatus>> {
+  if (!supabase || releaseIds.length === 0) return {};
+  const { data, error } = await supabase.from('release_deliveries')
+    .select('release_id, expires_at, email_status, email_queued_at, last_sent_at, email_failed_at, email_last_error, views, audio_downloads, lyrics_downloads, first_audio_download_at, last_access_at')
+    .in('release_id', releaseIds);
+  // Sem a migração release_delivery o painel continua funcionando, só sem o status.
+  if (error) { if (error.code === '42P01' || error.code === 'PGRST205') return {}; throw error; }
+  return Object.fromEntries((data || []).map((row: any) => [row.release_id, {
+    releaseId: row.release_id, expiresAt: row.expires_at, emailStatus: row.email_status || 'pending',
+    emailQueuedAt: row.email_queued_at, lastSentAt: row.last_sent_at,
+    emailFailedAt: row.email_failed_at, emailLastError: row.email_last_error, views: row.views,
+    audioDownloads: row.audio_downloads, lyricsDownloads: row.lyrics_downloads,
+    firstAudioDownloadAt: row.first_audio_download_at, lastAccessAt: row.last_access_at,
+  }]));
+}
+
+export async function resendReleaseDelivery(releaseId: string): Promise<{ expiresAt: string; queuedAt: string; emailStatus: 'pending'; lastSentAt: string | null }> {
+  if (!supabase) throw new Error('Supabase não configurado.');
+  const { data, error } = await supabase.rpc('resend_release_delivery', { p_release_id: releaseId });
+  if (error) throw error;
+  return data as { expiresAt: string; queuedAt: string; emailStatus: 'pending'; lastSentAt: string | null };
 }

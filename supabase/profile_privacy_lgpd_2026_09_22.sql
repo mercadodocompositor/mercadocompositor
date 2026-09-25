@@ -49,7 +49,10 @@ where (up.preferences ? 'pixKey' or up.preferences ? 'pixKeyType')
 create or replace function public.guard_composer_identity() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin
-  if auth.uid() is distinct from new.user_id or public.is_admin() then
+  -- A exclusão da conta (delete_my_account) anonimiza o nome com o login do
+  -- próprio titular; ela sinaliza isso só dentro da transação.
+  if auth.uid() is distinct from new.user_id or public.is_admin()
+     or current_setting('app.account_deletion', true) = 'on' then
     return new;
   end if;
   if not exists(select 1 from public.releases r where r.composer_id = new.user_id) then

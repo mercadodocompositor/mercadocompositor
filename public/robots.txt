@@ -13,5 +13,6 @@ Disallow: /login
 Disallow: /autenticacao
 Disallow: /cadastro
 Disallow: /recuperar-senha
+Disallow: /entrega/
 
 Sitemap: https://mercadodocompositor.com.br/sitemap.xml

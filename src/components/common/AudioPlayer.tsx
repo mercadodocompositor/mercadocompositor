@@ -188,8 +188,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={togglePlay}
             disabled={hasEnded || !hasAudioSource}
+            aria-label={!hasAudioSource ? `Prévia de ${songTitle} indisponível` : hasEnded ? `Prévia de ${songTitle} encerrada` : isPlaying ? `Pausar prévia de ${songTitle}` : `Ouvir prévia de ${songTitle}`}
             className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold shadow-lg transition-transform active:scale-95 ${
               hasEnded || !hasAudioSource
                 ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' 
@@ -208,9 +210,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={toggleMute}
             className="p-2 text-slate-400 hover:text-slate-200 transition"
             title={isMuted ? 'Ativar som' : 'Mudar para mudo'}
+            aria-label={isMuted ? 'Ativar som' : 'Silenciar'}
+            aria-pressed={isMuted}
           >
             {isMuted ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5" />}
           </button>
@@ -218,6 +223,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
         {onInterestClick && (
           <button
+            type="button"
             onClick={onInterestClick}
             className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-semibold text-xs shadow-md shadow-amber-500/10 flex items-center gap-1.5 transition"
           >

@@ -36,7 +36,7 @@ describe('Unificação de Validações de Rascunho (Frontend e Trigger SQL)', ()
     expect(addSongPageSrc).toContain('Rascunho não enviado');
     expect(mySongsPageSrc).toContain("loadSongDraft(currentUserId, 'new')");
     expect(mySongsPageSrc).toContain('Cadastro não concluído:');
-    expect(mySongsPageSrc).toContain('não entra em “Rascunhos” nem em “Em análise”');
+    expect(mySongsPageSrc).toContain('ainda não aparece em “Rascunhos”');
   });
 
   it('só mostra o novo status após salvar e mantém o total do progresso consistente', () => {
@@ -212,7 +212,7 @@ describe('Unificação de Validações de Rascunho (Frontend e Trigger SQL)', ()
       });
       expect(missingAuthors.isValid).toBe(false);
       expect(missingAuthors.error).toBe(
-        'Para publicar ou enviar para aprovação, informe título, autores, letra e uma prévia pública de até 60 segundos.'
+        'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.'
       );
 
       const missingPreview = validateSongSubmission({
@@ -225,7 +225,7 @@ describe('Unificação de Validações de Rascunho (Frontend e Trigger SQL)', ()
       });
       expect(missingPreview.isValid).toBe(false);
       expect(missingPreview.error).toBe(
-        'Para publicar ou enviar para aprovação, informe título, autores, letra e uma prévia pública de até 60 segundos.'
+        'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.'
       );
     });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRequestFilters, serializeRequestFilters } from './requestFilters';
+import { parseRequestFilters, serializeRequestFilters, toStatusQuery } from './requestFilters';
 
 describe('request URL filters', () => {
   it('rejects unknown status and invalid pages', () => {
@@ -35,5 +35,19 @@ describe('request URL filters', () => {
       page: 1
     });
     expect(params.toString()).toBe('');
+  });
+});
+
+describe('grupos operacionais', () => {
+  it('aceita e serializa os grupos da lista', () => {
+    expect(parseRequestFilters(new URLSearchParams('status=acao')).status).toBe('acao');
+    expect(serializeRequestFilters({ status: 'andamento' }).get('status')).toBe('andamento');
+  });
+
+  it('converte grupo em lista de status para a consulta', () => {
+    expect(toStatusQuery('acao')).toBe('nova,pagamento_confirmado');
+    expect(toStatusQuery('concluidas')).toBe('liberacao_enviada,arquivada');
+    expect(toStatusQuery('nova')).toBe('nova');
+    expect(toStatusQuery('todas')).toBeUndefined();
   });
 });

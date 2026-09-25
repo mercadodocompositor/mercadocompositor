@@ -36,7 +36,7 @@ import {
   STORAGE_BUCKETS,
   loadSubscriptionPlans, saveSubscriptionPlan, deleteSubscriptionPlan, DEFAULT_SUBSCRIPTION_PLANS,
   loadTeamRoles, adminAssignRole, adminRevokeRole,
-  submitAccountDeletionRequest, loadAccountDeletionRequests, updateAccountDeletionRequestStatus,
+  loadAccountDeletionRequests, updateAccountDeletionRequestStatus,
   adminFinalizeAccountDeletion,
   loadUserNotifications, createUserNotification, markNotificationAsRead, markAllNotificationsAsRead,
   loadUserSubscription,
@@ -84,6 +84,7 @@ interface AppContextType {
 
   songs: Song[];
   addSong: (song: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>) => Promise<Song>;
+  /** Lança Error com a mensagem amigável quando o banco recusa a alteração. */
   updateSong: (id: string, data: Partial<Song>) => Promise<boolean>;
   deleteSong: (id: string) => Promise<boolean>;
   queryMySongs: (params: SongPageQuery) => Promise<{ songs: Song[]; total: number; stats: SongCatalogStats }>;
@@ -104,7 +105,8 @@ interface AppContextType {
 
   subscription: Subscription;
   dashboardMetrics: DashboardMetricPoint[];
-  refreshSubscription: () => Promise<void>;
+  /** Recarrega do banco e devolve a assinatura lida (null se falhar). */
+  refreshSubscription: () => Promise<Subscription | null>;
 
   isAuthenticated: boolean;
   authLoading: boolean;
@@ -161,7 +163,6 @@ interface AppContextType {
   // LGPD ACCOUNT DELETION REQUESTS
   deletionRequests: AccountDeletionRequest[];
   deletionRequestsError: string | null;
-  submitAccountDeletion: (reason?: string) => Promise<boolean>;
   updateDeletionRequestStatus: (id: string, status: DeletionRequestStatus, adminNotes?: string) => Promise<boolean>;
   finalizeAccountDeletion: (id: string, adminNotes?: string) => Promise<boolean>;
 
@@ -481,8 +482,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     } catch (error) {
       if (previous) setSongs(current => current.map(song => song.id === id ? previous : song));
-      setAuthError(getFriendlyErrorMessage(error, 'Falha ao atualizar a música.'));
-      return false;
+      // O motivo vem do banco (gatilhos de publicação, plano, mídia) e é o que o
+      // compositor precisa ler; cada tela o exibe junto da ação que falhou.
+      throw new Error(getFriendlyErrorMessage(error, 'Falha ao atualizar a música.'));
     }
   };
 
@@ -701,12 +703,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const refreshSubscription = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) return null;
     try {
       const sub = await loadUserSubscription(userId);
       if (sub) setSubscription(sub);
+      return sub;
     } catch (err) {
       console.error('Falha ao atualizar assinatura:', err);
+      return null;
     }
   }, [userId]);
 
@@ -718,7 +722,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     // O plano vai no metadado do signUp e é gravado pela trigger
     // handle_new_user. Precisa sair do catálogo real: o preço de fábrica
-    // divergiria do que o checkout do Mercado Pago cobra.
+    // divergiria do catálogo administrado no banco.
     const chosenPlan = selectedPlanName || subscriptionPlans.find(p => p.isActive)?.name || 'Plano Bronze';
     const planConfig = resolvePlan(subscriptionPlans, chosenPlan);
 
@@ -1063,31 +1067,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // LGPD ACCOUNT DELETION ACTIONS
-  const submitAccountDeletion = async (reason?: string): Promise<boolean> => {
-    if (!userId) return false;
-    try {
-      const req = await submitAccountDeletionRequest({
-        userId,
-        userName: profile.stageName || profile.name || 'Compositor',
-        userEmail: profile.email || '',
-        reason
-      });
-      setDeletionRequests(prev => [req, ...prev]);
-      addSystemLog({
-        category: 'system',
-        title: 'Solicitação de Exclusão de Conta (LGPD)',
-        description: `O compositor ${profile.stageName || profile.name} (${profile.email}) solicitou a exclusão definitiva.`,
-        user: profile.email || 'compositor',
-        ip: '',
-        status: 'warning'
-      });
-      return true;
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Falha ao enviar solicitação.');
-      return false;
-    }
-  };
-
   const updateDeletionRequest = async (id: string, status: DeletionRequestStatus, adminNotes?: string): Promise<boolean> => {
     try {
       await updateAccountDeletionRequestStatus(id, status, adminNotes);
@@ -1222,7 +1201,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // LGPD DELETION
       deletionRequests,
       deletionRequestsError,
-      submitAccountDeletion,
       updateDeletionRequestStatus: updateDeletionRequest,
       finalizeAccountDeletion,
 

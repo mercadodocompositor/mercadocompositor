@@ -56,6 +56,7 @@ drop trigger if exists queue_notification_email on public.user_notifications;
 create trigger queue_notification_email after insert on public.user_notifications
 for each row execute function public.queue_notification_email();
 
+-- LEGADO: release_delivery_2026_09_24.sql deve ser executado depois deste arquivo.
 create or replace function public.notify_release_issued() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin

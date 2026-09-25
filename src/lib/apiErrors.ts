@@ -73,7 +73,7 @@ export const KNOWN_FRIENDLY_TRANSLATIONS: Record<string, string> = {
 
   // Capacidade e Assinatura
   'a conta não possui um plano de assinatura válido.': 'Sua conta não possui um plano de assinatura ativo configurado.',
-  'somente contas com assinatura ativa podem publicar ou enviar músicas para aprovação.': 'Somente contas com assinatura ativa podem publicar ou enviar músicas para aprovação.',
+  'somente contas com assinatura ativa podem publicar ou enviar músicas para aprovação.': 'Somente contas com assinatura ativa podem publicar músicas. Ative sua assinatura na página Assinatura.',
 };
 
 const sanitizeHtmlEntities = (text: string): string => {

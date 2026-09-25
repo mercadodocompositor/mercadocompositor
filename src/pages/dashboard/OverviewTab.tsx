@@ -82,7 +82,7 @@ export const OverviewTab: React.FC = () => {
     ...(rejectedSongs.length ? [{
       id: 'rejected',
       title: `${rejectedSongs.length} ${rejectedSongs.length === 1 ? 'música rejeitada' : 'músicas rejeitadas'}`,
-      description: 'Revise os dados da obra antes de enviá-la novamente para análise.',
+      description: 'Revise os dados da obra antes de publicá-la novamente.',
       action: 'Corrigir',
       path: `/dashboard/musicas/${rejectedSongs[0].id}/editar`,
       tone: 'red',
@@ -100,7 +100,7 @@ export const OverviewTab: React.FC = () => {
     ...(draftSongs.length ? [{
       id: 'drafts',
       title: `${draftSongs.length} ${draftSongs.length === 1 ? 'rascunho não publicado' : 'rascunhos não publicados'}`,
-      description: 'Continue a edição quando estiver pronto para enviar as obras à análise.',
+      description: 'Continue a edição e publique quando a obra estiver pronta.',
       action: 'Revisar',
       path: `/dashboard/musicas/${draftSongs[0].id}/editar`,
       tone: 'slate',
@@ -148,7 +148,7 @@ export const OverviewTab: React.FC = () => {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <CreditCard className="h-5 w-5 shrink-0" aria-hidden="true" />
           <div className="flex-1">
-            <h2 id="subscription-status-title" className="text-sm font-bold">{subscriptionMeta.label} · {subscription.planName}</h2>
+            <h2 id="subscription-status-title" className="text-sm font-bold">{subscriptionMeta.label}{subscription.status === 'pending' ? '' : ` · ${subscription.planName}`}</h2>
             <p className="mt-0.5 text-xs opacity-80">{subscriptionMeta.description}</p>
           </div>
           <button type="button" onClick={() => navigate('/dashboard/assinatura')} className="min-h-11 rounded-xl border border-current/20 px-4 py-2 text-xs font-bold hover:bg-white/50 dark:hover:bg-slate-800/60 transition">

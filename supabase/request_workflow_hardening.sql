@@ -321,7 +321,7 @@ begin
     raise exception using errcode = '42501', message = 'Autenticação necessária.';
   end if;
   if p_page is null or p_page < 1 or p_page_size is null or p_page_size not between 1 and 100
-     or length(coalesce(p_query, '')) > 100 then
+     or length(coalesce(p_query, '')) > 100 or length(coalesce(p_status, '')) > 200 then
     raise exception using errcode = '23514', message = 'Parâmetros da lista de solicitações inválidos.';
   end if;
   with own as (
@@ -331,7 +331,7 @@ begin
     where r.composer_id = auth.uid()
   ), filtered as (
     select * from own o
-    where (p_status is null or o.status = p_status)
+    where (p_status is null or o.status = any(string_to_array(p_status, ',')))
       and (p_song_id is null or o.song_id = p_song_id)
       and (nullif(btrim(p_query), '') is null or
         position(lower(btrim(p_query)) in lower(concat_ws(' ',

@@ -12,6 +12,6 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   pixKeyConfigured: false,
   maintenanceMode: false,
   systemAnnouncement: '',
-  requireApprovalForNewSongs: true,
+  requireApprovalForNewSongs: false,
   termsVersion: '1.0'
 };

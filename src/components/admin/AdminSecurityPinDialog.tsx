@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Lock, X, KeyRound, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { useAdminToast } from './AdminToast';
 import { useApp } from '../../context/AppContext';
+import { ModalPortal } from '../common/ModalPortal';
 
 export interface AdminSecurityPinDialogProps {
   isOpen: boolean;
@@ -89,6 +90,7 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
@@ -190,5 +192,6 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 };

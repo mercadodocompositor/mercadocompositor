@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { ModalPortal } from '../common/ModalPortal';
 
 export interface AdminDrawerProps {
   isOpen: boolean;
@@ -58,6 +59,7 @@ export const AdminDrawer: React.FC<AdminDrawerProps> = ({
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[990] overflow-hidden">
       {/* Backdrop */}
       <div
@@ -109,5 +111,6 @@ export const AdminDrawer: React.FC<AdminDrawerProps> = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };

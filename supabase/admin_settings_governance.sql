@@ -233,7 +233,7 @@ begin
     email=concat('removido-',tag,'@invalido.local'), phone=null,
     encrypted_password=concat('removido-',gen_random_uuid()::text),
     email_change='', phone_change='', raw_user_meta_data='{}'::jsonb,
-    banned_until='infinity'::timestamptz, updated_at=clock_timestamp()
+    banned_until=now()+interval '100 years', updated_at=clock_timestamp()
   where id=uid;
 
   update public.account_deletion_requests set status='concluida',

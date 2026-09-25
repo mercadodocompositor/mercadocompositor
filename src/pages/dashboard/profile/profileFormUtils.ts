@@ -1,6 +1,9 @@
 import type { ComposerProfile } from '../../../types';
 import { MUSIC_GENRES } from '../../../config/musicGenres';
 import { RESERVED_USERNAMES } from '../../../lib/database';
+import { isValidCpf } from '../../../lib/brazilianDocuments';
+
+export { isValidCpf } from '../../../lib/brazilianDocuments';
 
 export type ProfileForm = ComposerProfile;
 export type FieldErrors = Record<string, string>;
@@ -66,22 +69,6 @@ export const maskCpf = (value: string) => {
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-};
-
-export const isValidCpf = (cpf: string) => {
-  const digits = cpf.replace(/\D/g, '');
-  if (digits.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(digits)) return false;
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += parseInt(digits[i], 10) * (10 - i);
-  let rest = (sum * 10) % 11;
-  if (rest === 10 || rest === 11) rest = 0;
-  if (rest !== parseInt(digits[9], 10)) return false;
-  sum = 0;
-  for (let i = 0; i < 10; i++) sum += parseInt(digits[i], 10) * (11 - i);
-  rest = (sum * 10) % 11;
-  if (rest === 10 || rest === 11) rest = 0;
-  return rest === parseInt(digits[10], 10);
 };
 
 export const sanitizeSlug = (value: string) => {

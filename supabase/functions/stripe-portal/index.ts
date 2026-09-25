@@ -1,0 +1,15 @@
+import { createClient } from 'npm:@supabase/supabase-js@2'
+const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{'content-type':'application/json','access-control-allow-origin':'*','access-control-allow-headers':'authorization, x-client-info, apikey, content-type','access-control-allow-methods':'POST, OPTIONS'}})
+Deno.serve(async req=>{
+  if(req.method==='OPTIONS')return json({})
+  const key=Deno.env.get('STRIPE_SECRET_KEY'),url=Deno.env.get('SUPABASE_URL'),anon=Deno.env.get('SUPABASE_ANON_KEY'),service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const app=(Deno.env.get('APP_URL')||'https://mercadodocompositor.com.br').replace(/\/$/,'')
+  if(!key||!url||!anon||!service)return json({message:'Stripe não configurado.'},500)
+  const client=createClient(url,anon,{global:{headers:{Authorization:req.headers.get('authorization')||''}}}); const {data:{user}}=await client.auth.getUser()
+  if(!user)return json({message:'Sessão inválida.'},401)
+  const admin=createClient(url,service); const {data:sub}=await admin.from('subscriptions').select('stripe_customer_id').eq('user_id',user.id).maybeSingle()
+  if(!sub?.stripe_customer_id)return json({message:'Cliente Stripe não encontrado.'},404)
+  const body=new URLSearchParams({customer:sub.stripe_customer_id,return_url:`${app}/dashboard/assinatura`})
+  const response=await fetch('https://api.stripe.com/v1/billing_portal/sessions',{method:'POST',headers:{authorization:`Bearer ${key}`,'content-type':'application/x-www-form-urlencoded'},body})
+  const result=await response.json(); if(!response.ok)return json({message:'Não foi possível abrir o portal.'},502); return json({url:result.url})
+})

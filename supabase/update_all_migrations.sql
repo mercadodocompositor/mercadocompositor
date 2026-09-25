@@ -149,12 +149,12 @@ create table if not exists public.songs (
 alter table public.songs add column if not exists original_media_id uuid references public.validated_media(id) on delete restrict;
 alter table public.songs add column if not exists preview_media_id uuid references public.validated_media(id) on delete restrict;
 
-do $$ begin
-  if not exists (select 1 from pg_constraint where conname = 'validated_media_consumed_song_fkey') then
-    alter table public.validated_media add constraint validated_media_consumed_song_fkey
-      foreign key(consumed_by_song_id) references public.songs(id) on delete set null;
-  end if;
-end $$;
+-- Adiada: o gatilho enforce_song_media_separation marca a mídia no BEFORE INSERT
+-- de songs, antes de a linha da música existir.
+alter table public.validated_media drop constraint if exists validated_media_consumed_song_fkey;
+alter table public.validated_media add constraint validated_media_consumed_song_fkey
+  foreign key(consumed_by_song_id) references public.songs(id) on delete set null
+  deferrable initially deferred;
 
 create table if not exists public.song_drafts (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -177,6 +177,10 @@ create table if not exists public.interest_requests (
   buyer_city_state text not null,
   purpose text not null,
   message text not null,
+  consent_accepted_at timestamptz,
+  consent_policy_version text,
+  consent_statement text,
+  consent_source text,
   status text not null default 'nova' check(status in ('nova','em_negociacao','pagamento_pendente','pagamento_confirmado','liberacao_enviada','arquivada')),
   agreed_value numeric(12,2),
   notes text,
@@ -188,6 +192,10 @@ create table if not exists public.interest_requests (
 );
 alter table public.interest_requests
   add column if not exists updated_at timestamptz not null default now();
+alter table public.interest_requests add column if not exists consent_accepted_at timestamptz;
+alter table public.interest_requests add column if not exists consent_policy_version text;
+alter table public.interest_requests add column if not exists consent_statement text;
+alter table public.interest_requests add column if not exists consent_source text;
 
 create table if not exists public.releases (
   id uuid primary key default gen_random_uuid(),
@@ -234,6 +242,27 @@ create table if not exists public.platform_settings (
 );
 
 insert into public.platform_settings(id) values(true) on conflict(id) do nothing;
+
+-- Moderação prévia removida: toda obra salva para publicação vai direto ao
+-- perfil público. O gatilho mantém a coluna sempre falsa, porque
+-- admin_update_platform_settings grava true quando a chave não vem no JSON.
+alter table public.platform_settings alter column require_approval_for_new_songs set default false;
+
+create or replace function public.force_song_moderation_off()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  new.require_approval_for_new_songs := false;
+  return new;
+end;
+$$;
+revoke execute on function public.force_song_moderation_off() from public, anon, authenticated;
+drop trigger if exists force_song_moderation_off on public.platform_settings;
+create trigger force_song_moderation_off
+before insert or update on public.platform_settings
+for each row execute function public.force_song_moderation_off();
+
+update public.platform_settings set require_approval_for_new_songs = false
+where require_approval_for_new_songs;
 
 -- Fecha o acesso direto (select/update) já na criação da tabela: guarda a chave
 -- Pix master e a taxa da plataforma, então só pode ser lida/gravada pelas
@@ -470,26 +499,43 @@ language plpgsql
 security definer
 set search_path = '' as $$
 begin
-  perform 1 from public.songs where id = new.song_id for update;
+  perform 1
+  from public.songs
+  where id = new.song_id
+  for update;
+
   if not found then
     raise exception using errcode = '23503', message = 'A obra vinculada à liberação não foi encontrada.';
   end if;
+
+  if new.expires_at is null and new.issue_date is not null then
+    new.expires_at := public.calculate_release_expiration(new.release_type, new.issue_date);
+  end if;
+
   if exists (
-    select 1 from public.releases
-    where song_id = new.song_id and id is distinct from new.id
-      and public.is_exclusive_release(release_type)
+    select 1
+    from public.releases
+    where song_id = new.song_id
+      and id is distinct from new.id
+      and public.is_active_exclusive_release(release_type, issue_date, expires_at, coalesce(new.issue_date, current_date))
   ) then
     raise exception using errcode = '23514', message = 'Esta obra já possui uma liberação exclusiva emitida para outro interessado.';
   end if;
+
   if public.is_exclusive_release(new.release_type) and exists (
-    select 1 from public.releases
-    where song_id = new.song_id and id is distinct from new.id
+    select 1
+    from public.releases
+    where song_id = new.song_id
+      and id is distinct from new.id
+      and (expires_at is null or expires_at >= coalesce(new.issue_date, current_date))
   ) then
     raise exception using errcode = '23514', message = 'Não é possível conceder exclusividade para uma obra que já possui outras liberações emitidas.';
   end if;
+
   return new;
 end;
 $$;
+
 revoke execute on function public.enforce_release_exclusivity() from public, anon, authenticated;
 drop trigger if exists enforce_release_exclusivity on public.releases;
 create trigger enforce_release_exclusivity
@@ -561,11 +607,13 @@ begin
   if (
     new.song_id, new.composer_id, new.buyer_name, new.buyer_stage_name,
     new.cpf_cnpj, new.buyer_email, new.buyer_whatsapp,
-    new.buyer_city_state, new.purpose, new.message, new.created_at
+    new.buyer_city_state, new.purpose, new.message, new.created_at,
+    new.consent_accepted_at, new.consent_policy_version, new.consent_statement, new.consent_source
   ) is distinct from (
     old.song_id, old.composer_id, old.buyer_name, old.buyer_stage_name,
     old.cpf_cnpj, old.buyer_email, old.buyer_whatsapp,
-    old.buyer_city_state, old.purpose, old.message, old.created_at
+    old.buyer_city_state, old.purpose, old.message, old.created_at,
+    old.consent_accepted_at, old.consent_policy_version, old.consent_statement, old.consent_source
   ) then
     raise exception using errcode = '42501', message = 'Os dados originais enviados pelo interessado são imutáveis.';
   end if;
@@ -576,6 +624,45 @@ drop trigger if exists preserve_interest_request_identity on public.interest_req
 create trigger preserve_interest_request_identity
 before update on public.interest_requests
 for each row execute function public.preserve_interest_request_identity();
+
+create or replace function public.is_valid_cpf_cnpj(p_value text)
+returns boolean language plpgsql immutable set search_path = '' as $$
+declare
+  d text := regexp_replace(coalesce(p_value, ''), '[^0-9]', '', 'g');
+  total integer; remainder integer; expected integer; i integer; weights integer[];
+begin
+  if length(d) not in (11,14) or d = repeat(substr(d,1,1),length(d)) then return false; end if;
+  if length(d)=11 then
+    total:=0; for i in 1..9 loop total:=total+substr(d,i,1)::integer*(11-i); end loop;
+    remainder:=(total*10)%11; expected:=case when remainder=10 then 0 else remainder end;
+    if expected<>substr(d,10,1)::integer then return false; end if;
+    total:=0; for i in 1..10 loop total:=total+substr(d,i,1)::integer*(12-i); end loop;
+    remainder:=(total*10)%11; expected:=case when remainder=10 then 0 else remainder end;
+    return expected=substr(d,11,1)::integer;
+  end if;
+  weights:=array[5,4,3,2,9,8,7,6,5,4,3,2]; total:=0;
+  for i in 1..12 loop total:=total+substr(d,i,1)::integer*weights[i]; end loop;
+  remainder:=total%11; expected:=case when remainder<2 then 0 else 11-remainder end;
+  if expected<>substr(d,13,1)::integer then return false; end if;
+  weights:=array[6,5,4,3,2,9,8,7,6,5,4,3,2]; total:=0;
+  for i in 1..13 loop total:=total+substr(d,i,1)::integer*weights[i]; end loop;
+  remainder:=total%11; expected:=case when remainder<2 then 0 else 11-remainder end;
+  return expected=substr(d,14,1)::integer;
+end $$;
+revoke execute on function public.is_valid_cpf_cnpj(text) from public,anon,authenticated;
+
+create or replace function public.require_valid_interest_request_document()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if not public.is_valid_cpf_cnpj(new.cpf_cnpj) then
+    raise exception using errcode='23514', message='CPF ou CNPJ inválido. Verifique os números e os dígitos verificadores.';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.require_valid_interest_request_document() from public,anon,authenticated;
+drop trigger if exists require_valid_interest_request_document on public.interest_requests;
+create trigger require_valid_interest_request_document before insert on public.interest_requests
+for each row execute function public.require_valid_interest_request_document();
 
 create or replace function public.preserve_song_history()
 returns trigger language plpgsql security definer set search_path = '' as $$
@@ -594,60 +681,82 @@ create trigger preserve_song_history
 before delete on public.songs
 for each row execute function public.preserve_song_history();
 
+-- Versões definitivas (as mesmas de fix_auditoria_2026_09.sql). Não reintroduza
+-- as antigas: elas apagavam a mídia de toda obra que voltava para rascunho e
+-- bloqueavam até o rascunho de quem assina um plano desativado.
+-- Correção: o join com subscription_plans exigia `sp.is_active`. Desativar um
+-- plano no painel administrativo derrubava os assinantes daquele plano para
+-- "A conta não possui um plano de assinatura válido" — eles não conseguiam nem
+-- salvar rascunho. O plano de quem já assinou continua valendo mesmo desativado
+-- para novas vendas; só o limite de obras é lido daqui.
 create or replace function public.enforce_song_write_rules()
-returns trigger language plpgsql security definer set search_path = '' as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
 declare
   max_songs integer;
+  plan_found boolean := false;
   current_song_count bigint;
   approval_required boolean;
   admin_actor boolean;
 begin
-  admin_actor := public.is_admin();
+  -- A exclusão da conta tira as obras do ar (status 'rejected') com o login do titular.
+  admin_actor := public.is_admin() or current_setting('app.account_deletion', true) = 'on';
 
-  select sp.max_songs into max_songs
-  from public.subscriptions sub
-  join public.subscription_plans sp on sp.name = sub.plan_name and sp.is_active
-  where sub.user_id = new.composer_id;
+  select sp.max_songs, true
+    into max_songs, plan_found
+    from public.subscriptions sub
+    join public.subscription_plans sp on sp.name = sub.plan_name
+    where sub.user_id = new.composer_id;
 
-  if not found then
+  if not coalesce(plan_found, false) then
     raise exception using errcode = '23514', message = 'A conta não possui um plano de assinatura válido.';
   end if;
 
-  select require_approval_for_new_songs into approval_required
-  from public.platform_settings where id = true;
+  select require_approval_for_new_songs
+    into approval_required
+    from public.platform_settings
+    where id = true;
+
   approval_required := coalesce(approval_required, true);
 
   if tg_op = 'INSERT' then
-    perform 1 from public.profiles where user_id = new.composer_id for update;
-    select count(*) into current_song_count from public.songs where composer_id = new.composer_id;
+    perform 1
+      from public.profiles
+      where user_id = new.composer_id
+      for update;
+
+    select count(*)
+      into current_song_count
+      from public.songs
+      where composer_id = new.composer_id;
+
     if max_songs is not null and current_song_count >= max_songs then
-      raise exception using errcode = 'P0001',
-        message = format('Limite de %s músicas atingido para esta conta.', max_songs);
+      raise exception using
+        errcode = 'P0001',
+        message = format('Limite de %s músicas atingido para esta conta.', max_songs),
+        hint = 'Remova uma música sem histórico ou solicite a ampliação do plano.';
     end if;
   end if;
 
-  -- 1. Título obrigatório com trim para todos os status (inclusive rascunho)
   if nullif(btrim(new.title), '') is null then
     raise exception using errcode = '23514', message = 'Informe ao menos um título provisório para salvar o rascunho.';
   end if;
 
-  -- 2. Data da composição não pode estar no futuro
   if new.date_composed > current_date then
     raise exception using errcode = '23514', message = 'A data da composição não pode estar no futuro.';
   end if;
 
-  -- 3. Sanitização graciosa para campos de rascunho (evita falha em NOT NULL)
   new.authors := coalesce(new.authors, '');
   new.lyrics := coalesce(new.lyrics, '');
   new.cover_url := coalesce(new.cover_url, '');
 
-  -- 4. Validação unificada de valor sugerido
   if new.value_type = 'suggested' then
-    -- Se estiver sendo publicada ou enviada para aprovação, valor é obrigatório
     if new.status in ('published', 'pending_approval') and (new.suggested_value is null or new.suggested_value <= 0) then
       raise exception using errcode = '23514', message = 'O valor sugerido deve ser maior que zero.';
     end if;
-    -- Se o valor foi informado (inclusive em rascunho), deve ser > 0 e <= 10.000.000
     if new.suggested_value is not null and new.suggested_value <= 0 then
       raise exception using errcode = '23514', message = 'O valor sugerido deve ser maior que zero.';
     end if;
@@ -656,30 +765,45 @@ begin
     end if;
   end if;
 
-
   if not admin_actor then
     if new.status = 'rejected' then
       raise exception using errcode = '42501', message = 'Somente administradores podem rejeitar músicas.';
     end if;
 
-    if approval_required and new.status = 'published' and (tg_op = 'INSERT' or old.status is distinct from 'published') then
-      raise exception using errcode = '42501',
+    if approval_required
+       and new.status = 'published'
+       and (tg_op = 'INSERT' or old.status is distinct from 'published') then
+      raise exception using
+        errcode = '42501',
         message = 'Esta música precisa ser enviada para aprovação antes da publicação.',
         hint = 'Use o status pending_approval.';
     end if;
 
-    if approval_required and tg_op = 'UPDATE' and old.status = 'published' and new.status = 'published' and (
-      new.title, new.genre, new.subgenre, new.authors, new.date_composed,
-      new.lyrics, new.cover_url, new.registry_code, new.value_type,
-      new.suggested_value, new.summary, new.original_audio_path, new.preview_audio_url
-    ) is distinct from (
-      old.title, old.genre, old.subgenre, old.authors, old.date_composed,
-      old.lyrics, old.cover_url, old.registry_code, old.value_type,
-      old.suggested_value, old.summary, old.original_audio_path, old.preview_audio_url
-    ) then
-      raise exception using errcode = '42501',
+    if approval_required
+       and tg_op = 'UPDATE'
+       and old.status = 'published'
+       and new.status = 'published'
+       and (
+         new.title, new.genre, new.subgenre, new.authors, new.date_composed,
+         new.lyrics, new.cover_url, new.registry_code, new.value_type,
+         new.suggested_value, new.summary, new.original_audio_path,
+         new.preview_audio_url
+       ) is distinct from (
+         old.title, old.genre, old.subgenre, old.authors, old.date_composed,
+         old.lyrics, old.cover_url, old.registry_code, old.value_type,
+         old.suggested_value, old.summary, old.original_audio_path,
+         old.preview_audio_url
+       ) then
+      raise exception using
+        errcode = '42501',
         message = 'Alterações em uma música publicada exigem nova aprovação.',
         hint = 'Salve a alteração com o status pending_approval.';
+    end if;
+
+    if not approval_required and new.status = 'pending_approval' then
+      raise exception using
+        errcode = '23514',
+        message = 'A moderação prévia está desativada; publique a música diretamente.';
     end if;
   end if;
 
@@ -688,96 +812,168 @@ begin
        or nullif(btrim(new.authors), '') is null
        or nullif(btrim(new.lyrics), '') is null
        or nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
-      raise exception using errcode = '23514',
-        message = 'Para publicar ou enviar para aprovação, informe título, autores, letra e uma prévia pública de até 60 segundos.';
+      raise exception using
+        errcode = '23514',
+        message = 'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.';
     end if;
 
-    if not exists (select 1 from public.subscriptions where user_id = new.composer_id and status = 'active') then
-      raise exception using errcode = 'P0001',
-        message = 'Somente contas com assinatura ativa podem publicar ou enviar músicas para aprovação.';
+    if not exists (
+      select 1
+      from public.subscriptions
+      where user_id = new.composer_id
+        and status = 'active'
+    ) then
+      raise exception using
+        errcode = 'P0001',
+        message = 'Somente contas com assinatura ativa podem publicar músicas. Ative sua assinatura na página Assinatura.';
     end if;
   end if;
 
   return new;
 end;
 $$;
+
 drop trigger if exists enforce_song_write_rules on public.songs;
 create trigger enforce_song_write_rules
 before insert or update on public.songs
 for each row execute function public.enforce_song_write_rules();
 
+revoke execute on function public.enforce_song_write_rules() from public, anon, authenticated;
+
+-- ------------------------------------------------------------------------------
+-- 4. SEPARAÇÃO DE MÍDIA (versão definitiva)
+-- ------------------------------------------------------------------------------
+-- Duas correções sobre as três versões divergentes que existiam:
+--
+-- (a) O rascunho NÃO apaga mais as referências de mídia. As versões anteriores
+--     zeravam preview_audio_url, preview_media_id, original_audio_path,
+--     original_media_id e cover_url sempre que o status virava 'draft'. Como o
+--     cliente só mesclava {status:'draft'} no estado local, a tela continuava
+--     mostrando capa e prévia que não existiam mais, os arquivos ficavam órfãos
+--     no Storage (o navegador nunca soube os caminhos para limpar) e republicar
+--     exigia reenviar tudo. Despublicar volta a ser reversível.
+--
+-- (b) As validações de confinamento de caminho de music_security.sql são
+--     preservadas: os patches posteriores as tinham removido silenciosamente.
 create or replace function public.enforce_song_media_separation()
-returns trigger language plpgsql security definer set search_path = '' as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
 declare
   media_row public.validated_media%rowtype;
 begin
-  -- Rascunhos não mantêm referências para buckets públicos. A mídia escolhida
-  -- pelo usuário só é enviada quando a obra entra em aprovação/publicação.
-  if new.status = 'draft' then
-    new.preview_audio_url := null;
-    new.preview_media_id := null;
-    new.original_audio_path := null;
-    new.original_media_id := null;
-    new.cover_url := '';
-    return new;
+  -- O áudio original nunca sai do diretório privado do próprio compositor.
+  if nullif(btrim(coalesce(new.original_audio_path, '')), '') is not null and (
+    new.original_audio_path not like new.composer_id::text || '/%'
+    or new.original_audio_path like '%..%'
+    or new.original_audio_path like '%://%'
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'O áudio original deve permanecer no diretório privado do próprio compositor.';
+  end if;
+
+  -- A prévia pública aponta exclusivamente para song-previews do compositor, e
+  -- nunca para o bucket privado do original.
+  if nullif(btrim(coalesce(new.preview_audio_url, '')), '') is not null and (
+    position('/storage/v1/object/public/song-previews/' || new.composer_id::text || '/' in new.preview_audio_url) = 0
+    or position('/song-originals/' in new.preview_audio_url) > 0
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'A prévia pública deve apontar exclusivamente para o bucket song-previews do compositor.';
   end if;
 
   if nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null and new.preview_media_id is not null then
     raise exception using errcode = '23514', message = 'Não informe validação de prévia sem uma URL de prévia.';
   end if;
-  if nullif(btrim(coalesce(new.preview_audio_url, '')), '') is not null
-     and (
-       tg_op = 'INSERT'
-       or old.status not in ('published', 'pending_approval')
-       or old.preview_audio_url is distinct from new.preview_audio_url
-       or old.preview_media_id is distinct from new.preview_media_id
-     ) then
-    if new.preview_media_id is null then
-      raise exception using errcode = '23514', message = 'A prévia precisa de um registro de mídia validada.';
-    end if;
-    select * into media_row from public.validated_media
-    where id = new.preview_media_id and user_id = new.composer_id
-      and bucket_id = 'song-previews' and public_url = new.preview_audio_url
-      and duration_seconds > 0 and duration_seconds <= 60
-      and (consumed_by_song_id is null or consumed_by_song_id = new.id)
-    for update;
-    if not found then
-      raise exception using errcode = '23514', message = 'A prévia não possui validação válida ou já foi vinculada a outra música.';
-    end if;
-    update public.validated_media set consumed_by_song_id = new.id, consumed_at = coalesce(consumed_at, now()) where id = media_row.id;
-  end if;
 
   if nullif(btrim(coalesce(new.original_audio_path, '')), '') is null and new.original_media_id is not null then
     raise exception using errcode = '23514', message = 'Não informe validação de áudio original sem o caminho do arquivo.';
   end if;
-  if nullif(btrim(coalesce(new.original_audio_path, '')), '') is not null
-     and (
-       tg_op = 'INSERT'
+
+  -- Rascunho guarda a mídia, mas ela só é validada/consumida quando a obra
+  -- entra no catálogo ou na fila de aprovação — é lá que passa a ser exibida.
+  if new.status in ('published', 'pending_approval') then
+    if nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
+      raise exception using
+        errcode = '23514',
+        message = 'Uma prévia pública de até 60 segundos é obrigatória para publicação.';
+    end if;
+
+    if tg_op = 'INSERT'
        or old.status not in ('published', 'pending_approval')
-       or old.original_audio_path is distinct from new.original_audio_path
-       or old.original_media_id is distinct from new.original_media_id
-     ) then
-    if new.original_media_id is null then
-      raise exception using errcode = '23514', message = 'O áudio original precisa de um registro de mídia validada.';
+       or old.preview_audio_url is distinct from new.preview_audio_url
+       or old.preview_media_id is distinct from new.preview_media_id then
+      if new.preview_media_id is null then
+        raise exception using errcode = '23514', message = 'A prévia precisa de um registro de mídia validada.';
+      end if;
+
+      select * into media_row
+      from public.validated_media
+      where id = new.preview_media_id
+        and user_id = new.composer_id
+        and bucket_id = 'song-previews'
+        and public_url = new.preview_audio_url
+        and duration_seconds > 0
+        and duration_seconds <= 60
+        and (consumed_by_song_id is null or consumed_by_song_id = new.id)
+      for update;
+
+      if not found then
+        raise exception using errcode = '23514', message = 'A prévia não possui validação válida ou já foi vinculada a outra música.';
+      end if;
+
+      update public.validated_media
+      set consumed_by_song_id = new.id,
+          consumed_at = coalesce(consumed_at, now())
+      where id = media_row.id;
     end if;
-    select * into media_row from public.validated_media
-    where id = new.original_media_id and user_id = new.composer_id
-      and bucket_id = 'song-originals' and object_path = new.original_audio_path
-      and (consumed_by_song_id is null or consumed_by_song_id = new.id)
-    for update;
-    if not found then
-      raise exception using errcode = '23514', message = 'O áudio original não possui validação válida ou já foi vinculado a outra música.';
+
+    if nullif(btrim(coalesce(new.original_audio_path, '')), '') is not null
+       and (
+         tg_op = 'INSERT'
+         or old.status not in ('published', 'pending_approval')
+         or old.original_audio_path is distinct from new.original_audio_path
+         or old.original_media_id is distinct from new.original_media_id
+       ) then
+      if new.original_media_id is null then
+        raise exception using errcode = '23514', message = 'O áudio original precisa de um registro de mídia validada.';
+      end if;
+
+      select * into media_row
+      from public.validated_media
+      where id = new.original_media_id
+        and user_id = new.composer_id
+        and bucket_id = 'song-originals'
+        and object_path = new.original_audio_path
+        and (consumed_by_song_id is null or consumed_by_song_id = new.id)
+      for update;
+
+      if not found then
+        raise exception using errcode = '23514', message = 'O áudio original não possui validação válida ou já foi vinculado a outra música.';
+      end if;
+
+      update public.validated_media
+      set consumed_by_song_id = new.id,
+          consumed_at = coalesce(consumed_at, now())
+      where id = media_row.id;
     end if;
-    update public.validated_media set consumed_by_song_id = new.id, consumed_at = coalesce(consumed_at, now()) where id = media_row.id;
   end if;
 
   return new;
 end;
 $$;
+
 drop trigger if exists enforce_song_media_separation on public.songs;
 create trigger enforce_song_media_separation
 before insert or update on public.songs
 for each row execute function public.enforce_song_media_separation();
+
+revoke execute on function public.enforce_song_media_separation()
+from public, anon, authenticated;
 
 -- 5. FUNÇÕES E RPCS DO SISTEMA
 -- admin_assign_user_role também é definida uma única vez, no bloco de
@@ -1103,7 +1299,7 @@ end $$;
 create or replace function public.list_interest_requests(p_page integer default 1,p_page_size integer default 20,p_status text default null,p_song_id uuid default null,p_query text default '',p_oldest boolean default false)
 returns jsonb language sql stable security definer set search_path='' as $$
 with own as(select r.*,s.title song_title,s.cover_url song_cover from public.interest_requests r left join public.songs s on s.id=r.song_id where r.composer_id=auth.uid()),
-filtered as(select * from own o where(p_status is null or o.status=p_status)and(p_song_id is null or o.song_id=p_song_id)and(nullif(btrim(p_query),'')is null or position(lower(btrim(p_query))in lower(concat_ws(' ',o.buyer_name,o.buyer_stage_name,o.song_title,o.buyer_city_state,o.buyer_email,o.cpf_cnpj,split_part(o.id::text,'-',1))))>0)),
+filtered as(select * from own o where(p_status is null or o.status=any(string_to_array(p_status,',')))and(p_song_id is null or o.song_id=p_song_id)and(nullif(btrim(p_query),'')is null or position(lower(btrim(p_query))in lower(concat_ws(' ',o.buyer_name,o.buyer_stage_name,o.song_title,o.buyer_city_state,o.buyer_email,o.cpf_cnpj,split_part(o.id::text,'-',1))))>0)),
 numbered as(select f.*,row_number()over(order by case when p_oldest then f.created_at end asc,case when not p_oldest then f.created_at end desc,f.id desc)rn from filtered f)
 select jsonb_build_object('items',(select coalesce(jsonb_agg(to_jsonb(n)-'rn' order by n.rn),'[]'::jsonb)from numbered n where n.rn>(greatest(p_page,1)::bigint-1)*least(greatest(p_page_size,1),100)and n.rn<=greatest(p_page,1)::bigint*least(greatest(p_page_size,1),100)),'total',(select count(*)from filtered),'statusCounts',(select coalesce(jsonb_object_agg(c.status,c.count),'{}'::jsonb)from(select status,count(*)count from own where status is not null group by status)c),'songCounts',(select coalesce(jsonb_object_agg(c.song_id,c.count),'{}'::jsonb)from(select song_id,count(*)count from own where song_id is not null group by song_id)c));
 $$;
@@ -1141,7 +1337,73 @@ revoke execute on function public.register_release_document(uuid,text,text,text)
 grant execute on function public.register_release_document(uuid,text,text,text) to authenticated;
 
 
-create or replace function public.update_interest_request(
+-- Versão definitiva (request_workflow_hardening.sql): exige a versão revisada
+-- e grava interest_request_history. A anterior deste arquivo não gravava o
+-- histórico e o apagava da tela sempre que o consolidado era rodado.
+alter table public.releases
+  add column if not exists expires_at date;
+
+create or replace function public.calculate_release_expiration(
+  p_release_type text,
+  p_issue_date date
+) returns date
+language plpgsql
+immutable
+as $$
+declare
+  months_match text[];
+  months_count int;
+begin
+  if p_release_type is null or p_issue_date is null then
+    return null;
+  end if;
+  if not public.is_exclusive_release(p_release_type) then
+    return null;
+  end if;
+
+  months_match := regexp_match(p_release_type, '(\d+)\s*meses', 'i');
+  if months_match is not null then
+    months_count := months_match[1]::int;
+    return (p_issue_date + (months_count * interval '1 month'))::date;
+  end if;
+
+  return null;
+end;
+$$;
+revoke execute on function public.calculate_release_expiration(text, date) from public, anon;
+grant execute on function public.calculate_release_expiration(text, date) to authenticated;
+
+create or replace function public.is_active_exclusive_release(
+  p_release_type text,
+  p_issue_date date,
+  p_expires_at date default null,
+  p_check_date date default current_date
+) returns boolean
+language plpgsql
+stable
+as $$
+declare
+  exp_date date;
+begin
+  if not public.is_exclusive_release(p_release_type) then
+    return false;
+  end if;
+
+  exp_date := coalesce(p_expires_at, public.calculate_release_expiration(p_release_type, p_issue_date));
+  if exp_date is null then
+    return true;
+  end if;
+
+  return coalesce(p_check_date, current_date) <= exp_date;
+end;
+$$;
+revoke execute on function public.is_active_exclusive_release(text, date, date, date) from public, anon;
+grant execute on function public.is_active_exclusive_release(text, date, date, date) to authenticated;
+
+drop function if exists public.update_interest_request(uuid,text,numeric,text,text);
+drop function if exists public.update_interest_request(uuid,text,numeric,text,text,timestamptz);
+drop function if exists public.update_interest_request(uuid,text,numeric,text,text,timestamptz,boolean);
+create function public.update_interest_request(
   p_request_id uuid,
   p_status text,
   p_agreed_value numeric default null,
@@ -1150,25 +1412,19 @@ create or replace function public.update_interest_request(
   p_expected_updated_at timestamptz default null,
   p_clear_agreed_value boolean default false
 ) returns jsonb
-language plpgsql
-security definer
-set search_path = ''
-as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   current_request public.interest_requests%rowtype;
   target_agreed_value numeric;
   changed_at_value timestamptz := clock_timestamp();
   result_json jsonb;
 begin
-  select * into current_request
-  from public.interest_requests
-  where id = p_request_id and composer_id = auth.uid()
-  for update;
-
+  select * into current_request from public.interest_requests
+  where id = p_request_id and composer_id = auth.uid() for update;
   if not found then
     raise exception using errcode = '42501', message = 'Solicitação não encontrada para este compositor.';
   end if;
-  if p_expected_updated_at is not null and current_request.updated_at is distinct from p_expected_updated_at then
+  if p_expected_updated_at is null or current_request.updated_at is distinct from p_expected_updated_at then
     raise exception using errcode = '40001', message = 'Esta solicitação foi alterada em outra aba. Recarregue a página antes de salvar novamente.';
   end if;
   if p_status not in ('nova','em_negociacao','pagamento_pendente','pagamento_confirmado','liberacao_enviada','arquivada') then
@@ -1183,45 +1439,42 @@ begin
   ) then
     raise exception using errcode = '23514', message = 'Transição de status não permitida.';
   end if;
-
-  -- Impede avançar para pagamento se a obra já possui liberação exclusiva emitida para outra solicitação
   if p_status in ('pagamento_pendente','pagamento_confirmado') and exists (
-    select 1 from public.releases
-    where song_id = current_request.song_id
-      and request_id <> current_request.id
-      and public.is_exclusive_release(release_type)
+    select 1 from public.releases where song_id = current_request.song_id
+      and request_id <> current_request.id and public.is_active_exclusive_release(release_type, issue_date, expires_at)
   ) then
-    raise exception using errcode = '23514', message = 'Esta obra já possui uma liberação exclusiva emitida para outro interessado e não aceita novos pagamentos.';
+    raise exception using errcode = '23514', message = 'Esta obra já possui uma liberação exclusiva emitida para outro interessado.';
   end if;
 
+  -- Zero solicita a limpeza do valor antes do pagamento; null mantém o valor.
   target_agreed_value := case when p_agreed_value = 0 then null
     when p_clear_agreed_value then null
     else coalesce(p_agreed_value, current_request.agreed_value) end;
-
-  if p_status in ('pagamento_pendente','pagamento_confirmado') and coalesce(target_agreed_value, 0) <= 0 then
+  if current_request.status = 'liberacao_enviada'
+     and target_agreed_value is distinct from current_request.agreed_value then
+    raise exception using errcode = '23514', message = 'O valor de uma liberação emitida não pode ser alterado.';
+  end if;
+  if p_status in ('pagamento_pendente','pagamento_confirmado') and coalesce(target_agreed_value,0) <= 0 then
     raise exception using errcode = '23514', message = 'Informe um valor acordado maior que zero.';
   end if;
-
   if target_agreed_value is not null and target_agreed_value > 10000000 then
     raise exception using errcode = '23514', message = 'O valor acordado não pode ultrapassar R$ 10.000.000,00.';
   end if;
-
-  if length(coalesce(p_notes, '')) > 500 then
-    raise exception using errcode = '23514', message = 'As observações devem ter no máximo 500 caracteres.';
-  end if;
-  if length(coalesce(p_archive_reason, '')) > 160 then
-    raise exception using errcode = '23514', message = 'O motivo do arquivamento deve ter no máximo 160 caracteres.';
+  if length(coalesce(p_notes,'')) > 500 or length(coalesce(p_archive_reason,'')) > 160 then
+    raise exception using errcode = '23514', message = 'Um dos textos ultrapassa o limite permitido.';
   end if;
 
-  update public.interest_requests set
-    status = p_status,
-    agreed_value = target_agreed_value,
-    notes = coalesce(p_notes, current_request.notes),
-    payment_received_at = case when p_status = 'pagamento_confirmado' then coalesce(current_request.payment_received_at, changed_at_value) else current_request.payment_received_at end,
-    archive_reason = case when p_status = 'arquivada' then nullif(btrim(p_archive_reason), '') when p_status = 'nova' then null else current_request.archive_reason end,
-    archived_at = case when p_status = 'arquivada' then coalesce(current_request.archived_at, changed_at_value) when p_status = 'nova' then null else current_request.archived_at end,
-    updated_at = changed_at_value
-  where id = p_request_id;
+  update public.interest_requests set status=p_status, agreed_value=target_agreed_value,
+    notes=coalesce(p_notes,current_request.notes),
+    payment_received_at=case when p_status='pagamento_confirmado' then coalesce(current_request.payment_received_at,changed_at_value) else current_request.payment_received_at end,
+    archive_reason=case when p_status='arquivada' then nullif(btrim(p_archive_reason),'') when p_status='nova' then null else current_request.archive_reason end,
+    archived_at=case when p_status='arquivada' then coalesce(current_request.archived_at,changed_at_value) when p_status='nova' then null else current_request.archived_at end,
+    updated_at=changed_at_value where id=p_request_id;
+
+  if current_request.status is distinct from p_status or current_request.agreed_value is distinct from target_agreed_value then
+    insert into public.interest_request_history(request_id,composer_id,actor_id,previous_status,new_status,previous_agreed_value,new_agreed_value,changed_at)
+    values(p_request_id,current_request.composer_id,auth.uid(),current_request.status,p_status,current_request.agreed_value,target_agreed_value,changed_at_value);
+  end if;
 
   select to_jsonb(r) into result_json
   from (
@@ -1233,7 +1486,8 @@ begin
   return result_json;
 end;
 $$;
-grant execute on function public.update_interest_request(uuid, text, numeric, text, text, timestamptz, boolean) to authenticated;
+revoke execute on function public.update_interest_request(uuid,text,numeric,text,text,timestamptz,boolean) from public, anon;
+grant execute on function public.update_interest_request(uuid,text,numeric,text,text,timestamptz,boolean) to authenticated;
 
 -- Permissões das tabelas para o Supabase client
 grant select, update on public.profiles to authenticated;
@@ -1277,7 +1531,7 @@ begin
 
   select sp.max_songs into plan_limit
   from public.subscription_plans sp
-  where sp.name = current_plan_name and sp.is_active;
+  where sp.name = current_plan_name;
 
   if not found then
     select plan_max_songs into plan_limit
@@ -1951,7 +2205,7 @@ begin
     email=concat('removido-',tag,'@invalido.local'), phone=null,
     encrypted_password=concat('removido-',gen_random_uuid()::text),
     email_change='', phone_change='', raw_user_meta_data='{}'::jsonb,
-    banned_until='infinity'::timestamptz, updated_at=clock_timestamp()
+    banned_until=now()+interval '100 years', updated_at=clock_timestamp()
   where id=uid;
 
   update public.account_deletion_requests set status='concluida',

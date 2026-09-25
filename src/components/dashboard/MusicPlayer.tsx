@@ -36,15 +36,17 @@ import {
 
 interface MusicPlayerProps {
   initialSongId?: string;
+  /** Abre direto na aba de envio, já apontando a música que receberá o áudio completo. */
+  initialUploadTargetSongId?: string;
   onSongSelect?: (song: Song) => void;
   onCatalogChange?: () => void;
 }
 
-export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, onSongSelect, onCatalogChange }) => {
+export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initialUploadTargetSongId, onSongSelect, onCatalogChange }) => {
   const { songs, addSong, updateSong, profile, platformSettings, isAdminAuthenticated } = useApp();
 
   // Mode state: 'player' (Audition Snippet Mode) or 'upload' (Composer Upload Studio)
-  const [activeTab, setActiveTab] = useState<'player' | 'upload'>('player');
+  const [activeTab, setActiveTab] = useState<'player' | 'upload'>(initialUploadTargetSongId ? 'upload' : 'player');
 
   // Currently selected song ID or custom local audio track
   const [selectedSongId, setSelectedSongId] = useState<string>(
@@ -56,7 +58,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, onSongS
   const [localAudioUrl, setLocalAudioUrl] = useState<string>('');
   const [localAudioName, setLocalAudioName] = useState<string>('');
   const [uploadSuccess, setUploadSuccess] = useState<boolean>(false);
-  const [assignTargetSongId, setAssignTargetSongId] = useState<string>('new');
+  const [assignTargetSongId, setAssignTargetSongId] = useState<string>(initialUploadTargetSongId || 'new');
 
   // New song form when uploading a fresh track
   const [newTitle, setNewTitle] = useState('');

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Crop, LoaderCircle, Minus, Move, Plus, X } from 'lucide-react';
+import { ModalPortal } from './ModalPortal';
 
 export interface ImageCropDialogProps {
   /** Arquivo escolhido pelo usuário; null mantém a janela fechada. */
@@ -202,12 +203,13 @@ export const ImageCropDialog: React.FC<ImageCropDialogProps> = ({
   const displayHeight = image ? image.naturalHeight * scale : 0;
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-fadeIn">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-xl rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl"
+        className="mobile-modal-scroll w-full max-w-xl rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl"
       >
         <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-5 py-4">
           <div className="flex items-center gap-2">
@@ -323,5 +325,6 @@ export const ImageCropDialog: React.FC<ImageCropDialogProps> = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };

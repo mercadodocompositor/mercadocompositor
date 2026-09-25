@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { 
   Bell, 
@@ -24,7 +24,7 @@ import {
   Laptop
 } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
-import { beginMfaEnrollment, exportPersonalData, listMfaFactors, loadPreferences, loadSettingsSecurityMetadata, revokeOtherSessions, savePreferences, verifyMfaEnrollment } from '../../lib/database';
+import { beginMfaEnrollment, deleteMyAccount, exportPersonalData, listMfaFactors, loadPreferences, loadSettingsSecurityMetadata, revokeOtherSessions, savePreferences, verifyMfaEnrollment } from '../../lib/database';
 import { useTheme } from '../../context/ThemeContext';
 import { useModalFocus } from '../../hooks/useModalFocus';
 import { maskEmail } from './settingsUtils';
@@ -45,7 +45,8 @@ const withRequiredCommunications = (value: Preferences): Preferences => ({
 });
 
 export const SettingsTab: React.FC = () => {
-  const { profile, resetPassword, updatePassword, submitAccountDeletion } = useApp();
+  const { profile, resetPassword, updatePassword, logout } = useApp();
+  const navigate = useNavigate();
   const { theme, resolvedTheme, setTheme } = useTheme();
 
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
@@ -62,6 +63,8 @@ export const SettingsTab: React.FC = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [accountDeleted, setAccountDeleted] = useState(false);
   const [isExportingData, setIsExportingData] = useState(false);
   const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
   const [preferencesMessage, setPreferencesMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -74,9 +77,10 @@ export const SettingsTab: React.FC = () => {
   const [mfaCode, setMfaCode] = useState('');
   const [isConfiguringMfa, setIsConfiguringMfa] = useState(false);
   const closeDeleteModal = () => {
-    if (isDeletingAccount) return;
+    if (isDeletingAccount || accountDeleted) return;
     setDeleteModalOpen(false);
     setDeleteConfirmText('');
+    setDeleteError('');
   };
   const deleteModalRef = useModalFocus<HTMLDivElement>(deleteModalOpen, closeDeleteModal);
 
@@ -274,24 +278,22 @@ export const SettingsTab: React.FC = () => {
 
   const handleDeleteAccount = async () => {
     if (isDeletingAccount) return;
-    if (deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR') {
-      setMessage({ type: 'error', text: 'Por favor, digite a palavra "EXCLUIR" em maiúsculas para confirmar.' });
-      return;
-    }
+    if (deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR') return;
     setIsDeletingAccount(true);
+    setDeleteError('');
     try {
-      await submitAccountDeletion('Solicitação de exclusão de conta via painel de configurações (LGPD)');
-      setMessage({
-        type: 'success',
-        text: 'Sua solicitação de exclusão foi registrada. Nossa equipe entrará em contato por e-mail em até 48 horas.'
-      });
-      setDeleteConfirmText('');
-      setDeleteModalOpen(false);
-    } catch {
-      setMessage({ type: 'error', text: 'Não foi possível registrar o pedido de exclusão. Tente novamente.' });
+      await deleteMyAccount();
+      setAccountDeleted(true);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Não foi possível excluir sua conta. Tente novamente.');
     } finally {
       setIsDeletingAccount(false);
     }
+  };
+
+  const leaveDeletedAccount = async () => {
+    await logout().catch(() => undefined);
+    navigate('/', { replace: true });
   };
 
   return (
@@ -927,10 +929,10 @@ export const SettingsTab: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-0.5">
             <strong className="text-white text-xs sm:text-sm block">
-              Solicitar Exclusão da Minha Conta
+              Excluir Minha Conta
             </strong>
             <p className="text-xs text-slate-400">
-              Após a análise, removeremos o catálogo público e os dados sem obrigação legal de retenção. Termos já emitidos serão preservados quando necessário.
+              Exclusão imediata e definitiva: seus dados pessoais são eliminados, suas obras saem do catálogo e a assinatura é cancelada. Termos já emitidos são preservados sem identificação pessoal.
             </p>
           </div>
 
@@ -940,7 +942,7 @@ export const SettingsTab: React.FC = () => {
             className="px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold text-xs transition shrink-0 flex items-center justify-center gap-2"
           >
             <Trash2 className="w-4 h-4" />
-            <span>Solicitar Exclusão</span>
+            <span>Excluir Conta</span>
           </button>
         </div>
 
@@ -951,52 +953,90 @@ export const SettingsTab: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (event.target === event.currentTarget) closeDeleteModal(); }}>
           <div ref={deleteModalRef} role="dialog" aria-modal="true" aria-labelledby="delete-account-title" aria-describedby="delete-account-description" tabIndex={-1} className="bg-slate-900 border border-red-500/30 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-fadeIn">
             
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 id="delete-account-title" className="font-bold text-white text-lg">Solicitar exclusão da conta?</h3>
-                <p className="text-xs text-slate-400">A solicitação será analisada pela nossa equipe.</p>
-              </div>
-            </div>
+            {accountDeleted ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <h3 id="delete-account-title" className="font-bold text-white text-lg">Conta excluída</h3>
+                </div>
+                <p id="delete-account-description" className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-800">
+                  Seus dados pessoais foram eliminados, suas obras saíram do catálogo e a assinatura foi cancelada. Enviamos uma confirmação para o seu e-mail.
+                </p>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={leaveDeletedAccount}
+                    data-autofocus
+                    className="px-5 py-2.5 rounded-xl bg-slate-800 text-white hover:bg-slate-700 font-bold text-xs"
+                  >
+                    Ir para a página inicial
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 id="delete-account-title" className="font-bold text-white text-lg">Excluir sua conta?</h3>
+                    <p className="text-xs text-slate-400">A exclusão é imediata e não pode ser desfeita.</p>
+                  </div>
+                </div>
 
-            <p id="delete-account-description" className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-800">
-              Após a análise, seu catálogo público e os dados que não precisem ser mantidos por obrigação legal serão removidos. Enviaremos o andamento por e-mail em até 48 horas.
-            </p>
+                <ul id="delete-account-description" className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1.5 list-disc pl-8">
+                  <li>Seus dados pessoais (e-mail, WhatsApp, CPF, chave Pix) são eliminados e o login deixa de funcionar.</li>
+                  <li>Suas obras saem do catálogo e o perfil público passa a aparecer como “Usuário removido”.</li>
+                  <li>A assinatura é cancelada agora, sem reembolso do período restante.</li>
+                  <li>Negociações em aberto são encerradas e os intérpretes, avisados por e-mail.</li>
+                  <li>Termos de liberação já emitidos e o histórico financeiro são mantidos sem identificação pessoal, por obrigação legal.</li>
+                </ul>
 
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-semibold block">
-                Para confirmar, digite a palavra <strong className="text-red-400">EXCLUIR</strong> abaixo:
-              </label>
-              <input
-                type="text"
-                value={deleteConfirmText}
-                onChange={e => setDeleteConfirmText(e.target.value)}
-                placeholder="EXCLUIR"
-                data-autofocus
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-red-500"
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="delete-confirm-text" className="text-xs text-slate-300 font-semibold block">
+                    Para confirmar, digite a palavra <strong className="text-red-400">EXCLUIR</strong> abaixo:
+                  </label>
+                  <input
+                    id="delete-confirm-text"
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    placeholder="EXCLUIR"
+                    data-autofocus
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-red-500"
+                  />
+                </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={closeDeleteModal}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white font-semibold text-xs"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteAccount}
-                disabled={isDeletingAccount || deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR'}
-                className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-lg shadow-red-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-              >
-                {isDeletingAccount && <LoaderCircle className="w-3.5 h-3.5 animate-spin" />}
-                <span>{isDeletingAccount ? 'Enviando...' : 'Enviar Solicitação'}</span>
-              </button>
-            </div>
+                {deleteError && (
+                  <p role="alert" className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3.5 py-2.5">
+                    {deleteError}
+                  </p>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    disabled={isDeletingAccount}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white font-semibold text-xs disabled:opacity-40"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={isDeletingAccount || deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR'}
+                    className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-lg shadow-red-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  >
+                    {isDeletingAccount && <LoaderCircle className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isDeletingAccount ? 'Excluindo...' : 'Excluir definitivamente'}</span>
+                  </button>
+                </div>
+              </>
+            )}
 
           </div>
         </div>

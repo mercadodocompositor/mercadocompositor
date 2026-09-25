@@ -20,7 +20,9 @@ Deno.serve(async request => {
   for (const job of jobs || []) {
     try {
       const actionUrl = job.action_url ? `${appUrl}${job.action_url}` : `${appUrl}/dashboard`
-      const actionLabel = job.action_url?.startsWith('/validar/') ? 'Baixar cópia e validar termo' : 'Acessar painel'
+      const actionLabel = job.action_url?.startsWith('/entrega/') ? 'Baixar termo, música e letra'
+        : job.action_url?.startsWith('/validar/') ? 'Baixar cópia e validar termo'
+        : job.audience === 'buyer' ? 'Conhecer outras obras' : 'Acessar painel'
       // O intérprete não tem conta: o rodapé não pode falar em painel ou preferências.
       const footer = job.audience === 'buyer'
         ? 'Você recebeu este e-mail porque solicitou a liberação desta obra pelo Mercado do Compositor.'
@@ -32,11 +34,15 @@ Deno.serve(async request => {
       })
       if (!response.ok) throw new Error(`Resend ${response.status}: ${(await response.text()).slice(0,300)}`)
       const provider = await response.json().catch(() => ({}))
-      await admin.from('notification_email_outbox').update({ status:'sent',sent_at:new Date().toISOString(),updated_at:new Date().toISOString(),provider_message_id:provider.id || null,last_error:null }).eq('id',job.id)
+      const sentAt = new Date().toISOString()
+      const { error: outboxError } = await admin.from('notification_email_outbox').update({ status:'sent',sent_at:sentAt,updated_at:sentAt,provider_message_id:provider.id || null,last_error:null }).eq('id',job.id)
+      if (outboxError) throw outboxError
       sent++
     } catch (err) {
       const terminal = job.attempts >= 5
-      await admin.from('notification_email_outbox').update({ status:terminal?'failed':'retry',updated_at:new Date().toISOString(),next_attempt_at:new Date(Date.now()+Math.min(3600,60*Math.pow(2,job.attempts))*1000).toISOString(),last_error:String(err).slice(0,500) }).eq('id',job.id)
+      const failureStatus = terminal ? 'failed' : 'retry'
+      const failureMessage = String(err).slice(0,500)
+      await admin.from('notification_email_outbox').update({ status:failureStatus,updated_at:new Date().toISOString(),next_attempt_at:new Date(Date.now()+Math.min(3600,60*Math.pow(2,job.attempts))*1000).toISOString(),last_error:failureMessage }).eq('id',job.id)
       failed++
     }
   }

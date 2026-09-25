@@ -410,38 +410,28 @@ describe('Workflow de solicitações em produção', () => {
     expect(page).not.toContain('disabled={isMutating || hasExclusiveReleaseForSong || activeRequest.status');
   });
 
-  it('distingue emissão e envio efetivo da liberação com rastreamento e ações de envio', () => {
+  it('apresenta a entrega automática da liberação com rastreamento e reenvio seguro', () => {
     const requestsTab = readFileSync('src/pages/dashboard/RequestsTab.tsx', 'utf8');
+    const releasesTab = readFileSync('src/pages/dashboard/ReleasesTab.tsx', 'utf8');
+    const deliveryStatus = readFileSync('src/components/dashboard/ReleaseDeliveryStatus.tsx', 'utf8');
     const requestWorkflow = readFileSync('src/lib/requestWorkflow.ts', 'utf8');
     const mySongsTab = readFileSync('src/pages/dashboard/MySongsTab.tsx', 'utf8');
-    const schema = readFileSync('supabase/schema.sql', 'utf8');
-    const migrations = readFileSync('supabase/update_all_migrations.sql', 'utf8');
+    const deliveryMigration = readFileSync('supabase/release_delivery_2026_09_24.sql', 'utf8');
 
     expect(requestsTab).toContain('REQUEST_STATUS_LABELS');
     expect(requestWorkflow).toContain("liberacao_enviada: 'Liberação emitida'");
     expect(mySongsTab).toContain("liberacao_enviada: 'Liberação emitida'");
-    expect(requestsTab).toContain('handleSendReleaseWhatsApp');
-    expect(requestsTab).toContain('handleSendReleaseEmail');
-    expect(requestsTab).toContain('handleMarkReleaseAsSent');
-    expect(requestsTab).toContain('releasePendingSentConfirmation');
-    expect(requestsTab).toContain('Confirme somente depois de concluir o envio');
-    expect(requestsTab).toContain('Abrir mensagem no WhatsApp');
-    expect(requestsTab).toContain('Preparar e-mail');
-
-    const whatsappHandler = requestsTab.slice(
-      requestsTab.indexOf('const handleSendReleaseWhatsApp'),
-      requestsTab.indexOf('const handleSendReleaseEmail')
-    );
-    const emailHandler = requestsTab.slice(
-      requestsTab.indexOf('const handleSendReleaseEmail'),
-      requestsTab.indexOf('const handleCopyReleaseValidationLink')
-    );
-    expect(whatsappHandler).not.toContain('markReleaseSent(');
-    expect(emailHandler).not.toContain('markReleaseSent(');
-    expect(schema).toContain('function public.mark_release_sent');
-    expect(schema).toContain('sent_to_buyer_at timestamptz');
-    expect(migrations).toContain('function public.mark_release_sent');
-    expect(migrations).toContain('sent_to_buyer_at timestamptz');
+    expect(requestsTab).toContain('loadReleaseDeliveryStatuses');
+    expect(requestsTab).toContain('resendReleaseDelivery');
+    expect(requestsTab).toContain('<ReleaseDeliveryStatus');
+    expect(releasesTab).toContain('<ReleaseDeliveryStatus');
+    expect(deliveryStatus).toContain('E-mail aceito pelo provedor');
+    expect(deliveryStatus).toContain('Reenviar entrega por e-mail');
+    expect(requestsTab).not.toContain('handleMarkReleaseAsSent');
+    expect(requestsTab).not.toContain('Ele não é enviado automaticamente pelo sistema');
+    expect(deliveryMigration).toContain('function public.resend_release_delivery');
+    expect(deliveryMigration).toContain("'/entrega/' || v_token");
+    expect(deliveryMigration).toContain('audio_downloads');
   });
 });
 

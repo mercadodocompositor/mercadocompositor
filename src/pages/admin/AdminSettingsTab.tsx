@@ -32,8 +32,6 @@ import {
   FileText,
   BadgeAlert,
   LoaderCircle,
-  ExternalLink,
-  Zap,
   Eye,
   EyeOff
 } from 'lucide-react';
@@ -77,7 +75,8 @@ export const AdminSettingsTab: React.FC = () => {
     pixKey: '',
     maintenanceMode: platformSettings.maintenanceMode,
     systemAnnouncement: platformSettings.systemAnnouncement,
-    requireApprovalForNewSongs: platformSettings.requireApprovalForNewSongs,
+    // Moderação prévia removida: a obra vai ao perfil público ao ser salva.
+    requireApprovalForNewSongs: false,
     termsVersion: platformSettings.termsVersion
   });
 
@@ -136,7 +135,8 @@ export const AdminSettingsTab: React.FC = () => {
       pixKey: '',
       maintenanceMode: platformSettings.maintenanceMode,
       systemAnnouncement: platformSettings.systemAnnouncement,
-      requireApprovalForNewSongs: platformSettings.requireApprovalForNewSongs,
+      // Moderação prévia removida: a obra vai ao perfil público ao ser salva.
+      requireApprovalForNewSongs: false,
       termsVersion: platformSettings.termsVersion
     });
     setRevealedPixKey(null);
@@ -672,62 +672,6 @@ export const AdminSettingsTab: React.FC = () => {
             </div>
           </div>
 
-          {/* SECTION 3: GATEWAY MERCADO PAGO */}
-          <div className="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl space-y-5 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-400" />
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  3. Gateway de Pagamento — Mercado Pago
-                </h3>
-              </div>
-              <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                Ativo & Integrado
-              </span>
-            </div>
-
-            <p className="text-slate-400 text-xs leading-relaxed">
-              O Mercado Pago gerencia as assinaturas com <strong>renovação automática mensal no Cartão de Crédito</strong>, com ativação automática do catálogo e emissão de faturas no painel do compositor. O compositor cancela a renovação pelo próprio painel.
-            </p>
-
-            <div className="space-y-3 pt-1">
-              <div className="space-y-1.5">
-                <label className="text-slate-300 font-semibold block flex items-center justify-between">
-                  <span>URL de Webhook (Notificação IPN / Eventos)</span>
-                  <span className="text-[10px] text-amber-400 font-normal">Cole no painel de Webhooks do Mercado Pago</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={`${(import.meta.env.VITE_SUPABASE_URL || 'https://SEU-PROJETO.supabase.co').replace(/\/$/, '')}/functions/v1/mercadopago-webhook`}
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-white font-mono text-xs select-all focus:outline-none focus:border-amber-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = `${(import.meta.env.VITE_SUPABASE_URL || 'https://SEU-PROJETO.supabase.co').replace(/\/$/, '')}/functions/v1/mercadopago-webhook`;
-                      navigator.clipboard.writeText(url);
-                      toast.success('Copiado!', 'URL do Webhook do Mercado Pago copiada.');
-                    }}
-                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition whitespace-nowrap"
-                  >
-                    Copiar URL
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800/80 space-y-2 text-[11px] text-slate-400">
-                <strong className="text-white block font-semibold">Passo a passo para ativação:</strong>
-                <ol className="list-decimal list-inside space-y-1 text-slate-300">
-                  <li>Acesse o <a href="https://www.mercadopago.com.br/developers/panel" target="_blank" rel="noreferrer" className="text-amber-400 underline inline-flex items-center gap-0.5">Portal de Desenvolvedores do Mercado Pago <ExternalLink className="w-3 h-3" /></a> e crie ou selecione sua aplicação.</li>
-                  <li>Copie o <strong>Access Token</strong> (de Produção ou Testes) e cadastre nas <em>Secrets do Supabase</em> como <code className="text-amber-300 font-mono">MERCADOPAGO_ACCESS_TOKEN</code>.</li>
-                  <li>Em <strong>Webhooks</strong> no Mercado Pago, cadastre a URL acima e marque o evento <strong>Pagamentos (payment)</strong>.</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-
           {/* SECTION 4: SYSTEM ANNOUNCEMENT & SECURITY */}
           <div className="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl space-y-5 shadow-xl">
             <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
@@ -750,19 +694,6 @@ export const AdminSettingsTab: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <label className="flex items-center gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition">
-                  <input
-                    type="checkbox"
-                    checked={formData.requireApprovalForNewSongs}
-                    onChange={e => setFormData({ ...formData, requireApprovalForNewSongs: e.target.checked })}
-                    className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4"
-                  />
-                  <div>
-                    <span className="font-bold text-white block">Exigir Moderação Prévia de Obras</span>
-                    <span className="text-[11px] text-slate-400">Novas músicas ficam em aprovação pendente antes de irem para o ar.</span>
-                  </div>
-                </label>
-
                 <label className="flex items-center gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700 transition">
                   <input
                     type="checkbox"

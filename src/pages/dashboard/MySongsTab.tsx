@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { RequestStatus, Song, SongStatus } from '../../types';
 import { MusicPlayer } from '../../components/dashboard/MusicPlayer';
@@ -24,7 +24,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { APP_URL } from '../../config/appConfig';
-import { getSongToggleStatus, validateSongSubmission } from '../../lib/songWorkflow';
+import { MAX_SUGGESTED_VALUE, getSongToggleStatus } from '../../lib/songWorkflow';
 import { SUBSCRIPTION_STATUS_META } from '../../lib/subscriptionStatus';
 import { loadSongDraft, type SongDraftPayload } from '../../lib/database';
 
@@ -47,18 +47,23 @@ export const MySongsTab: React.FC = () => {
   const { currentUserId, profile, songs, requests, releases, subscription, deleteSong, updateSong, queryMySongs, platformSettings, isAdminAuthenticated } = useApp();
   const subscriptionMeta = SUBSCRIPTION_STATUS_META[subscription.status];
 
+  // ?studio=<id> abre o Player Studio para enviar a música completa daquela obra
+  // (link usado pela emissão do termo, que exige o arquivo completo).
+  const [searchParams] = useSearchParams();
+  const studioSongId = searchParams.get('studio') || undefined;
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
   const [genreFilter, setGenreFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<SongStatusFilter>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'plays' | 'interest' | 'title'>('recent');
   const [copiedSongId, setCopiedSongId] = useState<string | null>(null);
-  const [showPlayer, setShowPlayer] = useState<boolean>(false);
+  const [showPlayer, setShowPlayer] = useState<boolean>(Boolean(studioSongId));
   const [notice, setNotice] = useState<Notice>(null);
   const [pendingSongId, setPendingSongId] = useState<string | null>(null);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const bulkOperationRef = useRef(false);
   const pendingSongIdRef = useRef<string | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
   const deleteDialogRef = useRef<HTMLDivElement | null>(null);
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const [expandedHistorySongId, setExpandedHistorySongId] = useState<string | null>(null);
@@ -185,6 +190,16 @@ export const MySongsTab: React.FC = () => {
     };
   }, [songToDelete]);
 
+  useEffect(() => {
+    const closeMenus = (event: PointerEvent) => {
+      document.querySelectorAll<HTMLDetailsElement>('details[data-song-menu][open]').forEach(menu => {
+        if (!menu.contains(event.target as Node)) menu.open = false;
+      });
+    };
+    document.addEventListener('pointerdown', closeMenus);
+    return () => document.removeEventListener('pointerdown', closeMenus);
+  }, []);
+
   const clearFilters = () => {
     setSearchTerm('');
     setGenreFilter('all');
@@ -220,7 +235,7 @@ export const MySongsTab: React.FC = () => {
 
     const songsToUpdate = nextStatus === 'published'
       ? selectedSongs.filter(song => song.status === 'draft' || song.status === 'rejected')
-      : selectedSongs.filter(song => song.status !== 'draft');
+      : selectedSongs.filter(song => song.status === 'published' || song.status === 'pending_approval');
 
     if (nextStatus === 'published') {
       const blocked = songsToUpdate.filter(song => !getSongReadiness(song).isReady);
@@ -233,6 +248,7 @@ export const MySongsTab: React.FC = () => {
     bulkOperationRef.current = true;
     setIsBulkUpdating(true);
     const failedSongIds: string[] = [];
+    const failureReasons: string[] = [];
     let updatedCount = 0;
 
     try {
@@ -243,9 +259,13 @@ export const MySongsTab: React.FC = () => {
             : 'published'
           : 'draft';
 
-        const success = await updateSong(song.id, { status: targetStatus });
-        if (success) updatedCount += 1;
-        else failedSongIds.push(song.id);
+        try {
+          await updateSong(song.id, { status: targetStatus });
+          updatedCount += 1;
+        } catch (error) {
+          failedSongIds.push(song.id);
+          failureReasons.push(`“${song.title}”: ${error instanceof Error ? error.message : 'falha desconhecida'}`);
+        }
       }
 
       const skippedCount = selectedSongs.length - songsToUpdate.length;
@@ -256,8 +276,8 @@ export const MySongsTab: React.FC = () => {
           : 'publicada(s)';
       const resultParts = [
         `${updatedCount} ${actionDescription}`,
-        skippedCount > 0 ? `${skippedCount} ignorada(s), pois já estavam no status esperado` : '',
-        failedSongIds.length > 0 ? `${failedSongIds.length} com falha` : '',
+        skippedCount > 0 ? `${skippedCount} ignorada(s), pois não se aplicava ao status atual` : '',
+        failedSongIds.length > 0 ? `${failedSongIds.length} com falha (${failureReasons.slice(0, 3).join('; ')}${failureReasons.length > 3 ? '…' : ''})` : '',
       ].filter(Boolean);
 
       setSelectedSongIds(failedSongIds);
@@ -269,9 +289,12 @@ export const MySongsTab: React.FC = () => {
     }
   };
 
+  // Um aviso novo não pode ser apagado pelo temporizador do anterior; erros
+  // ficam mais tempo porque costumam pedir uma ação do compositor.
   const showNotice = (message: string, type: 'success' | 'error' = 'success') => {
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
     setNotice({ message, type });
-    window.setTimeout(() => setNotice(null), 3000);
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), type === 'error' ? 8000 : 3000);
   };
 
   const handleShareSong = async (song: Song) => {
@@ -295,8 +318,12 @@ export const MySongsTab: React.FC = () => {
   const requestDeleteSong = (song: Song) => {
     if (bulkOperationRef.current) return;
     const hasHistory = requests.some(request => request.songId === song.id) || releases.some(release => release.songId === song.id);
+    // Pedidos e termos de liberação dependem da obra; apagá-la levaria o histórico junto.
     if (hasHistory) {
-      showNotice(`“${song.title}” possui solicitações ou liberações e não pode ser excluída. Mova-a para rascunho.`, 'error');
+      const hint = song.status === 'published' || song.status === 'pending_approval'
+        ? 'Mova-a para rascunho para tirá-la do perfil.'
+        : 'Como está em rascunho, ela já não aparece no seu perfil.';
+      showNotice(`“${song.title}” tem pedidos ou liberações registrados e não pode ser excluída, para preservar o histórico dos termos. ${hint}`, 'error');
       return;
     }
     deleteTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -332,14 +359,13 @@ export const MySongsTab: React.FC = () => {
     const newStatus = getSongToggleStatus(song.status, platformSettings.requireApprovalForNewSongs, isAdminAuthenticated);
     setPendingSongId(song.id);
     try {
-      const updated = await updateSong(song.id, { status: newStatus });
-      if (updated) setRefreshVersion(value => value + 1);
-      const successMessage = newStatus === 'published' ? `“${song.title}” foi publicada.`
+      await updateSong(song.id, { status: newStatus });
+      setRefreshVersion(value => value + 1);
+      showNotice(newStatus === 'published' ? `“${song.title}” foi publicada.`
         : newStatus === 'pending_approval' ? `“${song.title}” foi enviada para aprovação.`
-        : `“${song.title}” foi movida para rascunho.`;
-      showNotice(updated ? successMessage : `Não foi possível atualizar “${song.title}”.`, updated ? 'success' : 'error');
-    } catch {
-      showNotice(`Não foi possível atualizar “${song.title}”.`, 'error');
+        : `“${song.title}” foi movida para rascunho.`);
+    } catch (error) {
+      showNotice(`Não foi possível atualizar “${song.title}”: ${error instanceof Error ? error.message : 'tente novamente.'}`, 'error');
     } finally {
       setPendingSongId(null);
     }
@@ -350,45 +376,46 @@ export const MySongsTab: React.FC = () => {
     return year && month && day ? `${day}/${month}/${year}` : date;
   };
 
+  // validateSongSubmission para no primeiro problema; aqui cada requisito é
+  // conferido separadamente para o card mostrar tudo o que falta de uma vez.
   const getSongReadiness = (song: Song) => {
-    const validation = validateSongSubmission({
-      title: song.title,
-      authors: song.authors,
-      lyrics: song.lyrics,
-      dateComposed: song.dateComposed,
-      status: 'published',
-      valueType: song.valueType,
-      suggestedValue: song.suggestedValue,
-      previewAudioUrl: song.previewAudioUrl,
-    });
-    const fieldLabels = {
-      title: 'título',
-      authors: 'autores',
-      lyrics: 'letra',
-      dateComposed: 'data da composição válida',
-      suggestedValue: 'valor sugerido válido',
-      previewAudioUrl: 'prévia pública',
-    } as const;
-    const missing: string[] = [];
-
-    if (!validation.isValid) {
-      missing.push(validation.field ? fieldLabels[validation.field] : 'dados obrigatórios válidos');
-    }
-    if (subscription.status !== 'active') missing.push('assinatura ativa');
+    const today = new Date().toISOString().split('T')[0];
+    const value = Number(song.suggestedValue);
+    const checks: Array<[boolean, string]> = [
+      [Boolean(song.title?.trim()), 'título'],
+      [Boolean(song.authors?.trim()), 'autores'],
+      [Boolean(song.lyrics?.trim()), 'letra'],
+      [!song.dateComposed || song.dateComposed <= today, 'data da composição válida'],
+      [song.valueType !== 'suggested' || (value > 0 && value <= MAX_SUGGESTED_VALUE), 'valor sugerido válido'],
+      [Boolean(song.previewAudioUrl?.trim()), 'prévia pública'],
+    ];
+    const missing = checks.filter(([ok]) => !ok).map(([, label]) => label);
+    const subscriptionInactive = subscription.status !== 'active';
+    if (subscriptionInactive) missing.push('assinatura ativa');
 
     return {
       isReady: missing.length === 0,
       missing,
-      validationMessage: validation.error,
+      onlySubscription: subscriptionInactive && missing.length === 1,
     };
   };
 
   const getSongStatusGuidance = (song: Song) => {
     const readiness = getSongReadiness(song);
+    if (readiness.onlySubscription) {
+      return {
+        title: 'Assinatura inativa',
+        description: song.status === 'published'
+          ? 'O cadastro está completo, mas a música só fica visível no perfil com a assinatura ativa.'
+          : 'O cadastro está completo. Reative a assinatura para publicar a música no perfil.',
+        action: 'Ver assinatura',
+        tone: 'warning' as const,
+      };
+    }
     if (!readiness.isReady) {
       return {
         title: 'Complete o cadastro',
-        description: readiness.validationMessage || `Falta adicionar: ${readiness.missing.join(', ')}.`,
+        description: `Falta adicionar: ${readiness.missing.join(', ')}.`,
         action: 'Resolver pendências',
         tone: 'warning' as const,
       };
@@ -406,7 +433,7 @@ export const MySongsTab: React.FC = () => {
         title: 'Revisão necessária',
         description: song.notes
           ? `Parecer da moderação: "${song.notes}"`
-          : 'Revise os dados e arquivos da música antes de enviá-la novamente para análise.',
+          : 'Revise os dados e arquivos da música antes de publicá-la novamente.',
         action: 'Revisar e reenviar',
         tone: 'danger' as const,
       };
@@ -431,6 +458,10 @@ export const MySongsTab: React.FC = () => {
 
   const handlePrimarySongAction = (song: Song) => {
     const readiness = getSongReadiness(song);
+    if (readiness.onlySubscription) {
+      navigate('/dashboard/assinatura');
+      return;
+    }
     if (song.status === 'published') {
       navigate(`/compositor/${profile.username}?musica=${song.id}`);
       return;
@@ -507,23 +538,26 @@ export const MySongsTab: React.FC = () => {
   const blockedSongs = useMemo(
     () => pageSongs
       .map(song => ({ song, readiness: getSongReadiness(song) }))
-      .filter(({ readiness }) => !readiness.isReady)
+      .filter(({ readiness }) => !readiness.isReady && !readiness.onlySubscription)
       .slice(0, 4),
     [pageSongs, subscription.status]
   );
 
   const actionableCount = useMemo(
-    () => pageSongs.filter(song => song.status === 'pending_approval' || song.status === 'rejected' || !getSongReadiness(song).isReady).length,
+    () => pageSongs.filter(song => {
+      const readiness = getSongReadiness(song);
+      return song.status === 'pending_approval' || song.status === 'rejected' || (!readiness.isReady && !readiness.onlySubscription);
+    }).length,
     [pageSongs, subscription.status]
   );
 
   const missingCriticalCount = useMemo(
-    () => pageSongs.filter(song => !getSongReadiness(song).isReady).length,
+    () => pageSongs.filter(song => { const r = getSongReadiness(song); return !r.isReady && !r.onlySubscription; }).length,
     [pageSongs, subscription.status]
   );
 
-  const pendingApprovalCount = useMemo(
-    () => pageSongs.filter(song => song.status === 'pending_approval').length,
+  const rejectedCount = useMemo(
+    () => pageSongs.filter(song => song.status === 'rejected').length,
     [pageSongs]
   );
 
@@ -585,7 +619,7 @@ export const MySongsTab: React.FC = () => {
         {[
           ['Publicadas', catalogStats.published.toLocaleString('pt-BR')],
           ['Rascunhos', catalogStats.drafts.toLocaleString('pt-BR')],
-          ['Em análise', catalogStats.pending.toLocaleString('pt-BR')],
+          ['Interessados', catalogStats.interests.toLocaleString('pt-BR')],
           ['Reproduções', catalogStats.plays.toLocaleString('pt-BR')],
           ['Prontas nesta página', readyToPublishCount.toLocaleString('pt-BR')]
         ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3"><span className="block text-[11px] uppercase tracking-wider text-slate-500">{label}</span><strong className="mt-1 block text-xl text-white">{value}</strong></div>)}
@@ -594,7 +628,7 @@ export const MySongsTab: React.FC = () => {
         <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <strong className="text-sm text-amber-100">Cadastro não concluído: {unfinishedForm.title?.trim() || 'Sem título'}</strong>
-            <p className="mt-1 text-xs text-amber-100/80">O formulário é recuperável, mas esta música ainda não foi salva no catálogo. Por isso não entra em “Rascunhos” nem em “Em análise”. O áudio pode precisar ser selecionado novamente.</p>
+            <p className="mt-1 text-xs text-amber-100/80">O formulário é recuperável, mas esta música ainda não foi salva no catálogo. Por isso ainda não aparece em “Rascunhos”. O áudio pode precisar ser selecionado novamente.</p>
           </div>
           <button type="button" onClick={() => navigate('/dashboard/musicas/nova')} className="shrink-0 rounded-xl bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-amber-300">Continuar cadastro</button>
         </div>
@@ -625,9 +659,9 @@ export const MySongsTab: React.FC = () => {
           </div>
 
           <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-3">
-            <p className="text-[10px] uppercase tracking-wide text-sky-300">Em análise</p>
-            <strong className="mt-2 block text-2xl text-white">{pendingApprovalCount}</strong>
-            <span className="text-xs text-slate-400">aguardando revisão nesta página</span>
+            <p className="text-[10px] uppercase tracking-wide text-sky-300">Tiradas do ar</p>
+            <strong className="mt-2 block text-2xl text-white">{rejectedCount}</strong>
+            <span className="text-xs text-slate-400">rejeitadas pela moderação nesta página</span>
           </div>
         </div>
       </div>
@@ -650,10 +684,10 @@ export const MySongsTab: React.FC = () => {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-amber-400 px-3 py-1 text-xs font-black text-slate-950 shadow-md uppercase tracking-wider">
-                {pageSongs.filter(song => song.status === 'pending_approval').length} em análise
+                {rejectedCount} tiradas do ar
               </span>
               <span className="rounded-full bg-rose-500 px-3 py-1 text-xs font-black text-white shadow-md uppercase tracking-wider">
-                {pageSongs.filter(song => !getSongReadiness(song).isReady).length} sem dados críticos
+                {missingCriticalCount} sem dados críticos
               </span>
             </div>
           </div>
@@ -704,7 +738,7 @@ export const MySongsTab: React.FC = () => {
       {notice && (
         <div
           role={notice.type === 'error' ? 'alert' : 'status'}
-          className={`rounded-2xl border-2 p-4 text-sm flex items-center justify-between gap-4 shadow-xl ${
+          className={`fixed inset-x-4 bottom-4 z-[60] mx-auto max-w-xl rounded-2xl border-2 p-4 text-sm flex items-center justify-between gap-4 shadow-xl ${
             notice.type === 'error'
               ? 'bg-slate-900 border-red-500 text-white'
               : 'bg-slate-900 border-emerald-500 text-white'
@@ -726,7 +760,7 @@ export const MySongsTab: React.FC = () => {
             </div>
             <div>
               <span className={`text-xs font-black uppercase tracking-wider block ${notice.type === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
-                {notice.type === 'error' ? 'Não foi possível publicar' : 'Sucesso'}
+                {notice.type === 'error' ? 'Atenção' : 'Sucesso'}
               </span>
               <p className="text-sm md:text-base font-black text-white mt-0.5">
                 {notice.message}
@@ -746,7 +780,7 @@ export const MySongsTab: React.FC = () => {
 
       {/* MUSIC PLAYER STUDIO SECTION */}
       {showPlayer && (
-        <MusicPlayer onCatalogChange={() => setRefreshVersion(value => value + 1)} />
+        <MusicPlayer initialSongId={studioSongId} initialUploadTargetSongId={studioSongId} onCatalogChange={() => setRefreshVersion(value => value + 1)} />
       )}
 
       {/* Filters and Controls */}
@@ -844,7 +878,6 @@ export const MySongsTab: React.FC = () => {
               <option value="all">Todos os Status</option>
               <option value="pending_action">Pendências</option>
               <option value="published">Publicada</option>
-              <option value="pending_approval">Em análise</option>
               <option value="rejected">Rejeitada</option>
               <option value="draft">Rascunho</option>
             </select>
@@ -1073,11 +1106,11 @@ export const MySongsTab: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-end border-t border-slate-800 pt-3 text-xs">
-                  <details className="group relative">
+                  <details data-song-menu className="group relative">
                     <summary className="min-h-10 cursor-pointer list-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 font-bold text-slate-200 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
                       Mais opções
                     </summary>
-                    <div className="absolute bottom-12 right-0 z-20 w-56 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                    <div onClick={event => { if ((event.target as HTMLElement).closest('button')) (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open'); }} className="absolute bottom-12 right-0 z-20 w-56 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
                       <button type="button" onClick={() => navigate(`/dashboard/musicas/${song.id}/editar`)} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left font-semibold text-slate-200 hover:bg-slate-800"><Edit3 className="h-4 w-4" />Editar música</button>
                       <button type="button" onClick={() => navigate(`/compositor/${profile.username}?musica=${song.id}`)} disabled={song.status !== 'published'} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left font-semibold text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"><Eye className="h-4 w-4" />Ver no perfil</button>
                       <button type="button" onClick={() => handleShareSong(song)} disabled={pendingSongId === song.id || song.status !== 'published'} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left font-semibold text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">{copiedSongId === song.id ? <Check className="h-4 w-4 text-emerald-400" /> : <Share2 className="h-4 w-4" />}{copiedSongId === song.id ? 'Link copiado' : 'Compartilhar'}</button>

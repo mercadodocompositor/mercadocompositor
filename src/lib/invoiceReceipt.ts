@@ -87,8 +87,8 @@ export async function downloadInvoiceReceipt(input: InvoiceReceiptInput): Promis
     ['Assinante', input.composerName || '—'],
     ['E-mail', input.composerEmail || '—'],
     ['Descrição', `Assinatura mensal — ${planName}`],
-    ['Forma de pagamento', `${paymentMethod} via Mercado Pago`],
-    ['Referência Mercado Pago', invoice.id],
+    ['Forma de pagamento', paymentMethod],
+    ['Referência da transação', invoice.id],
     ['Situação', STATUS_LABEL[invoice.status] || invoice.status],
   ];
 
