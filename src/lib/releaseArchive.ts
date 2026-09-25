@@ -3,7 +3,7 @@ import { getReleasePdfBlob } from './pdfGenerator';
 import { supabase } from './supabase';
 import { uploadCurrentUserFile } from './database';
 
-export const RELEASE_TEMPLATE_VERSION = 'release-v2';
+export const RELEASE_TEMPLATE_VERSION = 'release-v3';
 
 const sha256 = async (blob: Blob) => {
   const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());

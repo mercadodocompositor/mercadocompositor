@@ -213,6 +213,7 @@ export const ValidarDocumentoPage: React.FC = () => {
                         <span className="text-slate-400 block text-[10px] uppercase font-semibold">Obra Musical</span>
                         <strong className="text-base text-white">“{matchedDocument.songTitle}”</strong>
                         <p className="text-slate-400 mt-0.5">Autoria: {matchedDocument.authors}</p>
+                        {matchedDocument.iswc && <p className="text-slate-400">ISWC: {matchedDocument.iswc}</p>}
                       </div>
                     </div>
 
@@ -226,8 +227,11 @@ export const ValidarDocumentoPage: React.FC = () => {
                       </div>
 
                       <div className="space-y-1">
-                        <span className="text-slate-400 block text-[10px] uppercase font-semibold">Intérprete (Outorgado)</span>
+                        <span className="text-slate-400 block text-[10px] uppercase font-semibold">Outorgado (Intérprete / Produtor)</span>
                         <p className="text-white font-bold">{matchedDocument.buyerName}</p>
+                        {matchedDocument.interpreterName && matchedDocument.interpreterName !== matchedDocument.buyerName && (
+                          <p className="text-slate-300">Intérprete: {matchedDocument.interpreterName}</p>
+                        )}
                          <p className="text-slate-400">Doc: {maskDocument(matchedDocument.buyerDocumentLast4)}</p>
                         <p className="text-slate-400">{matchedDocument.buyerCityState}</p>
                       </div>

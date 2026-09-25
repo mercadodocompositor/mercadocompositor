@@ -51,7 +51,7 @@ const DEMO_TRACKS: DemoTrack[] = [
   {
     id: '3',
     title: 'Sem Medo de Amar',
-    genre: 'Forró / Piseiro',
+    genre: 'Forró',
     composer: 'Carlos Santana',
     city: 'Fortaleza - CE',
     recordedOffer: 'R$ 5.200,00',

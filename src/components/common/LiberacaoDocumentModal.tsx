@@ -3,6 +3,7 @@ import { ReleaseDocument } from '../../types';
 import { X, FileCheck, Copy, CheckCircle, ShieldCheck, Printer, Phone, Download, Loader2, ExternalLink } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
 import { downloadReleaseDocument } from '../../lib/releaseArchive';
+import { formatCpfCnpj, RELEASE_LEGAL_CLAUSES } from '../../lib/pdfGenerator';
 import { normalizeBrazilianWhatsapp } from '../../lib/contact';
 import { useModalFocus } from '../../hooks/useModalFocus';
 import { ModalPortal } from './ModalPortal';
@@ -32,6 +33,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const validationUrl = `${window.location.origin}/validar-documento?codigo=${document.documentCode}`;
   const dialogRef = useModalFocus<HTMLDivElement>(true, onClose);
+  const interpreterName = document.interpreterName?.trim() || document.buyerName;
 
   const handleDownloadPdf = async () => {
     try {
@@ -56,7 +58,8 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
       `Código de Autenticidade: ${document.documentCode}`,
       `Obra Musical: "${document.songTitle}"`,
       `Compositor (Outorgante): ${document.composerName}`,
-      `Intérprete (Outorgado): ${document.buyerName}`,
+      `Responsável (Outorgado): ${document.buyerName}`,
+      `Intérprete: ${interpreterName}`,
       `Tipo de Autorização: ${document.releaseType}`,
       `Valor Acordado: R$ ${document.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
       `Data de Emissão: ${formatDate(document.issueDate)}`,
@@ -92,12 +95,6 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   const formatDate = (date: string) => {
     const [year, month, day] = date.slice(0, 10).split('-');
     return year && month && day ? `${day}/${month}/${year}` : date;
-  };
-
-  const maskDocument = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length <= 4) return '••••';
-    return `${'•'.repeat(Math.max(3, digits.length - 4))}${digits.slice(-4)}`;
   };
 
   return (
@@ -186,7 +183,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               </span>
               <p className="font-semibold text-white print:text-slate-900">{document.composerName}</p>
               <p className="text-slate-400 print:text-slate-600">
-                CPF: <span className="print:hidden">{maskDocument(document.composerCpf)}</span><span className="hidden print:inline">{document.composerCpf}</span>
+                CPF: {formatCpfCnpj(document.composerCpf)}
               </p>
               <p className="text-slate-400 print:text-slate-600">Cidade/UF: {document.composerCityState}</p>
             </div>
@@ -195,10 +192,9 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               <span className="font-bold uppercase text-amber-400 print:text-amber-700 block text-[10px]">
                 OUTORGADO (INTÉRPRETE / PRODUTOR):
               </span>
-              <p className="font-semibold text-white print:text-slate-900">{document.buyerName}</p>
-              <p className="text-slate-400 print:text-slate-600">
-                Documento: <span className="print:hidden">{maskDocument(document.buyerDocument)}</span><span className="hidden print:inline">{document.buyerDocument}</span>
-              </p>
+              <p className="text-slate-300 print:text-slate-700">Nome do Responsável: <span className="font-semibold text-white print:text-slate-900">{document.buyerName}</span></p>
+              <p className="text-slate-300 print:text-slate-700">Intérprete: <span className="font-semibold text-white print:text-slate-900">{interpreterName}</span></p>
+              <p className="text-slate-400 print:text-slate-600">CPF / CNPJ: {formatCpfCnpj(document.buyerDocument)}</p>
               <p className="text-slate-400 print:text-slate-600">Cidade/UF: {document.buyerCityState}</p>
             </div>
           </div>
@@ -209,6 +205,8 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
               <span className="text-slate-400 block text-[10px] uppercase font-bold">OBRA MUSICAL OBJETO DA AUTORIZAÇÃO:</span>
               <p className="text-base font-bold text-white print:text-slate-900">“{document.songTitle}”</p>
               <p className="text-slate-300 print:text-slate-700">Autoria / Compositores: {document.authors}</p>
+              <p className="text-slate-300 print:text-slate-700">Código ISWC: {document.iswc?.trim() || 'Não informado'}</p>
+              <p className="text-slate-300 print:text-slate-700">Intérprete: {interpreterName}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -240,6 +238,15 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
                 </p>
               </div>
             )}
+
+            <div>
+              <span className="font-semibold text-slate-300 print:text-slate-800 block mb-1">Declaração de Eficácia e Validade Jurídica:</span>
+              <div className="space-y-1.5">
+                {RELEASE_LEGAL_CLAUSES.map(clause => (
+                  <p key={clause} className="text-slate-300 print:text-slate-700">{clause}</p>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Signature and Digital Validation Box */}

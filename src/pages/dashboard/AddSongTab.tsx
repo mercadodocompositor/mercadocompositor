@@ -41,7 +41,7 @@ const editDraftDiffersFromSong = (draft: Partial<SongDraftPayload>, song: Song) 
   const fields: Array<[unknown, unknown]> = [
     [draft.title, song.title], [draft.genre, song.genre], [draft.subgenre, song.subgenre],
     [draft.authors, song.authors], [draft.dateComposed, song.dateComposed], [draft.lyrics, song.lyrics],
-    [draft.registryCode, song.registryCode], [draft.notes, song.notes]
+    [draft.registryCode, song.registryCode], [draft.iswc, song.iswc], [draft.notes, song.notes]
   ];
   if (fields.some(([a, b]) => a !== undefined && text(a) !== text(b))) return true;
   if (draft.valueType !== undefined && draft.valueType !== song.valueType) return true;
@@ -83,6 +83,7 @@ export const AddSongTab: React.FC = () => {
   const [dateComposed, setDateComposed] = useState(existingSong?.dateComposed || new Date().toISOString().split('T')[0]);
   const [lyrics, setLyrics] = useState(existingSong?.lyrics || '');
   const [registryCode, setRegistryCode] = useState(existingSong?.registryCode || '');
+  const [iswc, setIswc] = useState(existingSong?.iswc || '');
   const [notes, setNotes] = useState(existingSong?.notes || '');
   const [status, setStatus] = useState<SongStatus>(existingSong?.status || 'draft');
   const [isAvailableForRelease, setIsAvailableForRelease] = useState(existingSong?.isAvailableForRelease ?? true);
@@ -228,6 +229,7 @@ export const AddSongTab: React.FC = () => {
     setDateComposed(existingSong.dateComposed || new Date().toISOString().split('T')[0]);
     setLyrics(existingSong.lyrics || '');
     setRegistryCode(existingSong.registryCode || '');
+    setIswc(existingSong.iswc || '');
     setNotes(existingSong.notes || '');
     setStatus(existingSong.status || 'draft');
     setIsAvailableForRelease(existingSong.isAvailableForRelease ?? true);
@@ -286,6 +288,7 @@ export const AddSongTab: React.FC = () => {
         if (typeof parsedDraft.dateComposed === 'string') setDateComposed(parsedDraft.dateComposed);
         if (typeof parsedDraft.lyrics === 'string') setLyrics(parsedDraft.lyrics);
         if (typeof parsedDraft.registryCode === 'string') setRegistryCode(parsedDraft.registryCode);
+        if (typeof parsedDraft.iswc === 'string') setIswc(parsedDraft.iswc);
         if (typeof parsedDraft.notes === 'string') setNotes(parsedDraft.notes);
         // song_drafts guarda somente o formulário; não comprova que a obra foi enviada.
         // Um status antigo salvo após uma tentativa falha não pode virar selo público.
@@ -334,6 +337,7 @@ export const AddSongTab: React.FC = () => {
       dateComposed,
       lyrics,
       registryCode,
+      iswc,
       notes,
       status: existingSong?.status || 'draft',
       isAvailableForRelease,
@@ -398,7 +402,7 @@ export const AddSongTab: React.FC = () => {
       window.clearTimeout(timeoutId);
       if (draftSaveTimeoutRef.current === timeoutId) draftSaveTimeoutRef.current = null;
     };
-  }, [authors, coverFileName, coverUrl, currentUserId, dateComposed, draftKey, existingSong?.status, genre, isAvailableForRelease, isDraftHydrated, legacyDraftStorageKey, lyrics, notes, previewFileName, previewObjectUrl, recoveredPreviewMediaId, registryCode, subgenre, suggestedValue, title, valueType]);
+  }, [authors, coverFileName, coverUrl, currentUserId, dateComposed, draftKey, existingSong?.status, genre, isAvailableForRelease, isDraftHydrated, legacyDraftStorageKey, lyrics, notes, previewFileName, previewObjectUrl, recoveredPreviewMediaId, registryCode, iswc, subgenre, suggestedValue, title, valueType]);
 
   // Os botões de envio ficam no fim do formulário e o aviso, no topo: sem
   // rolar até ele, uma falha parecia um clique que não fez nada.
@@ -743,6 +747,7 @@ export const AddSongTab: React.FC = () => {
         lyrics: lyrics || '',
         coverUrl: storedCover,
         registryCode: registryCode || '',
+        iswc: iswc.trim(),
         notes: notes || '',
         status: effectiveStatus,
         isAvailableForRelease,
@@ -1321,7 +1326,7 @@ export const AddSongTab: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Registro ou Identificação da Obra (ECAD / EDA / ISRC)
+                Registro ou Identificação da Obra (ECAD / EDA / ISWC)
               </label>
               <input
                 type="text"
@@ -1332,6 +1337,21 @@ export const AddSongTab: React.FC = () => {
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
               />
               <span className="text-[11px] text-slate-500 mt-1 block">Opcional. Se a obra for inédita e ainda não tiver código de registro, deixe em branco.</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Código ISWC
+              </label>
+              <input
+                type="text"
+                value={iswc}
+                maxLength={40}
+                onChange={e => setIswc(e.target.value.toUpperCase())}
+                placeholder="Ex: T-123.456.789-0"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+              />
+              <span className="text-[11px] text-slate-500 mt-1 block">Opcional. Aparece no termo de liberação da obra.</span>
             </div>
 
             <div>

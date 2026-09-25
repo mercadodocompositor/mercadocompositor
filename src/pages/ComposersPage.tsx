@@ -5,6 +5,7 @@ import { Footer } from '../components/common/Footer';
 import { getPublicComposers } from '../lib/database';
 import { getSafePublicBio } from '../lib/profileSanitizer';
 import type { FeaturedComposer } from '../types';
+import { MUSIC_GENRES, normalizeGenreList } from '../config/musicGenres';
 import { 
   Search, 
   X, 
@@ -18,23 +19,7 @@ import {
   Users
 } from 'lucide-react';
 
-const GENRE_FILTERS = [
-  'Todos',
-  'Sertanejo',
-  'Bailão',
-  'Bandas de Baile',
-  'Forró / Piseiro',
-  'Arrocha / Brega',
-  'Samba / Pagode',
-  'Gospel / Cristão',
-  'MPB',
-  'Pop',
-  'Trap / Rap / Hip-Hop',
-  'Funk',
-  'Rock / Reggae',
-  'Música Regional / Gaúcha',
-  'Romântico / Seresta'
-];
+const GENRE_FILTERS = ['Todos', ...MUSIC_GENRES.filter(genre => genre !== 'Outro')];
 
 export const ComposersPage: React.FC = () => {
   const [composers, setComposers] = useState<FeaturedComposer[]>([]);
@@ -68,10 +53,13 @@ export const ComposersPage: React.FC = () => {
     let result = composers.filter(comp => {
       // Filtro de gênero
       if (selectedGenre !== 'Todos') {
-        const matchesGenre = comp.genres?.some(g => 
-          g.toLowerCase().includes(selectedGenre.toLowerCase()) || 
-          selectedGenre.toLowerCase().includes(g.toLowerCase())
-        );
+        // Igualdade ou prefixo de palavra: "Sertanejo" encontra "Sertanejo Universitário",
+        // mas "Rap" não encontra "Trap".
+        const selected = selectedGenre.toLowerCase();
+        const matchesGenre = normalizeGenreList(comp.genres || []).some(g => {
+          const genre = g.toLowerCase();
+          return genre === selected || genre.startsWith(`${selected} `);
+        });
         if (!matchesGenre) return false;
       }
       // Filtro de busca textual

@@ -61,7 +61,7 @@ create table if not exists public.songs (
   id uuid primary key default gen_random_uuid(), composer_id uuid not null references public.profiles(user_id) on delete cascade,
   title text not null, genre text not null, subgenre text, authors text not null,
   date_composed date not null, date_registered date not null default current_date, lyrics text not null,
-  cover_url text not null default '', registry_code text, notes text,
+  cover_url text not null default '', registry_code text, iswc text check(iswc is null or length(iswc) <= 40), notes text,
   status text not null default 'draft' check(status in ('draft','pending_approval','published','rejected')),
   is_available_for_release boolean not null default true,
   value_type text not null default 'consultation' check(value_type in ('suggested','consultation')),
@@ -100,6 +100,9 @@ create table if not exists public.releases (
   template_version text, document_archived_at timestamptz, sent_to_buyer_at timestamptz, created_at timestamptz not null default now()
 );
 alter table public.releases add column if not exists expires_at date;
+alter table public.releases add column if not exists interpreter_name text;
+alter table public.releases add column if not exists iswc text;
+alter table public.songs add column if not exists iswc text;
 create table if not exists public.user_roles (
   user_id uuid not null references auth.users(id) on delete cascade,
   role text not null check(role in ('admin','moderator','financial','composer')),
@@ -285,7 +288,7 @@ grant update (
 revoke insert, update on table public.songs from anon, authenticated;
 grant insert (
   id, composer_id, title, genre, subgenre, authors, date_composed,
-  date_registered, lyrics, cover_url, registry_code, notes, status,
+  date_registered, lyrics, cover_url, registry_code, iswc, notes, status,
   is_available_for_release, value_type, suggested_value, summary,
   original_audio_path, preview_audio_url, created_at, updated_at
 ) on table public.songs to authenticated;
@@ -540,7 +543,7 @@ revoke execute on function public.update_interest_request(uuid, text, numeric, t
 grant execute on function public.update_interest_request(uuid, text, numeric, text, text, timestamptz, boolean) to authenticated;
 grant update (
   title, genre, subgenre, authors, date_composed, date_registered, lyrics,
-  cover_url, registry_code, notes, status, is_available_for_release,
+  cover_url, registry_code, iswc, notes, status, is_available_for_release,
   value_type, suggested_value, summary, original_audio_path,
   preview_audio_url, updated_at
 ) on table public.songs to authenticated;
@@ -1051,10 +1054,12 @@ begin
   return jsonb_build_object(
     'songTitle', release_row.song_title,
     'authors', release_row.authors,
+    'iswc', coalesce(release_row.iswc, ''),
     'composerName', release_row.composer_name,
     'composerDocumentLast4', right(regexp_replace(release_row.composer_cpf, '[^0-9]', '', 'g'), 4),
     'composerCityState', release_row.composer_city_state,
     'buyerName', release_row.buyer_name,
+    'interpreterName', coalesce(release_row.interpreter_name, ''),
     'buyerDocumentLast4', right(regexp_replace(release_row.buyer_document, '[^0-9]', '', 'g'), 4),
     'buyerCityState', release_row.buyer_city_state,
     'authorizedPurpose', release_row.authorized_purpose,
@@ -1068,6 +1073,26 @@ $$;
 
 revoke execute on function public.validate_release_document(text) from public;
 grant execute on function public.validate_release_document(text) to anon, authenticated;
+
+-- Intérprete (nome artístico da solicitação) e ISWC da obra congelados na emissão.
+create or replace function public.fill_release_interpreter_iswc() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if nullif(btrim(coalesce(new.interpreter_name, '')), '') is null then
+    select coalesce(nullif(btrim(buyer_stage_name), ''), new.buyer_name)
+    into new.interpreter_name
+    from public.interest_requests where id = new.request_id;
+  end if;
+  if nullif(btrim(coalesce(new.iswc, '')), '') is null then
+    select nullif(btrim(iswc), '') into new.iswc from public.songs where id = new.song_id;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fill_release_interpreter_iswc() from public, anon, authenticated;
+drop trigger if exists fill_release_interpreter_iswc on public.releases;
+create trigger fill_release_interpreter_iswc
+before insert on public.releases
+for each row execute function public.fill_release_interpreter_iswc();
 
 create or replace function public.consume_rpc_rate_limit(
   p_scope text,

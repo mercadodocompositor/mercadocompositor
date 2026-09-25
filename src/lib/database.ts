@@ -6,6 +6,7 @@ import type {
   AccountDeletionRequest, DeletionRequestStatus, UserNotification, NotificationType, RequestHistoryItem
 } from '../types';
 import { supabase } from './supabase';
+import { normalizeGenre, normalizeGenreList } from '../config/musicGenres';
 import { captureException } from './monitoring';
 import {
   STORAGE_BUCKETS,
@@ -19,13 +20,13 @@ import { evaluatePlanCapacity, type PlanCapacityInfo } from './planCapacity';
 import { DEFAULT_SONG_COVER_URL } from '../config/media';
 
 const camelSong = (r: any): Song => ({
-  id: r.id, composerId: r.composer_id, title: r.title || 'Sem título', genre: r.genre || 'Sertanejo',
+  id: r.id, composerId: r.composer_id, title: r.title || 'Sem título', genre: normalizeGenre(r.genre || 'Sertanejo', r.subgenre || ''),
   subgenre: r.subgenre || '', authors: r.authors || '', dateComposed: r.date_composed || '',
   dateRegistered: r.date_registered || '', lyrics: r.lyrics || '', originalAudioPath: r.original_audio_path || null,
   originalMediaId: r.original_media_id || null, previewAudioUrl: r.preview_audio_url || null,
   previewMediaId: r.preview_media_id || null,
   coverUrl: r.cover_url || DEFAULT_SONG_COVER_URL,
-  registryCode: r.registry_code || '', notes: r.notes || '', status: r.status || 'draft',
+  registryCode: r.registry_code || '', iswc: r.iswc || '', notes: r.notes || '', status: r.status || 'draft',
   isAvailableForRelease: r.is_available_for_release ?? true, valueType: r.value_type || 'suggested',
   suggestedValue: r.suggested_value == null ? undefined : Number(r.suggested_value),
   playCount: Number(r.play_count || 0), interestedCount: Number(r.interested_count || 0), summary: r.summary || '',
@@ -80,7 +81,7 @@ export async function loadReleaseMetrics(params: Pick<ReleasePageQuery, 'search'
 }
 export type SongDraftPayload = {
   title: string; genre: string; subgenre: string; authors: string; dateComposed: string;
-  lyrics: string; registryCode: string; notes: string; status: SongStatus;
+  lyrics: string; registryCode: string; iswc?: string; notes: string; status: SongStatus;
   isAvailableForRelease: boolean; valueType: ValueType; suggestedValue: number | '';
   coverUrl: string;
   previewAudioUrl?: string | null;
@@ -115,6 +116,7 @@ const signOriginalAudio = async (song: Song) => {
 };
 const camelRelease = (r: any): ReleaseDocument => ({
   id: r.id, requestId: r.request_id, songId: r.song_id, songTitle: r.song_title || '', authors: r.authors || '',
+  iswc: r.iswc || '', interpreterName: r.interpreter_name || '',
   composerName: r.composer_name || '', composerCpf: r.composer_cpf || '', composerCityState: r.composer_city_state || '',
   buyerName: r.buyer_name || '', buyerDocument: r.buyer_document || '', buyerCityState: r.buyer_city_state || '',
   agreedValue: Number(r.agreed_value || 0), authorizedPurpose: r.authorized_purpose || '',
@@ -223,6 +225,7 @@ const dbSong = (s: Partial<Song>) => {
   if (s.lyrics !== undefined) payload.lyrics = s.lyrics;
   if (s.coverUrl !== undefined) payload.cover_url = s.coverUrl;
   if (s.registryCode !== undefined) payload.registry_code = s.registryCode;
+  if (s.iswc !== undefined) payload.iswc = s.iswc;
   if (s.notes !== undefined) payload.notes = s.notes;
   if (s.status !== undefined) payload.status = s.status;
   if (s.isAvailableForRelease !== undefined) payload.is_available_for_release = s.isAvailableForRelease;
@@ -261,7 +264,7 @@ export async function loadPrivateData(userId: string) {
   }
   const p:any=pub.data, q:any=priv.data||{}, sub:any=subscription.data||{}, preferences:any=prefs?.data?.preferences||{};
   const profile:ComposerProfile={username:p.username,name:p.name,stageName:p.stage_name,email:q.email,whatsapp:q.whatsapp,cpf:q.cpf,
-    city:p.city,state:p.state,bio:p.bio,experienceYears:p.experience_years,genres:p.genres||[],
+    city:p.city,state:p.state,bio:p.bio,experienceYears:p.experience_years,genres:normalizeGenreList(p.genres||[],5),
     society:p.society || preferences.society || '',
     spotify:p.spotify || preferences.spotify || '',
     pixKey: q.pix_key || preferences.pixKey || '',
@@ -598,11 +601,16 @@ export async function issueReleaseRequest(requestId:string,data:Pick<ReleaseDocu
     p_expected_updated_at:expectedUpdatedAt
   };
   const result=await supabase.rpc('issue_release',{...baseParams,p_close_song:closeSong});
-  if(!result.error) return result.data as ReleaseDocument;
+  if(!result.error){
+    const issued=result.data as ReleaseDocument;
+    // O RPC não devolve intérprete/ISWC (preenchidos por trigger na emissão); sem eles o PDF arquivado sairia incompleto.
+    const{data:extra}=await supabase.from('releases').select('interpreter_name,iswc').eq('id',issued.id).maybeSingle();
+    return {...issued,interpreterName:extra?.interpreter_name||'',iswc:extra?.iswc||''};
+  }
   if(result.error.code==='PGRST202') throw new Error('A emissão exige a migração request_workflow_hardening.sql no Supabase.');
   throw result.error;
 }
-export type PublicReleaseValidation={songTitle:string;authors:string;composerName:string;composerDocumentLast4:string;composerCityState:string;buyerName:string;buyerDocumentLast4:string;buyerCityState:string;authorizedPurpose:string;releaseType:string;issueDate:string;digitalSignature:string;documentCode:string};
+export type PublicReleaseValidation={songTitle:string;authors:string;iswc?:string;interpreterName?:string;composerName:string;composerDocumentLast4:string;composerCityState:string;buyerName:string;buyerDocumentLast4:string;buyerCityState:string;authorizedPurpose:string;releaseType:string;issueDate:string;digitalSignature:string;documentCode:string};
 export async function validateReleaseDocument(documentCode:string):Promise<PublicReleaseValidation|null>{
   if(!supabase)throw new Error('Supabase não configurado.');
   const clean = documentCode.trim().toUpperCase();

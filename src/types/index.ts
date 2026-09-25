@@ -21,6 +21,8 @@ export interface Song {
   previewMediaId?: string | null;
   coverUrl: string;
   registryCode?: string;
+  /** International Standard Musical Work Code (ex.: T-123.456.789-0). */
+  iswc?: string;
   notes?: string;
   status: SongStatus;
   isAvailableForRelease: boolean;
@@ -90,10 +92,14 @@ export interface ReleaseDocument {
   songId: string;
   songTitle: string;
   authors: string;
+  iswc?: string;
   composerName: string;
   composerCpf: string;
   composerCityState: string;
+  /** Responsável pela liberação: titular do CPF/CNPJ. */
   buyerName: string;
+  /** Quem grava a obra (pode ser banda/dupla); por padrão, o nome artístico da solicitação. */
+  interpreterName?: string;
   buyerDocument: string;
   buyerCityState: string;
   agreedValue: number;
