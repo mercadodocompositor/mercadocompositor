@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, ShieldAlert, Lock, Music2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { PREVIEW_MAX_SECONDS } from '../../config/media';
 
 interface AudioPlayerProps {
   songId: string;
   songTitle: string;
   audioUrl?: string;
   onInterestClick?: () => void;
-  maxDurationSeconds?: number; // Default 60 seconds as requested
+  maxDurationSeconds?: number; // Padrão: PREVIEW_MAX_SECONDS
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -15,7 +16,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   songTitle,
   audioUrl,
   onInterestClick,
-  maxDurationSeconds = 60
+  maxDurationSeconds = PREVIEW_MAX_SECONDS
 }) => {
   const { incrementPlayCount } = useApp();
   const [isPlaying, setIsPlaying] = useState(false);
@@ -141,7 +142,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <span className="truncate text-slate-200">{songTitle}</span>
         </div>
         <span className="bg-slate-800 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-semibold shrink-0">
-          {hasAudioSource ? 'Prévia (60s)' : 'Indisponível'}
+          {hasAudioSource ? `Prévia (${maxDurationSeconds}s)` : 'Indisponível'}
         </span>
       </div>
 
@@ -239,7 +240,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold text-amber-300">
-              Prévia encerrada (limite de 60 segundos atingido).
+              Prévia encerrada (limite de {maxDurationSeconds} segundos atingido).
             </p>
             <p className="text-slate-300 leading-relaxed text-[11px]">
               Entre em contato com o compositor para solicitar a liberação desta obra e ouvir a guia completa.

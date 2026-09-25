@@ -1,4 +1,5 @@
 import { captureException } from './monitoring';
+import { PREVIEW_MAX_SECONDS } from '../config/media';
 
 /**
  * Constantes canônicas de todos os buckets do Supabase Storage utilizados pela plataforma.
@@ -65,7 +66,7 @@ export const BUCKET_RULES: Record<StorageBucket, StorageRule> = {
   [STORAGE_BUCKETS.SONG_PREVIEWS]: {
     maxBytes: 25 * 1024 * 1024,
     kinds: ['mp3'],
-    maxDuration: 60,
+    maxDuration: PREVIEW_MAX_SECONDS,
     isPublic: true,
   },
   [STORAGE_BUCKETS.SONG_ORIGINALS]: {

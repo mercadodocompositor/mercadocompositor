@@ -123,7 +123,7 @@ describe('Auditoria de Tratamento de Erros: parseApiError & Observabilidade', ()
         'Destino de upload inválido ou sem permissão.'
       );
       expect(getFriendlyErrorMessage('invalid_preview_duration')).toBe(
-        'A prévia de áudio deve ter no máximo 60 segundos.'
+        'A prévia de áudio deve ter no máximo 85 segundos.'
       );
       expect(getFriendlyErrorMessage('invalid_file_size')).toBe(
         'O arquivo ultrapassa o limite permitido. Selecione um arquivo menor.'

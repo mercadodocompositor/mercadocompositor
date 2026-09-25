@@ -8,8 +8,8 @@ const rules: Record<TargetBucket, { maxBytes: number; kinds: string[]; maxDurati
   'profile-media': { maxBytes: 5 * 1024 * 1024, kinds: ['jpg', 'png', 'webp'] },
   'song-covers': { maxBytes: 5 * 1024 * 1024, kinds: ['jpg', 'png', 'webp'] },
   // O navegador recodifica a prévia com FFmpeg; o servidor mede novamente e
-  // rejeita qualquer saída que ultrapasse 60 segundos.
-  'song-previews': { maxBytes: 25 * 1024 * 1024, kinds: ['mp3'], maxDuration: 60 },
+  // rejeita qualquer saída que ultrapasse 85 segundos (PREVIEW_MAX_SECONDS no app).
+  'song-previews': { maxBytes: 25 * 1024 * 1024, kinds: ['mp3'], maxDuration: 85 },
   'song-originals': { maxBytes: 25 * 1024 * 1024, kinds: ['mp3', 'wav', 'm4a', 'aac', 'ogg'] },
   'release-documents': { maxBytes: 10 * 1024 * 1024, kinds: ['pdf'] },
 }
@@ -188,7 +188,7 @@ Deno.serve(async request => {
       empty_file: 'O arquivo está vazio. Selecione outro arquivo e tente novamente.',
       invalid_file_size: 'O arquivo ultrapassa o limite permitido para este tipo de mídia. Selecione um arquivo menor.',
       invalid_file_content: 'O formato real do arquivo não é aceito. Verifique o formato e selecione outro arquivo.',
-      invalid_preview_duration: 'A prévia ultrapassa 60 segundos. Ajuste o trecho e tente novamente.',
+      invalid_preview_duration: 'A prévia ultrapassa 85 segundos. Ajuste o trecho e tente novamente.',
       invalid_audio_duration: 'Não conseguimos identificar a duração do áudio. Verifique o arquivo e tente novamente.',
       validated_upload_failed: 'Não foi possível concluir o envio. Tente novamente em alguns instantes.',
       validated_media_registry_failed: 'O arquivo foi validado, mas não conseguimos concluir o registro. Tente enviá-lo novamente.',

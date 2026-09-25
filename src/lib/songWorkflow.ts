@@ -119,7 +119,7 @@ export const validateSongSubmission = (input: SongDraftValidationInput): SongVal
       return {
         isValid: false,
         error:
-          'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.',
+          'Para publicar, informe título, autores, letra e a música completa para gerar a prévia pública.',
         field: !trimmedAuthors
           ? 'authors'
           : !trimmedLyrics

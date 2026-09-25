@@ -249,7 +249,7 @@ export const LandingPage: React.FC = () => {
                 </div>
                 <h3 className="text-lg font-serif font-bold text-[#0A1128]">Cadastre suas composições</h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Insira a letra e envie a música completa ou uma prévia pronta de 60 segundos. Ao receber a faixa integral, o sistema mantém somente os primeiros 60 segundos.
+                  Insira a letra e envie a música completa. Ela fica protegida na sua área privada e o sistema gera automaticamente a prévia pública de 85 segundos.
                 </p>
               </div>
 
@@ -303,7 +303,7 @@ export const LandingPage: React.FC = () => {
                 { title: "Perfil profissional", desc: "Sua página própria e elegante para enviar o link direto pelo WhatsApp.", icon: UserPlus },
                 { title: "Catálogo organizado", desc: "Acesse rapidamente letras, autores, registros e arquivos em qualquer lugar.", icon: Disc },
                 { title: "Proteção do áudio completo", desc: "O áudio completo não é solicitado; somente a prévia pública é enviada.", icon: Lock },
-                { title: "Prévia limitada das músicas", desc: "A reprodução trava automaticamente aos 60 segundos para proteger sua autoria.", icon: Headphones },
+                { title: "Prévia limitada das músicas", desc: "A reprodução trava automaticamente aos 85 segundos para proteger sua autoria.", icon: Headphones },
                 { title: "Contato direto com interessados", desc: "Sem intermediários abusivos ou retenções indesejadas na negociação.", icon: MessageSquare },
                 { title: "Gestão das solicitações", desc: "Acompanhe propostas recebidas, valores negociados e status de pagamento.", icon: CheckCircle2 },
                 { title: "Emissão de liberações", desc: "Gere termos de autorização de gravação profissionais e estruturados.", icon: FileCheck },
@@ -343,7 +343,7 @@ export const LandingPage: React.FC = () => {
                     Composições Selecionadas
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                    Ouça prévias exclusivas de 60 segundos e descubra grandes obras prontas para liberação.
+                    Ouça prévias exclusivas de 85 segundos e descubra grandes obras prontas para liberação.
                   </p>
                 </div>
 
@@ -404,7 +404,7 @@ export const LandingPage: React.FC = () => {
                           <div className="absolute top-3 right-3">
                             <span className="text-[10px] font-semibold text-slate-300 bg-slate-950/80 px-2 py-0.5 rounded-full border border-slate-700 backdrop-blur-md flex items-center gap-1">
                               <Headphones className="w-3 h-3 text-amber-400" />
-                              <span>Prévia 60s</span>
+                              <span>Prévia 85s</span>
                             </span>
                           </div>
 

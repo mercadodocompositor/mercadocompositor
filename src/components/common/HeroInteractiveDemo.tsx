@@ -15,6 +15,7 @@ import {
   RotateCcw,
   ArrowRight
 } from 'lucide-react';
+import { PREVIEW_MAX_SECONDS } from '../../config/media';
 
 interface DemoTrack {
   id: string;
@@ -126,17 +127,17 @@ export const HeroInteractiveDemo: React.FC = () => {
     }
   };
 
-  // Temporizador dos 60 segundos
+  // Temporizador da prévia
   useEffect(() => {
     let interval: number | null = null;
     if (isPlaying) {
       startSynth();
       interval = window.setInterval(() => {
         setSeconds(prev => {
-          if (prev >= 60) {
+          if (prev >= PREVIEW_MAX_SECONDS) {
             setIsPlaying(false);
             stopSynth();
-            return 60;
+            return PREVIEW_MAX_SECONDS;
           }
           return prev + 1;
         });
@@ -152,7 +153,7 @@ export const HeroInteractiveDemo: React.FC = () => {
   }, [isPlaying, isMuted]);
 
   const togglePlay = () => {
-    if (seconds >= 60) {
+    if (seconds >= PREVIEW_MAX_SECONDS) {
       setSeconds(0);
       setIsPlaying(true);
     } else {
@@ -195,7 +196,7 @@ export const HeroInteractiveDemo: React.FC = () => {
 
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-semibold">
             <Lock className="w-3 h-3 text-amber-400" />
-            <span>Trava de 60s ativa</span>
+            <span>Trava de {PREVIEW_MAX_SECONDS}s ativa</span>
           </div>
         </div>
 
@@ -270,7 +271,7 @@ export const HeroInteractiveDemo: React.FC = () => {
                   className="flex-1 rounded-t-sm transition-all duration-200"
                   style={{
                     height: `${heightMultiplier}px`,
-                    backgroundColor: i < (seconds / 60) * 24 ? '#f59e0b' : '#334155'
+                    backgroundColor: i < (seconds / PREVIEW_MAX_SECONDS) * 24 ? '#f59e0b' : '#334155'
                   }}
                 />
               );
@@ -283,14 +284,14 @@ export const HeroInteractiveDemo: React.FC = () => {
               <span className="text-amber-400 font-bold">{formatTime(seconds)}</span>
               <span className="text-slate-400 flex items-center gap-1">
                 <Lock className="w-3 h-3 text-amber-500" />
-                <span>Limite: 01:00 (60s)</span>
+                <span>Limite: {formatTime(PREVIEW_MAX_SECONDS)} ({PREVIEW_MAX_SECONDS}s)</span>
               </span>
             </div>
 
             <div className="relative w-full h-2 bg-slate-800 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-300"
-                style={{ width: `${(seconds / 60) * 100}%` }}
+                style={{ width: `${(seconds / PREVIEW_MAX_SECONDS) * 100}%` }}
               />
             </div>
           </div>
@@ -364,12 +365,12 @@ export const HeroInteractiveDemo: React.FC = () => {
             </div>
           )}
 
-          {/* Aviso se atingir os 60s */}
-          {seconds >= 60 && (
+          {/* Aviso se atingir o limite da prévia */}
+          {seconds >= PREVIEW_MAX_SECONDS && (
             <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-xs text-amber-200 animate-fadeIn">
               <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
               <span>
-                <strong>Prévia encerrada aos 60s.</strong> Para ouvir a obra integral ou combinar a gravação, entre em contato com o autor.
+                <strong>Prévia encerrada aos {PREVIEW_MAX_SECONDS}s.</strong> Para ouvir a obra integral ou combinar a gravação, entre em contato com o autor.
               </span>
             </div>
           )}

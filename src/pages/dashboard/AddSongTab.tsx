@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { ValueType, SongStatus, type Song } from '../../types';
 import { resolvePlan } from '../../lib/plans';
 import { MUSIC_GENRES, getSubgenresForGenre } from '../../config/musicGenres';
-import { DEFAULT_SONG_COVER_URL } from '../../config/media';
+import { DEFAULT_SONG_COVER_URL, PREVIEW_MAX_SECONDS } from '../../config/media';
 import { deleteSongDraft, loadSongById, loadSongDraft, removeCurrentUserStorageFiles, saveSongDraft, uploadCurrentUserFileDetailed, checkUserPlanCapacity, cleanupUserQuarantine, type MediaUploadStage, type SongDraftPayload, type PlanCapacityInfo } from '../../lib/database';
 import { getSongSaveStatus, validateSongSubmission } from '../../lib/songWorkflow';
 import { getFriendlyErrorMessage } from '../../lib/apiErrors';
@@ -142,14 +142,15 @@ export const AddSongTab: React.FC = () => {
       { label: 'Autores preenchidos', ok: authors.trim().length > 0 },
       { label: 'Letra registrada', ok: lyrics.trim().length > 0 },
       { label: 'Data da composição válida', ok: Boolean(dateComposed && dateComposed <= today) },
-      { label: 'Prévia pública pronta', ok: Boolean(activePreviewUrl) },
+      // Obras novas exigem a faixa completa; obras antigas que só têm prévia continuam editáveis.
+      { label: 'Música completa carregada', ok: Boolean(previewSourceFile || existingSong?.originalAudioPath || (existingSong && activePreviewUrl)) },
       { label: 'Capa definida', ok: Boolean(coverUrl && coverUrl.trim().length > 0) },
       { label: 'Condição comercial válida', ok: validSuggestedValue }
     ];
 
     const missing = items.filter(item => !item.ok).map(item => item.label);
     return { missing, isReady: missing.length === 0 };
-  }, [activePreviewUrl, authors, coverUrl, dateComposed, lyrics, suggestedValue, title, valueType]);
+  }, [activePreviewUrl, authors, coverUrl, dateComposed, existingSong, lyrics, previewSourceFile, suggestedValue, title, valueType]);
 
   const checklistItemCount = 7;
   const completedChecklistItems = checklistItemCount - publicationChecklist.missing.length;
@@ -519,7 +520,11 @@ export const AddSongTab: React.FC = () => {
         setMediaError('preview', 'Não conseguimos identificar a duração do áudio. Verifique o arquivo e tente novamente.');
         return;
       }
-      const safeStart = Math.min(Math.max(0, requestedStart), Math.max(0, duration - 1));
+      if (duration <= PREVIEW_MAX_SECONDS) {
+        setMediaError('preview', `Este áudio tem ${Math.round(duration)} segundos. Envie a música completa: a prévia pública tem ${PREVIEW_MAX_SECONDS} segundos, então a faixa precisa ser mais longa que isso.`);
+        return;
+      }
+      const safeStart = Math.min(Math.max(0, requestedStart), Math.max(0, duration - PREVIEW_MAX_SECONDS));
       setPreviewSourceFile(file);
       setPreviewSourceDuration(duration);
       const processedPreview = safeStart > 0
@@ -641,7 +646,7 @@ export const AddSongTab: React.FC = () => {
 
     if (requestedStatus !== 'draft' && !publicationChecklist.isReady) {
       setFormError(`A música ainda não está pronta para publicação. Complete: ${publicationChecklist.missing.join(', ')}.`);
-      const missingMedia = publicationChecklist.missing.some(item => item === 'Prévia pública pronta' || item === 'Capa definida');
+      const missingMedia = publicationChecklist.missing.some(item => item === 'Música completa carregada' || item === 'Capa definida');
       window.setTimeout(() => document.getElementById(missingMedia ? 'midia-da-obra' : 'dados-da-obra')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
       unlockSubmission();
       return;
@@ -691,7 +696,8 @@ export const AddSongTab: React.FC = () => {
           const result = await uploadCurrentUserFileDetailed(bucket, file, {
             onStage,
             signal: abortControllerRef.current?.signal,
-            onQuarantinePath: (qPath) => activeQuarantinePathsRef.current.add(qPath)
+            onQuarantinePath: (qPath) => activeQuarantinePathsRef.current.add(qPath),
+            generatePreview: false
           });
           activeQuarantinePathsRef.current.delete(result.quarantinePath);
           return { kind, bucket, value: result.value, mediaId: result.mediaId };
@@ -703,7 +709,10 @@ export const AddSongTab: React.FC = () => {
         }
       };
 
+      // A faixa completa vai para o bucket privado (entregue ao cliente com o
+      // termo); só o recorte de PREVIEW_MAX_SECONDS vai para o bucket público.
       const pendingUploads = [
+        ...(previewFile && previewSourceFile ? [uploadMedia('preview', 'song-originals', previewSourceFile)] : []),
         ...(previewFile ? [uploadMedia('preview', 'song-previews', previewFile)] : []),
         ...(coverFile ? [uploadMedia('cover', 'song-covers', coverFile)] : [])
       ];
@@ -720,11 +729,11 @@ export const AddSongTab: React.FC = () => {
       const failedUpload = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
       if (failedUpload) throw failedUpload.reason;
 
-      const storedPreview = previewFile
-        ? completedUploads.find(item => item.kind === 'preview')?.value
-        : activePreviewUrl;
+      const uploadedPreview = completedUploads.find(item => item.bucket === 'song-previews');
+      const uploadedOriginal = completedUploads.find(item => item.bucket === 'song-originals');
+      const storedPreview = previewFile ? uploadedPreview?.value : activePreviewUrl;
       const storedPreviewMediaId = previewFile
-        ? completedUploads.find(item => item.kind === 'preview')?.mediaId
+        ? uploadedPreview?.mediaId
         : (recoveredPreviewMediaId || existingSong?.previewMediaId);
       const storedCover = coverFile
         ? completedUploads.find(item => item.kind === 'cover')?.value || defaultCoverUrl
@@ -755,6 +764,7 @@ export const AddSongTab: React.FC = () => {
         suggestedValue: valueType === 'suggested' && suggestedValue && Number(suggestedValue) > 0 ? Number(suggestedValue) : undefined,
         previewAudioUrl: storedPreview,
         previewMediaId: storedPreviewMediaId,
+        ...(uploadedOriginal ? { originalAudioPath: uploadedOriginal.value, originalMediaId: uploadedOriginal.mediaId } : {}),
         summary: lyrics.length > 120 ? `${lyrics.slice(0, 120)}...` : lyrics
     };
 
@@ -764,6 +774,7 @@ export const AddSongTab: React.FC = () => {
 
       const replacedFiles = [
         ...(previewFile ? [{ bucket: 'song-previews', value: existingSong.previewAudioUrl }] : []),
+        ...(uploadedOriginal && existingSong.originalAudioPath ? [{ bucket: 'song-originals', value: existingSong.originalAudioPath }] : []),
         ...(coverFile ? [{ bucket: 'song-covers', value: existingSong.coverUrl }] : [])
       ];
       if (replacedFiles.length) {
@@ -1201,16 +1212,16 @@ export const AddSongTab: React.FC = () => {
                 type="file"
                 disabled={isSubmitting || isProcessingPreview}
                 accept="audio/mpeg,.mp3"
-                aria-label="Selecionar música completa ou prévia de 60 segundos"
+                aria-label="Selecionar a música completa em MP3"
                 onChange={handlePreviewUpload}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
                 <Disc className="w-6 h-6" />
               </div>
-              <h4 className="font-bold text-white text-xs">{isProcessingPreview ? 'Gerando MP3 protegido de 60s...' : previewFileName || 'Carregue a música completa ou uma prévia de 60s'}</h4>
+              <h4 className="font-bold text-white text-xs">{isProcessingPreview ? `Gerando prévia protegida de ${PREVIEW_MAX_SECONDS}s...` : previewSourceFile?.name || (existingSong?.originalAudioPath ? 'Música completa já enviada. Selecione outra para substituir' : 'Carregue a música completa')}</h4>
               <p className="text-[11px] text-slate-400">
-                Você pode enviar <strong className="text-white font-semibold">a música na íntegra</strong> ou <strong className="text-white font-semibold">uma prévia já pronta de até 60 segundos</strong>, em MP3 e com até 25 MB. O sistema armazena somente o trecho de até 60 segundos e todo o restante será descartado.
+                Envie <strong className="text-white font-semibold">a música na íntegra</strong>, em MP3 e com até 25 MB. Ela fica guardada com segurança na sua área privada e é entregue ao cliente junto com o termo. No perfil público toca somente uma <strong className="text-white font-semibold">prévia de {PREVIEW_MAX_SECONDS} segundos</strong>, gerada automaticamente.
               </p>
               {renderUploadStatus('preview')}
               {mediaErrors.preview && <p role="alert" className="relative z-10 rounded-lg bg-red-500/10 px-3 py-2 text-left text-xs leading-relaxed text-red-300">{mediaErrors.preview}</p>}
@@ -1254,7 +1265,7 @@ export const AddSongTab: React.FC = () => {
                   <input
                     type="range"
                     min={0}
-                    max={Math.max(0, Math.floor(previewSourceDuration - 1))}
+                    max={Math.max(0, Math.floor(previewSourceDuration - PREVIEW_MAX_SECONDS))}
                     step={1}
                     value={previewStartSeconds}
                     disabled={isProcessingPreview || isSubmitting}
@@ -1271,16 +1282,16 @@ export const AddSongTab: React.FC = () => {
                   Gerar novamente
                 </button>
               </div>
-              <p className="mt-2 text-[11px] text-slate-400">Duração original: {Math.floor(previewSourceDuration / 60)}:{String(Math.floor(previewSourceDuration % 60)).padStart(2, '0')}. Ajuste o início e gere novamente para ouvir o resultado.</p>
+              <p className="mt-2 text-[11px] text-slate-400">Duração da música: {Math.floor(previewSourceDuration / 60)}:{String(Math.floor(previewSourceDuration % 60)).padStart(2, '0')}. A prévia pública tem {PREVIEW_MAX_SECONDS} segundos a partir do início escolhido. Ajuste e gere novamente para ouvir o resultado.</p>
             </div>
           )}
 
           {(activePreviewUrl || coverUrl) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-300">{previewObjectUrl ? 'Prévia processada (máx. 60s)' : 'Prévia pública (máx. 60s)'}</span>{previewObjectUrl && <button type="button" onClick={() => { URL.revokeObjectURL(previewObjectUrl); setPreviewObjectUrl(null); setRecoveredPreviewMediaId(null); setPreviewFile(null); setPreviewFileName(null); setPreviewSourceFile(null); setPreviewSourceDuration(0); setPreviewStartSeconds(0); }} className="text-xs text-red-400 hover:text-red-300">Remover</button>}</div>
-                {activePreviewUrl ? <audio controls src={activePreviewUrl} className="w-full h-10" aria-label="Prévia pública selecionada" onTimeUpdate={event => { if (previewObjectUrl && event.currentTarget.currentTime >= 60) { event.currentTarget.pause(); event.currentTarget.currentTime = 60; } }} /> : <p className="text-xs text-slate-500">Nenhuma prévia pública selecionada.</p>}
-                {previewObjectUrl && <p className="text-[11px] text-emerald-300/80">Somente esta nova prévia será publicada ao salvar.</p>}
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-300">{previewObjectUrl ? `Prévia gerada (${PREVIEW_MAX_SECONDS}s)` : `Prévia pública (até ${PREVIEW_MAX_SECONDS}s)`}</span>{previewObjectUrl && <button type="button" onClick={() => { URL.revokeObjectURL(previewObjectUrl); setPreviewObjectUrl(null); setRecoveredPreviewMediaId(null); setPreviewFile(null); setPreviewFileName(null); setPreviewSourceFile(null); setPreviewSourceDuration(0); setPreviewStartSeconds(0); }} className="text-xs text-red-400 hover:text-red-300">Remover</button>}</div>
+                {activePreviewUrl ? <audio controls src={activePreviewUrl} className="w-full h-10" aria-label="Prévia pública selecionada" onTimeUpdate={event => { if (previewObjectUrl && event.currentTarget.currentTime >= PREVIEW_MAX_SECONDS) { event.currentTarget.pause(); event.currentTarget.currentTime = PREVIEW_MAX_SECONDS; } }} /> : <p className="text-xs text-slate-500">Nenhuma prévia pública selecionada.</p>}
+                {previewObjectUrl && <p className="text-[11px] text-emerald-300/80">Esta é a prévia que tocará no perfil público.</p>}
               </div>
 
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
@@ -1309,7 +1320,7 @@ export const AddSongTab: React.FC = () => {
           {(previewObjectUrl?.startsWith('blob:') || coverUrl.startsWith('blob:')) && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>A capa e somente a prévia de 60 segundos serão enviadas quando você salvar, inclusive no rascunho. A faixa completa é descartada após o recorte. Se sair sem salvar, selecione os arquivos novamente.</span>
+              <span>A música completa, a prévia e a capa serão enviadas quando você salvar, inclusive no rascunho. Se sair sem salvar, selecione os arquivos novamente.</span>
             </div>
           )}
 

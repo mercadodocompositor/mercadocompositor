@@ -118,7 +118,7 @@ export const LegalPage: React.FC = () => {
       id: 'protecao-audio',
       number: '4',
       title: 'Proteção Tecnológica do Áudio e Limitação de Prévia',
-      keywords: 'audio previa 60 segundos protecao cofre download pirataria seguranca',
+      keywords: 'audio previa 85 segundos protecao cofre download pirataria seguranca',
       content: (
         <div className="space-y-3">
           <p>
@@ -138,7 +138,7 @@ export const LegalPage: React.FC = () => {
                 <Music className="w-4 h-4" /> Prévia Pública de até 60 Segundos
               </span>
               <p className="text-xs text-slate-300">
-                O player público reproduz exclusivamente trechos de prévia de até 60 segundos com marcação de amostragem, permitindo a apreciação artística sem viabilizar apropriação indevida do fonograma completo.
+                O player público reproduz exclusivamente trechos de prévia de até 85 segundos com marcação de amostragem, permitindo a apreciação artística sem viabilizar apropriação indevida do fonograma completo.
               </p>
             </div>
           </div>
@@ -305,7 +305,7 @@ export const LegalPage: React.FC = () => {
                 <Music className="w-4 h-4" /> Dados de Obras e Catálogo
               </span>
               <p className="text-xs text-slate-300">
-                Título da canção, ritmo/gênero, nomes de coautores, letras das músicas, registros de autoria, artes de capa e amostras de áudio para geração de prévias públicas de 60 segundos.
+                Título da canção, ritmo/gênero, nomes de coautores, letras das músicas, registros de autoria, artes de capa e amostras de áudio para geração de prévias públicas de 85 segundos.
               </p>
             </div>
             <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
@@ -358,7 +358,7 @@ export const LegalPage: React.FC = () => {
             <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-1.5">
               <span className="font-bold text-emerald-400 uppercase block">Dados Visíveis Publicamente:</span>
               <p className="text-slate-300">
-                Nome artístico do compositor, foto pública de vitrine, cidade/estado, biografia artística, links de redes sociais e faixas do catálogo autorizadas com prévias de até 60 segundos.
+                Nome artístico do compositor, foto pública de vitrine, cidade/estado, biografia artística, links de redes sociais e faixas do catálogo autorizadas com prévias de até 85 segundos.
               </p>
             </div>
             <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-1.5">

@@ -36,7 +36,7 @@ import {
 const SONGS_PAGE_SIZE = 10;
 
 const HOW_IT_WORKS = [
-  { title: 'Ouça a prévia', text: 'Cada obra tem uma prévia de até 60 segundos e a letra completa.' },
+  { title: 'Ouça a prévia', text: 'Cada obra tem uma prévia de até 85 segundos e a letra completa.' },
   { title: 'Envie seu interesse', text: 'Sem compromisso: o compositor recebe seu contato para conversar sobre a gravação.' },
   { title: 'Formalize a liberação', text: 'Com tudo combinado, o termo de liberação é emitido pela plataforma, com código de validação.' },
 ];
@@ -558,7 +558,7 @@ export const PublicProfilePage: React.FC = () => {
                     </ol>
                     <p className="flex items-start gap-2 border-t border-slate-800 pt-3 text-xs leading-relaxed text-slate-400">
                       <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden="true" />
-                      As prévias têm até 60 segundos. O fonograma completo e a acapella ficam protegidos na área do compositor.
+                      As prévias têm até 85 segundos. O fonograma completo e a acapella ficam protegidos na área do compositor.
                     </p>
                   </div>
 

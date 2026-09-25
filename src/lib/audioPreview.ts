@@ -2,10 +2,11 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import coreURL from '@ffmpeg/core?url';
 import wasmURL from '@ffmpeg/core/wasm?url';
+import { PREVIEW_MAX_SECONDS } from '../config/media';
 
 // Reserva margem para o atraso/padding introduzido pelo encoder MP3. O arquivo
-// final continua abaixo de 60s quando medido por decodificadores diferentes.
-const MAX_PREVIEW_SECONDS = 59.8;
+// final continua abaixo do limite quando medido por decodificadores diferentes.
+const MAX_PREVIEW_SECONDS = PREVIEW_MAX_SECONDS - 0.2;
 let ffmpegPromise: Promise<FFmpeg> | null = null;
 
 const getFFmpeg = () => {
@@ -49,7 +50,7 @@ export const createAudioPreview = async (source: File, startSeconds = 0): Promis
     if (!(output instanceof Uint8Array) || output.byteLength === 0) throw new Error('audio_transcoding_failed');
     return new File([output], `preview-${source.name.replace(/\.[^/.]+$/, '')}.mp3`, { type: 'audio/mpeg' });
   } catch {
-    throw new Error('Não foi possível gerar a prévia real de 60 segundos neste navegador.');
+    throw new Error(`Não foi possível gerar a prévia de ${PREVIEW_MAX_SECONDS} segundos neste navegador.`);
   } finally {
     await Promise.allSettled([ffmpeg.deleteFile(inputName), ffmpeg.deleteFile(outputName)]);
   }

@@ -21,7 +21,7 @@ export const APP_CONFIG = {
       features: [
         "Até 100 músicas no catálogo",
         "Perfil público personalizado",
-        "Player com prévias protegidas de 60 segundos",
+        "Player com prévias protegidas de 85 segundos",
         "Cadastro, edição e organização das composições",
         "Recebimento de solicitações de intérpretes",
         "Indicadores de visualizações e reproduções"
@@ -82,7 +82,7 @@ export const APP_CONFIG = {
     features: [
       "Perfil público personalizado e compartilhável",
       "Cadastro de até 100 músicas no catálogo",
-      "Player de áudio com prévia protegida (60 segundos)",
+      "Player de áudio com prévia protegida (85 segundos)",
       "Recebimento de solicitações de artistas e intérpretes",
       "Gestão completa de liberações e autorizações de gravação",
       "Emissão de termos de liberação em PDF",

@@ -212,7 +212,7 @@ describe('Unificação de Validações de Rascunho (Frontend e Trigger SQL)', ()
       });
       expect(missingAuthors.isValid).toBe(false);
       expect(missingAuthors.error).toBe(
-        'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.'
+        'Para publicar, informe título, autores, letra e a música completa para gerar a prévia pública.'
       );
 
       const missingPreview = validateSongSubmission({
@@ -225,7 +225,7 @@ describe('Unificação de Validações de Rascunho (Frontend e Trigger SQL)', ()
       });
       expect(missingPreview.isValid).toBe(false);
       expect(missingPreview.error).toBe(
-        'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.'
+        'Para publicar, informe título, autores, letra e a música completa para gerar a prévia pública.'
       );
     });
 

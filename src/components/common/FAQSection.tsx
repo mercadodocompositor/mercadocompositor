@@ -28,7 +28,7 @@ const FAQ_ITEMS: FAQItem[] = [
     id: 'protecao-audio',
     category: 'protecao',
     question: 'Como funciona a proteção da minha música contra cópias não autorizadas?',
-    answer: 'O Mercado do Compositor foi projetado com foco absoluto na segurança do autor. Na sua página pública, os ouvintes têm acesso apenas a prévias de áudio de no máximo 60 segundos, com trava automática no player. O arquivo de áudio original completo permanece criptografado e restrito ao seu painel administrativo.',
+    answer: 'O Mercado do Compositor foi projetado com foco absoluto na segurança do autor. Na sua página pública, os ouvintes têm acesso apenas a prévias de áudio de no máximo 85 segundos, com trava automática no player. O arquivo de áudio original completo permanece criptografado e restrito ao seu painel administrativo.',
     highlight: true
   },
   {
@@ -61,7 +61,7 @@ const FAQ_ITEMS: FAQItem[] = [
     id: 'divulgacao-whatsapp',
     category: 'plataforma',
     question: 'Como faço para divulgar minhas músicas para artistas e empresários?',
-    answer: 'Ao se cadastrar, você ganha um link profissional exclusivo (ex: mercadodocompositor.com.br/compositor/seunome) e links individuais para cada composição cadastrada. Você pode compartilhar esses links diretamente pelo WhatsApp ou Instagram de artistas, empresários e produtores, que poderão ouvir a prévia de 60s em qualquer celular sem precisar instalar nenhum aplicativo.',
+    answer: 'Ao se cadastrar, você ganha um link profissional exclusivo (ex: mercadodocompositor.com.br/compositor/seunome) e links individuais para cada composição cadastrada. Você pode compartilhar esses links diretamente pelo WhatsApp ou Instagram de artistas, empresários e produtores, que poderão ouvir a prévia de 85s em qualquer celular sem precisar instalar nenhum aplicativo.',
   },
   {
     id: 'cancelamento-planos',

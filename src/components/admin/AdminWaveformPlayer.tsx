@@ -164,7 +164,7 @@ export const AdminWaveformPlayer: React.FC<AdminWaveformPlayerProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-white font-bold text-xs sm:text-sm">{title || 'Prévia Fonográfica'}</span>
               <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono">
-                Até 60s
+                Até 85s
               </span>
             </div>
             <p className="text-slate-400 text-[11px]">Clique nas ondas sonoras para avançar no tempo</p>

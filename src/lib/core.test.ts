@@ -294,19 +294,19 @@ describe('Upload de mídia da composição', () => {
     expect(page).toContain('cancelUploads');
   });
 
-  it('aceita a faixa completa, armazena somente os primeiros sessenta segundos e descarta o restante', () => {
+  it('guarda a faixa completa no bucket privado e publica só a prévia de 85 segundos', () => {
     expect(validator).toContain("'song-previews':");
-    expect(validator).toContain("kinds: ['mp3'], maxDuration: 60");
+    expect(validator).toContain("kinds: ['mp3'], maxDuration: 85");
     expect(validator).not.toContain('createFirst60SecondsMp3');
     expect(processor).toContain("'-codec:a', 'libmp3lame'");
     expect(processor).toContain("'-map_metadata', '-1'");
     expect(processor).toContain("'-t', String(MAX_PREVIEW_SECONDS)");
     expect(page).toContain('createAudioPreview(file)');
-    expect(page).not.toContain("uploadOriginalWithPreview");
-    expect(page).not.toContain("uploadMedia('original'");
+    expect(page).toContain("uploadMedia('preview', 'song-originals', previewSourceFile)");
+    expect(page).toContain("uploadMedia('preview', 'song-previews', previewFile)");
     expect(page).toContain('a música na íntegra');
-    expect(page).toContain('uma prévia já pronta de até 60 segundos');
-    expect(page).toContain('todo o restante será descartado');
+    expect(page).not.toContain('uma prévia já pronta');
+    expect(page).toContain('duration <= PREVIEW_MAX_SECONDS');
   });
 
   it('aceita o preflight CORS exigido pelo cliente web', () => {

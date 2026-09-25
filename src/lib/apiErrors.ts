@@ -60,7 +60,7 @@ export const KNOWN_FRIENDLY_TRANSLATIONS: Record<string, string> = {
   // Storage & Edge Function de Validação
   'quarantine_file_not_found': 'Arquivo temporário não encontrado ou expirado. Tente enviar novamente.',
   'invalid_upload_target': 'Destino de upload inválido ou sem permissão.',
-  'invalid_preview_duration': 'A prévia de áudio deve ter no máximo 60 segundos.',
+  'invalid_preview_duration': 'A prévia de áudio deve ter no máximo 85 segundos.',
   'invalid_audio_duration': 'Não foi possível determinar a duração do áudio enviado.',
   'empty_file': 'O arquivo está vazio. Selecione outro arquivo e tente novamente.',
   'invalid_file_size': 'O arquivo ultrapassa o limite permitido. Selecione um arquivo menor.',

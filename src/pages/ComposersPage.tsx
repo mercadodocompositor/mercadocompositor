@@ -362,7 +362,7 @@ export const ComposersPage: React.FC = () => {
               Crie seu catálogo e apareça nesta vitrine
             </h2>
             <p className="text-slate-300 text-xs sm:text-sm max-w-xl mx-auto leading-relaxed">
-              Proteja suas composições com prévias de 60 segundos, organize suas letras e receba propostas diretas de gravação de artistas de todo o país.
+              Proteja suas composições com prévias de 85 segundos, organize suas letras e receba propostas diretas de gravação de artistas de todo o país.
             </p>
             <div className="pt-2">
               <Link

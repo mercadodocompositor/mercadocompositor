@@ -295,7 +295,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               <span className="text-purple-400 font-bold text-xs">
                 {totalPlays.toLocaleString('pt-BR')} audições
               </span>
-              <span className="text-slate-400 text-xs">• Prévia 60s</span>
+              <span className="text-slate-400 text-xs">• Prévia 85s</span>
             </div>
           </div>
         </div>

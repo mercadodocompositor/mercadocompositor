@@ -33,7 +33,7 @@ describe('Contrato de Armazenamento (Storage): Constantes e Regras', () => {
   });
 
   it('valida regras de tamanho e extensões permitidas', () => {
-    expect(BUCKET_RULES['song-previews'].maxDuration).toBe(60);
+    expect(BUCKET_RULES['song-previews'].maxDuration).toBe(85);
     expect(BUCKET_RULES['song-previews'].kinds).toContain('mp3');
     expect(BUCKET_RULES['song-originals'].kinds).toEqual(['mp3', 'wav', 'm4a', 'aac', 'ogg']);
     expect(BUCKET_RULES['release-documents'].kinds).toContain('pdf');

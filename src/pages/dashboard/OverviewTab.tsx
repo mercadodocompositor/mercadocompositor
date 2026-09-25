@@ -216,7 +216,7 @@ export const OverviewTab: React.FC = () => {
               </div>
               <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 p-3.5 text-xs text-amber-950 dark:text-amber-200">
                 <p className="font-bold flex items-center gap-1.5 text-amber-900 dark:text-amber-300"><Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />Como funciona o ciclo de liberação?</p>
-                <ul className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90 list-disc list-inside"><li>Publique sua obra com prévia de 60s protegida contra pirataria.</li><li>Compartilhe o link da sua vitrine com cantores e produtores.</li><li>Receba propostas e o valor <strong>100% direto no seu PIX</strong>, sem taxas retidas.</li></ul>
+                <ul className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90 list-disc list-inside"><li>Publique sua obra com prévia de 85s protegida contra pirataria.</li><li>Compartilhe o link da sua vitrine com cantores e produtores.</li><li>Receba propostas e o valor <strong>100% direto no seu PIX</strong>, sem taxas retidas.</li></ul>
               </div>
             </>
           )}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Song } from '../../types';
 import { uploadCurrentUserFileDetailed, uploadOriginalWithPreview, checkUserPlanCapacity, removeCurrentUserStorageFiles } from '../../lib/database';
-import { DEFAULT_SONG_COVER_URL } from '../../config/media';
+import { DEFAULT_SONG_COVER_URL, PREVIEW_MAX_SECONDS } from '../../config/media';
 import { createAudioPreview } from '../../lib/audioPreview';
 import { getSongStatusAfterAudioReplacement } from '../../lib/songWorkflow';
 import { MUSIC_GENRES } from '../../config/musicGenres';
@@ -68,7 +68,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
   // Player state
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(60); // 60s max preview limit
+  const [duration, setDuration] = useState<number>(PREVIEW_MAX_SECONDS);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [volume, setVolume] = useState<number>(0.8);
   const [hasEnded, setHasEnded] = useState<boolean>(false);
@@ -128,27 +128,27 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
     }
   }, [selectedSongId, localAudioUrl]);
 
-  // Audio time listener & 60-second snippet enforcement
+  // Audio time listener & preview-length enforcement
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
     const handleLoadedMetadata = () => {
-      // Limit preview duration strictly to 60s or song's real duration if smaller
+      // Limit preview duration strictly to PREVIEW_MAX_SECONDS or song's real duration if smaller
       const realDur = audio.duration;
       if (!isNaN(realDur) && realDur > 0) {
-        setDuration(Math.min(60, Math.floor(realDur)));
+        setDuration(Math.min(PREVIEW_MAX_SECONDS, Math.floor(realDur)));
       } else {
-        setDuration(60);
+        setDuration(PREVIEW_MAX_SECONDS);
       }
     };
 
     const handleTimeUpdate = () => {
       const time = audio.currentTime;
-      if (time >= 60) {
+      if (time >= PREVIEW_MAX_SECONDS) {
         audio.pause();
-        audio.currentTime = 60;
-        setCurrentTime(60);
+        audio.currentTime = PREVIEW_MAX_SECONDS;
+        setCurrentTime(PREVIEW_MAX_SECONDS);
         setIsPlaying(false);
         setHasEnded(true);
       } else {
@@ -195,7 +195,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
     }
   };
 
-  // Seek handler (within max 60s limit)
+  // Seek handler (within the preview limit)
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value);
     const clampedTime = Math.min(duration, newTime);
@@ -441,7 +441,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
                 Studio & Player de Áudio
               </h2>
               <p className="text-xs text-slate-400">
-                Reprodutor exclusivo para prévias protegidas de até 60 segundos
+                Reprodutor exclusivo para prévias protegidas de até {PREVIEW_MAX_SECONDS} segundos
               </p>
             </div>
           </div>
@@ -467,7 +467,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
         </div>
       </div>
 
-      {/* TAB 1: PLAYER MODE (AUDITION 60s SNIPPET) */}
+      {/* TAB 1: PLAYER MODE (AUDITION PREVIEW SNIPPET) */}
       {activeTab === 'player' && (
         <div className="space-y-6">
 
@@ -527,7 +527,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
               <div className="text-left sm:text-right flex sm:flex-col items-center sm:items-end justify-between">
                 <span className="bg-slate-950 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm">
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  <span>Prévia de até 60s</span>
+                  <span>Prévia de até {PREVIEW_MAX_SECONDS}s</span>
                 </span>
                 <p className="text-[10px] text-slate-500 mt-1 hidden sm:block">Proteção de propriedade intelectual</p>
               </div>
@@ -677,7 +677,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
                     Fim da prévia protegida ({formatTime(duration)})
                   </p>
                   <p className="text-slate-300 text-xs leading-relaxed">
-                    É assim que visitantes e intérpretes ouvem esta obra no perfil público: a reprodução é limitada a 60 segundos com tecnologia de proteção de propriedade intelectual.
+                    É assim que visitantes e intérpretes ouvem esta obra no perfil público: a reprodução é limitada a {PREVIEW_MAX_SECONDS} segundos com tecnologia de proteção de propriedade intelectual.
                   </p>
                   <div className="flex flex-wrap items-center gap-2 pt-2">
                     <button
