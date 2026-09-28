@@ -197,6 +197,10 @@ export interface FeaturedComposer {
   songCount: number;
   photo: string;
   bio: string;
+  isVerified?: boolean;
+  /** Em destaque na vitrine: plano com destaque ou escolha do admin (e ao menos uma obra publicada). */
+  featured?: boolean;
+  featuredReason?: 'plan' | 'editorial' | null;
 }
 
 export interface AdminComposer {
@@ -218,6 +222,10 @@ export interface AdminComposer {
   revenueGenerated: number;
   photo: string;
   isVerified: boolean;
+  /** Destaque manual concedido pelo admin. */
+  isFeatured: boolean;
+  /** O plano atual já inclui destaque (ex.: Plano Ouro). */
+  planIncludesFeatured: boolean;
   notes?: string;
 }
 
@@ -264,6 +272,8 @@ export interface SubscriptionPlanItem {
   sortOrder: number;
   features?: string[];
   description?: string;
+  /** Assinantes deste plano aparecem na seção de destaque da página de compositores. */
+  includesFeatured?: boolean;
 }
 
 export type AdminRoleType = 'admin' | 'moderator' | 'financial';

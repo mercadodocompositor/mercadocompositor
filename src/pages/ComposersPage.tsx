@@ -16,10 +16,48 @@ import {
   Disc, 
   SlidersHorizontal,
   ArrowLeft,
-  Users
+  Users,
+  Crown,
+  BadgeCheck
 } from 'lucide-react';
 
 const GENRE_FILTERS = ['Todos', ...MUSIC_GENRES.filter(genre => genre !== 'Outro')];
+
+// Ordem aleatória a cada visita: todos os destacados dividem o topo da vitrine.
+const shuffle = <T,>(items: T[]) => {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
+const ComposerAvatarImage: React.FC<{ composer: FeaturedComposer; className: string; textClass: string }> = ({ composer, className, textClass }) => {
+  const initial = (composer.name || 'C').trim().charAt(0).toUpperCase();
+  const fallback = `w-full h-full rounded-full items-center justify-center bg-gradient-to-br from-[#0A1128] via-slate-900 to-slate-950 font-serif font-bold text-amber-400 ${textClass}`;
+  return (
+    <div className={className}>
+      {composer.photo ? (
+        <>
+          <img
+            src={composer.photo}
+            onError={event => {
+              event.currentTarget.style.display = 'none';
+              const next = event.currentTarget.nextElementSibling;
+              if (next) (next as HTMLElement).style.display = 'flex';
+            }}
+            alt={composer.name}
+            className="w-full h-full rounded-full object-cover bg-slate-950"
+          />
+          <div style={{ display: 'none' }} className={fallback} aria-hidden="true">{initial}</div>
+        </>
+      ) : (
+        <div className={`flex ${fallback}`} aria-hidden="true">{initial}</div>
+      )}
+    </div>
+  );
+};
 
 export const ComposersPage: React.FC = () => {
   const [composers, setComposers] = useState<FeaturedComposer[]>([]);
@@ -37,7 +75,9 @@ export const ComposersPage: React.FC = () => {
     setLoading(true);
     getPublicComposers({ limit: 100 })
       .then(data => {
-        if (active) setComposers(data);
+        if (!active) return;
+        const featured = shuffle(data.filter(comp => comp.featured));
+        setComposers([...featured, ...data.filter(comp => !comp.featured)]);
       })
       .catch(() => {
         if (active) setComposers([]);
@@ -73,8 +113,9 @@ export const ComposersPage: React.FC = () => {
       return true;
     });
 
-    // Ordenação
+    // Ordenação: destacados primeiro, depois o critério escolhido.
     result.sort((a, b) => {
+      if (Boolean(a.featured) !== Boolean(b.featured)) return a.featured ? -1 : 1;
       if (sortBy === 'songs') {
         return (b.songCount || 0) - (a.songCount || 0);
       }
@@ -85,6 +126,11 @@ export const ComposersPage: React.FC = () => {
   }, [composers, search, selectedGenre, sortBy]);
 
   const hasActiveFilters = search.trim() !== '' || selectedGenre !== 'Todos';
+
+  // Sem filtros, os destacados ganham seção própria e saem da grade geral.
+  const featuredComposers = useMemo(() => composers.filter(comp => comp.featured), [composers]);
+  const showFeaturedSection = !loading && !hasActiveFilters && featuredComposers.length > 0;
+  const gridComposers = showFeaturedSection ? filteredComposers.filter(comp => !comp.featured) : filteredComposers;
 
   const clearFilters = () => {
     setSearch('');
@@ -213,8 +259,72 @@ export const ComposersPage: React.FC = () => {
           </div>
         </section>
 
+        {/* FEATURED COMPOSERS */}
+        {showFeaturedSection && (
+          <section aria-labelledby="featured-composers-title" className="relative overflow-hidden border-b border-amber-500/20 bg-gradient-to-b from-[#0A1128] to-slate-950">
+            <div className="absolute -top-24 right-0 w-[420px] h-[420px] bg-yellow-500/10 blur-[120px] rounded-full pointer-events-none" />
+            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-14">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-8">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-[11px] font-bold uppercase tracking-wider">
+                    <Crown className="w-3.5 h-3.5" /> Em destaque
+                  </span>
+                  <h2 id="featured-composers-title" className="mt-3 text-2xl sm:text-3xl font-serif tracking-tight text-white">
+                    Compositores <span className="italic text-amber-400">em destaque</span>
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-400 max-w-sm sm:text-right">
+                  Catálogos selecionados para quem procura repertório agora.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {featuredComposers.map(comp => (
+                  <Link
+                    key={comp.id}
+                    to={`/compositor/${comp.username}`}
+                    className="group relative flex gap-4 rounded-3xl border border-yellow-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-[#0A1128] p-5 shadow-xl shadow-yellow-500/5 hover:border-yellow-400/60 hover:-translate-y-0.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                  >
+                    <span className="absolute top-4 right-4 text-yellow-400" aria-hidden="true"><Crown className="w-4 h-4" /></span>
+                    <ComposerAvatarImage
+                      composer={comp}
+                      className="w-20 h-20 shrink-0 p-[3px] rounded-full bg-gradient-to-tr from-yellow-500 via-amber-300 to-yellow-600 shadow-lg shadow-yellow-500/20"
+                      textClass="text-xl"
+                    />
+                    <div className="min-w-0 flex-1 pr-5">
+                      <h3 className="flex items-center gap-1.5 text-lg font-serif italic font-bold text-white group-hover:text-amber-300 transition-colors">
+                        <span className="truncate">{comp.name}</span>
+                        {comp.isVerified && <BadgeCheck className="w-4 h-4 shrink-0 text-amber-400" aria-label="Verificado" />}
+                      </h3>
+                      {comp.cityState && (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+                          <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{comp.cityState}</span>
+                        </p>
+                      )}
+                      <p className="mt-2 text-xs text-slate-400 leading-relaxed line-clamp-2">
+                        {getSafePublicBio(comp.bio, comp.name, comp.username)}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300">
+                          <Disc className="w-3 h-3" /> {comp.songCount || 0} {comp.songCount === 1 ? 'música' : 'músicas'}
+                        </span>
+                        {(comp.genres || []).slice(0, 2).map(genre => (
+                          <span key={genre} className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700/80">{genre}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* COMPOSERS GRID SECTION */}
         <section className="py-12 md:py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {showFeaturedSection && gridComposers.length > 0 && (
+            <h2 className="mb-8 text-xl sm:text-2xl font-serif text-white">Todos os compositores</h2>
+          )}
           
           {loading ? (
             /* Skeletons */
@@ -230,14 +340,19 @@ export const ComposersPage: React.FC = () => {
                 </div>
               ))}
             </div>
-          ) : filteredComposers.length > 0 ? (
+          ) : gridComposers.length > 0 ? (
             /* Composer Cards */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredComposers.map(comp => (
+              {gridComposers.map(comp => (
                 <div
                   key={comp.id}
-                  className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-3xl overflow-hidden transition group flex flex-col justify-between shadow-xl"
+                  className={`bg-slate-900 border rounded-3xl overflow-hidden transition group flex flex-col justify-between shadow-xl relative ${comp.featured ? 'border-yellow-500/40 hover:border-yellow-400/70' : 'border-slate-800 hover:border-amber-500/40'}`}
                 >
+                  {comp.featured && (
+                    <span className="absolute top-4 right-4 z-10 inline-flex items-center gap-1 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-0.5 text-[10px] font-bold text-yellow-300">
+                      <Crown className="w-3 h-3" /> Destaque
+                    </span>
+                  )}
                   <div>
                     {/* Header Banner & Circular Avatar */}
                     <div className="relative pt-8 pb-3 px-6 flex flex-col items-center text-center">
@@ -331,7 +446,7 @@ export const ComposersPage: React.FC = () => {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : showFeaturedSection ? null : (
             /* Empty State */
             <div className="text-center py-16 px-4 bg-slate-900/50 border border-slate-800 rounded-3xl max-w-lg mx-auto space-y-4">
               <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">

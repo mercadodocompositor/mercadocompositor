@@ -886,7 +886,9 @@ export async function loadAdminComposers():Promise<AdminComposer[]>{
     totalReleases:Number(row.totalReleases||0),
     revenueGenerated:Number(row.revenueGenerated||0),
     photo:row.photo||'',
-    isVerified:Boolean(row.isVerified)
+    isVerified:Boolean(row.isVerified),
+    isFeatured:Boolean(row.isFeatured),
+    planIncludesFeatured:Boolean(row.planIncludesFeatured)
   } as AdminComposer));
 }
 export async function loadAdminSongs():Promise<Song[]>{
@@ -959,6 +961,7 @@ export async function loadMySongsPage(userId:string,params:SongPageQuery):Promis
 }
 export async function adminSetSubscription(userId:string,status:SubscriptionStatus){if(!supabase)throw new Error('Supabase não configurado.');const{data,error}=await supabase.from('subscriptions').update({status,updated_at:new Date().toISOString()}).eq('user_id',userId).select('user_id').maybeSingle();if(error)throw error;if(!data)throw new Error('Assinatura não encontrada ou sem permissão para atualização.');}
 export async function adminSetVerified(userId:string,value:boolean){if(!supabase)return;const{error}=await supabase.rpc('admin_set_profile_verified',{p_user_id:userId,p_is_verified:value});if(error)throw error;}
+export async function adminSetComposerFeatured(userId:string,value:boolean){if(!supabase)return;const{error}=await supabase.rpc('admin_set_composer_featured',{p_user_id:userId,p_is_featured:value});if(error)throw error;}
 export async function loadPlatformSettings(): Promise<PlatformSettings> {
   if (!supabase) throw new Error('Supabase não configurado.');
   const { data, error } = await supabase.rpc('get_platform_settings');
@@ -1108,7 +1111,8 @@ export const DEFAULT_SUBSCRIPTION_PLANS: SubscriptionPlanItem[] = [
     isActive: true,
     sortOrder: 3,
     features: ['Catálogo ilimitado de músicas', 'Selo de compositor verificado', 'Destaque editorial', 'Suporte prioritário'],
-    description: 'Acesso total e ilimitado para profissionais da música'
+    description: 'Acesso total e ilimitado para profissionais da música',
+    includesFeatured: true
   },
   {
     id: 'Plano Inicial',
@@ -1145,7 +1149,8 @@ export async function loadSubscriptionPlans(): Promise<SubscriptionPlanItem[]> {
       isActive: Boolean(r.is_active),
       sortOrder: Number(r.sort_order || 0),
       features: Array.isArray(r.features) ? r.features : [],
-      description: r.description || ''
+      description: r.description || '',
+      includesFeatured: Boolean(r.includes_featured)
     }));
   } catch (err) {
     captureException(err, { operation: 'loadSubscriptionPlans' });
@@ -1170,6 +1175,7 @@ export async function saveSubscriptionPlan(plan: SubscriptionPlanItem, originalN
     sort_order: plan.sortOrder,
     features: plan.features || [],
     description: plan.description || '',
+    includes_featured: Boolean(plan.includesFeatured),
     updated_at: new Date().toISOString()
   };
 

@@ -33,7 +33,8 @@ import {
   BadgeAlert,
   LoaderCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Crown
 } from 'lucide-react';
 import { adminRevealPixKey } from '../../lib/database';
 import { APP_CONFIG } from '../../config/appConfig';
@@ -101,6 +102,7 @@ export const AdminSettingsTab: React.FC = () => {
     isActive: boolean;
     sortOrder: number;
     description: string;
+    includesFeatured: boolean;
   }>({
     id: '',
     name: '',
@@ -108,7 +110,8 @@ export const AdminSettingsTab: React.FC = () => {
     maxSongs: 50,
     isActive: true,
     sortOrder: 1,
-    description: ''
+    description: '',
+    includesFeatured: false
   });
 
   // TEAM MANAGEMENT STATE
@@ -272,7 +275,8 @@ export const AdminSettingsTab: React.FC = () => {
       maxSongs: 50,
       isActive: true,
       sortOrder: (subscriptionPlans.length || 0) + 1,
-      description: ''
+      description: '',
+      includesFeatured: false
     });
     setIsPlanModalOpen(true);
   };
@@ -286,7 +290,8 @@ export const AdminSettingsTab: React.FC = () => {
       maxSongs: plan.maxSongs === null ? '' : plan.maxSongs,
       isActive: plan.isActive,
       sortOrder: plan.sortOrder,
-      description: plan.description || ''
+      description: plan.description || '',
+      includesFeatured: Boolean(plan.includesFeatured)
     });
     setIsPlanModalOpen(true);
   };
@@ -322,6 +327,7 @@ export const AdminSettingsTab: React.FC = () => {
         isActive: planForm.isActive,
         sortOrder: Number(planForm.sortOrder) || 1,
         description: planForm.description.trim(),
+        includesFeatured: planForm.includesFeatured,
         features: editingPlan?.features || ['Acesso completo', 'Liberação eletrônica de termos']
       };
 
@@ -804,6 +810,11 @@ export const AdminSettingsTab: React.FC = () => {
                     <span className="text-[11px] text-amber-400 font-medium block mt-1">
                       {plan.maxSongs === null ? 'Obras Ilimitadas' : `Até ${plan.maxSongs} músicas no catálogo`}
                     </span>
+                    {plan.includesFeatured && (
+                      <span className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-bold text-yellow-300">
+                        <Crown className="w-3 h-3" /> Destaque na vitrine
+                      </span>
+                    )}
                   </div>
 
                   {plan.features && plan.features.length > 0 && (
@@ -917,6 +928,19 @@ export const AdminSettingsTab: React.FC = () => {
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
+
+                  <label className="flex items-start gap-2 p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={planForm.includesFeatured}
+                      onChange={e => setPlanForm({ ...planForm, includesFeatured: e.target.checked })}
+                      className="mt-0.5 rounded text-amber-500 focus:ring-amber-500 w-4 h-4"
+                    />
+                    <span>
+                      <span className="text-white font-semibold flex items-center gap-1.5"><Crown className="w-3.5 h-3.5 text-yellow-400" /> Destaque na vitrine de compositores</span>
+                      <span className="text-[11px] text-slate-400 block mt-0.5">Assinantes ativos deste plano, com ao menos uma obra publicada, aparecem na seção de destaque da página de compositores.</span>
+                    </span>
+                  </label>
 
                   <div className="grid grid-cols-2 gap-3 pt-2">
                     <label className="flex items-center gap-2 p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">

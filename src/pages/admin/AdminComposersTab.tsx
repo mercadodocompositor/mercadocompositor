@@ -37,6 +37,7 @@ import {
   CheckSquare, 
   Square,
   Lock,
+  Crown
 } from 'lucide-react';
 
 type SortField = 'stageName' | 'planName' | 'monthlyValue' | 'songCount' | 'totalPlays' | 'revenueGenerated' | 'subscriptionStatus';
@@ -47,6 +48,7 @@ export const AdminComposersTab: React.FC = () => {
     adminComposers, 
     updateAdminComposerStatus, 
     toggleComposerVerified, 
+    toggleComposerFeatured,
     suspendAdminComposer,
     subscriptionPlans,
     addSystemLog,
@@ -251,6 +253,24 @@ export const AdminComposersTab: React.FC = () => {
     }
     if (selectedComposer?.id === composer.id) {
       setSelectedComposer(prev => prev ? { ...prev, isVerified: willBeVerified } : null);
+    }
+  };
+
+  const handleToggleFeatured = async (composer: AdminComposer) => {
+    const saved = await toggleComposerFeatured(composer.id);
+    if (!saved) { toast.error('Falha ao atualizar', 'O destaque anterior foi mantido.'); return; }
+    const willBeFeatured = !composer.isFeatured;
+    if (willBeFeatured) {
+      toast.success('Compositor em destaque', composer.songCount > 0
+        ? `${composer.stageName} agora aparece na seção de destaque da página de compositores.`
+        : `${composer.stageName} aparecerá no destaque assim que tiver uma obra publicada e a assinatura ativa.`);
+    } else {
+      toast.info('Destaque removido', composer.planIncludesFeatured
+        ? `O destaque manual foi removido, mas o plano ${composer.planName} mantém ${composer.stageName} em destaque.`
+        : `${composer.stageName} saiu da seção de destaque.`);
+    }
+    if (selectedComposer?.id === composer.id) {
+      setSelectedComposer(prev => prev ? { ...prev, isFeatured: willBeFeatured } : null);
     }
   };
 
@@ -561,6 +581,11 @@ export const AdminComposersTab: React.FC = () => {
                               {composer.isVerified && (
                                 <span title="Verificado" className="inline-flex"><CheckCircle2 aria-label="Verificado" className="w-3.5 h-3.5 text-amber-400" /></span>
                               )}
+                              {(composer.isFeatured || composer.planIncludesFeatured) && (
+                                <span title={composer.isFeatured ? 'Em destaque (escolha do admin)' : `Em destaque pelo ${composer.planName}`} className="inline-flex">
+                                  <Crown aria-label="Em destaque" className={`w-3.5 h-3.5 ${composer.isFeatured ? 'text-amber-300' : 'text-yellow-500'}`} />
+                                </span>
+                              )}
                             </div>
                             <span className="text-[11px] text-slate-400 block">{composer.name}</span>
                           </div>
@@ -638,6 +663,19 @@ export const AdminComposersTab: React.FC = () => {
                           title={composer.isVerified ? 'Remover selo de verificado' : 'Conceder selo de verificado'}
                         >
                           <ShieldCheck className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleFeatured(composer)}
+                          className={`p-2 rounded-xl border transition ${
+                            composer.isFeatured
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30'
+                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'
+                          }`}
+                          title={composer.isFeatured ? 'Remover da seção de destaque' : 'Colocar na seção de destaque'}
+                          aria-pressed={composer.isFeatured}
+                        >
+                          <Crown className="w-4 h-4" />
                         </button>
 
                         <button
@@ -765,6 +803,11 @@ export const AdminComposersTab: React.FC = () => {
                       <CheckCircle2 className="w-3 h-3" /> Verificado
                     </span>
                   )}
+                  {(selectedComposer.isFeatured || selectedComposer.planIncludesFeatured) && (
+                    <span className="bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Crown className="w-3 h-3" /> Destaque
+                    </span>
+                  )}
                 </div>
                 <p className="text-slate-400 mt-0.5">{selectedComposer.name}</p>
                 <p className="text-slate-500 text-[11px]">{selectedComposer.cityState}</p>
@@ -848,6 +891,12 @@ export const AdminComposersTab: React.FC = () => {
               </div>
             </div>
 
+            {selectedComposer.planIncludesFeatured && (
+              <p className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3 text-[11px] leading-relaxed text-yellow-200">
+                O {selectedComposer.planName} já inclui destaque: este compositor aparece na seção de destaque enquanto a assinatura estiver ativa e houver obra publicada, mesmo sem o destaque manual.
+              </p>
+            )}
+
             {/* Quick Actions inside Drawer */}
             <div className="flex items-center gap-3 pt-2">
               <button
@@ -860,6 +909,19 @@ export const AdminComposersTab: React.FC = () => {
               >
                 <ShieldCheck className="w-4 h-4" />
                 <span>{selectedComposer.isVerified ? 'Remover Selo' : 'Verificar Perfil'}</span>
+              </button>
+
+              <button
+                onClick={() => handleToggleFeatured(selectedComposer)}
+                aria-pressed={selectedComposer.isFeatured}
+                className={`flex-1 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition ${
+                  selectedComposer.isFeatured
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                }`}
+              >
+                <Crown className="w-4 h-4" />
+                <span>{selectedComposer.isFeatured ? 'Tirar do Destaque' : 'Destacar'}</span>
               </button>
 
               <button

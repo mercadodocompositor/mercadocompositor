@@ -26,7 +26,7 @@ import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { authErrorMessage, getFriendlyErrorMessage } from '../lib/apiErrors';
 import {
-  adminFeatureSong, adminSetSubscription, adminSetVerified, createInterest,
+  adminFeatureSong, adminSetComposerFeatured, adminSetSubscription, adminSetVerified, createInterest,
   incrementPlay, insertSong, insertSystemLog, issueReleaseRequest,
   loadAdminComposers, loadAdminSongs, loadAdminRequests, loadAdminReleases, verifyAdminPassword,
   loadDashboardMetrics, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadRequestById, loadRequestPage,
@@ -138,6 +138,7 @@ interface AppContextType {
   moderateSong: (songId: string, status: Extract<SongStatus, 'published' | 'rejected' | 'draft'>, notes?: string) => Promise<{ ok: boolean; error?: string }>;
   updateAdminComposerStatus: (composerId: string, status: SubscriptionStatus) => Promise<boolean>;
   toggleComposerVerified: (composerId: string) => Promise<boolean>;
+  toggleComposerFeatured: (composerId: string) => Promise<boolean>;
   suspendAdminComposer: (composerId: string) => Promise<boolean>;
 
   platformSettings: PlatformSettings;
@@ -859,6 +860,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  const toggleComposerFeatured = async (composerId: string) => {
+    const target=adminComposers.find(c=>c.id===composerId);
+    if(!target)return false;
+    try{await adminSetComposerFeatured(composerId,!target.isFeatured);}
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao alterar o destaque.');return false;}
+    setAdminComposers(prev=>prev.map(c=>c.id===composerId?{...c,isFeatured:!target.isFeatured}:c));
+    return true;
+  };
+
   const suspendAdminComposer = async (composerId: string): Promise<boolean> => {
     const success = await updateAdminComposerStatus(composerId, 'suspended');
     if (success) {
@@ -1179,6 +1189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       moderateSong,
       updateAdminComposerStatus,
       toggleComposerVerified,
+      toggleComposerFeatured,
       suspendAdminComposer,
       platformSettings,
       updatePlatformSettings,
