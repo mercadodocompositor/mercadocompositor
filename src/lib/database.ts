@@ -1620,26 +1620,34 @@ export async function markAllNotificationsAsRead(userId: string): Promise<void> 
 // Entrega da obra ao cliente (termo, música completa e letra)
 // ------------------------------------------------------------------------------
 export type ReleaseDeliveryInfo = {
-  songTitle: string; authors: string; composerName: string; buyerName: string;
-  documentCode: string; issueDate: string; releaseType: string; lyrics: string;
-  hasAudio: boolean; expiresAt: string;
+  songTitle: string; authors: string; iswc: string; interpreterName: string; composerName: string; buyerName: string;
+  documentCode: string; issueDate: string; releaseType: string; authorizedPurpose: string; agreedValue: number | null;
+  lyrics: string; hasAudio: boolean; expiresAt: string;
+  audio: { format: string; sizeBytes: number | null; durationSeconds: number | null } | null;
 };
 
 export type ReleaseDeliveryStatus = {
   releaseId: string; expiresAt: string; emailStatus: 'pending' | 'retry' | 'sent' | 'failed';
   emailQueuedAt: string | null; lastSentAt: string | null; emailFailedAt: string | null; emailLastError: string | null; views: number;
-  audioDownloads: number; lyricsDownloads: number; firstAudioDownloadAt: string | null; lastAccessAt: string | null;
+  audioDownloads: number; lyricsDownloads: number; documentDownloads: number; firstAudioDownloadAt: string | null; lastAccessAt: string | null;
+  composerNotifiedAt: string | null;
 };
 
+export type DeliveryFailure = Error & { reason: 'expired' | 'not_found' | 'audio_missing' | 'unavailable'; composerName?: string };
+
+type DeliveryAction = 'info' | 'audio' | 'stream' | 'lyrics' | 'document' | 'notify_composer';
+
 // A Edge Function devolve a mensagem de erro no corpo; o invoke só expõe o status.
-const invokeDelivery = async <T,>(token: string, action: 'info' | 'audio' | 'lyrics'): Promise<T> => {
+// Sem corpo (rede, função fora do ar) o motivo é 'unavailable' e vale tentar de novo.
+const invokeDelivery = async <T,>(token: string, action: DeliveryAction): Promise<T> => {
   if (!supabase) throw new Error('Supabase não configurado.');
   const { data, error } = await supabase.functions.invoke('release-delivery', { body: { token, action } });
   if (error) {
     const context = (error as { context?: Response }).context;
     const detail = context && typeof context.json === 'function' ? await context.json().catch(() => null) : null;
-    const failure = new Error(detail?.message || 'Não foi possível abrir a entrega. Tente novamente.') as Error & { expired?: boolean };
-    failure.expired = Boolean(detail?.expired);
+    const failure = new Error(detail?.message || 'Não foi possível abrir a entrega. Verifique sua conexão e tente novamente.') as DeliveryFailure;
+    failure.reason = ['expired', 'not_found', 'audio_missing'].includes(detail?.reason) ? detail.reason : 'unavailable';
+    failure.composerName = detail?.composerName;
     throw failure;
   }
   return data as T;
@@ -1647,21 +1655,39 @@ const invokeDelivery = async <T,>(token: string, action: 'info' | 'audio' | 'lyr
 
 export const loadReleaseDelivery = (token: string) => invokeDelivery<ReleaseDeliveryInfo>(token, 'info');
 export const requestDeliveryAudioUrl = (token: string) => invokeDelivery<{ url: string }>(token, 'audio');
+export const requestDeliveryStreamUrl = (token: string) => invokeDelivery<{ url: string }>(token, 'stream');
 export const registerDeliveryLyricsDownload = (token: string) => invokeDelivery<{ ok: boolean }>(token, 'lyrics');
+/** Avisa o compositor (link expirado ou música indisponível). `notified: false` = já avisado nas últimas 24 h. */
+export const notifyComposerAboutDelivery = (token: string) => invokeDelivery<{ notified: boolean; composerName: string }>(token, 'notify_composer');
+
+export type DeliveryTermDocument =
+  | { kind: 'archived'; url: string; hash: string | null; documentCode: string }
+  | { kind: 'generated'; release: ReleaseDocument };
+
+// Via completa do termo para o cliente: a arquivada na emissão ou, em termos
+// antigos sem arquivo, os dados para gerar o PDF no navegador.
+export async function requestDeliveryTermDocument(token: string): Promise<DeliveryTermDocument> {
+  const data = await invokeDelivery<{ kind: 'archived'; url: string; hash: string | null; documentCode: string } | { kind: 'generated'; release: any }>(token, 'document');
+  return data.kind === 'archived' ? data : { kind: 'generated', release: camelRelease(data.release) };
+}
+
+const DELIVERY_STATUS_COLUMNS = 'release_id, expires_at, email_status, email_queued_at, last_sent_at, email_failed_at, email_last_error, views, audio_downloads, lyrics_downloads, first_audio_download_at, last_access_at';
 
 export async function loadReleaseDeliveryStatuses(releaseIds: string[]): Promise<Record<string, ReleaseDeliveryStatus>> {
   if (!supabase || releaseIds.length === 0) return {};
-  const { data, error } = await supabase.from('release_deliveries')
-    .select('release_id, expires_at, email_status, email_queued_at, last_sent_at, email_failed_at, email_last_error, views, audio_downloads, lyrics_downloads, first_audio_download_at, last_access_at')
-    .in('release_id', releaseIds);
+  const select = (columns: string) => supabase!.from('release_deliveries').select(columns).in('release_id', releaseIds);
+  let { data, error } = await select(`${DELIVERY_STATUS_COLUMNS}, document_downloads, composer_notified_at`);
+  // Antes de release_delivery_snapshot_2026_09_28.sql as colunas novas não existem.
+  if (error?.code === '42703') ({ data, error } = await select(DELIVERY_STATUS_COLUMNS));
   // Sem a migração release_delivery o painel continua funcionando, só sem o status.
   if (error) { if (error.code === '42P01' || error.code === 'PGRST205') return {}; throw error; }
   return Object.fromEntries((data || []).map((row: any) => [row.release_id, {
     releaseId: row.release_id, expiresAt: row.expires_at, emailStatus: row.email_status || 'pending',
     emailQueuedAt: row.email_queued_at, lastSentAt: row.last_sent_at,
     emailFailedAt: row.email_failed_at, emailLastError: row.email_last_error, views: row.views,
-    audioDownloads: row.audio_downloads, lyricsDownloads: row.lyrics_downloads,
+    audioDownloads: row.audio_downloads, lyricsDownloads: row.lyrics_downloads, documentDownloads: row.document_downloads ?? 0,
     firstAudioDownloadAt: row.first_audio_download_at, lastAccessAt: row.last_access_at,
+    composerNotifiedAt: row.composer_notified_at ?? null,
   }]));
 }
 

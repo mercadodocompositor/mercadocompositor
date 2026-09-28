@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, CheckCircle2, Clock, Download, Eye, Mail, RefreshCw } from 'lucide-react';
+import { AlertCircle, BellRing, CheckCircle2, Clock, Download, Eye, FileText, Mail, RefreshCw } from 'lucide-react';
 import type { ReleaseDeliveryStatus as DeliveryStatus } from '../../lib/database';
 
 type Props = {
@@ -65,6 +65,10 @@ export const ReleaseDeliveryStatus: React.FC<Props> = ({ status, isSending = fal
   const description = describeReleaseDelivery(status);
   const { Icon } = description;
   const hasDelivery = Boolean(status);
+  // Pedido do cliente pela página de entrega que ainda não foi atendido por um reenvio.
+  const clientAskedAt = status?.composerNotifiedAt
+    && (!status.emailQueuedAt || new Date(status.composerNotifiedAt) > new Date(status.emailQueuedAt))
+    ? status.composerNotifiedAt : null;
 
   return (
     <section aria-label="Situação da entrega" className={`rounded-xl border ${description.tone} ${compact ? 'p-3' : 'p-4'} space-y-3`}>
@@ -77,9 +81,17 @@ export const ReleaseDeliveryStatus: React.FC<Props> = ({ status, isSending = fal
         </div>
       </div>
 
-      {status && (status.views > 0 || status.audioDownloads > 0 || status.lyricsDownloads > 0) && (
-        <div className="grid grid-cols-3 gap-2 border-t border-current/10 pt-2 text-center text-[10px]">
+      {clientAskedAt && (
+        <p role="status" className="flex items-start gap-2 rounded-lg bg-slate-950/40 p-2 text-[11px] font-semibold">
+          <BellRing className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          O cliente pediu ajuda pela página de entrega em {new Date(clientAskedAt).toLocaleString('pt-BR')} (link expirado ou música indisponível). Confira a obra e reenvie a entrega.
+        </p>
+      )}
+
+      {status && (status.views > 0 || status.audioDownloads > 0 || status.lyricsDownloads > 0 || status.documentDownloads > 0) && (
+        <div className="grid grid-cols-4 gap-2 border-t border-current/10 pt-2 text-center text-[10px]">
           <span><Eye className="mx-auto mb-0.5 h-3.5 w-3.5" /><strong className="block">{status.views}</strong>aberturas</span>
+          <span><FileText className="mx-auto mb-0.5 h-3.5 w-3.5" /><strong className="block">{status.documentDownloads}</strong>termos</span>
           <span><Download className="mx-auto mb-0.5 h-3.5 w-3.5" /><strong className="block">{status.audioDownloads}</strong>músicas</span>
           <span><Download className="mx-auto mb-0.5 h-3.5 w-3.5" /><strong className="block">{status.lyricsDownloads}</strong>letras</span>
         </div>

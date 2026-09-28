@@ -1,7 +1,7 @@
 import type { ReleaseDocument } from '../types';
 import { getReleasePdfBlob } from './pdfGenerator';
 import { supabase } from './supabase';
-import { uploadCurrentUserFile } from './database';
+import { uploadCurrentUserFile, type DeliveryTermDocument } from './database';
 
 export const RELEASE_TEMPLATE_VERSION = 'release-v3';
 
@@ -43,6 +43,21 @@ export const downloadReleaseDocument = async (document: ReleaseDocument) => {
   return true;
 };
 
+// Entrega ao cliente: mesma via e mesma conferência de hash do painel do compositor.
+export const downloadDeliveryTerm = async (term: DeliveryTermDocument) => {
+  if (term.kind === 'generated') {
+    saveBlob(getReleasePdfBlob(term.release), `Termo_Liberacao_${term.release.documentCode}.pdf`);
+    return;
+  }
+  const response = await fetch(term.url);
+  if (!response.ok) throw new Error('Não foi possível baixar o termo. Tente novamente.');
+  const blob = await response.blob();
+  if (term.hash && await sha256(blob) !== term.hash) {
+    throw new Error('A integridade do PDF arquivado não pôde ser confirmada.');
+  }
+  saveBlob(new Blob([blob], { type: 'application/pdf' }), `Termo_Liberacao_${term.documentCode}.pdf`);
+};
+
 const saveBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob);
   const link = window.document.createElement('a');
@@ -51,5 +66,6 @@ const saveBlob = (blob: Blob, filename: string) => {
   window.document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Revogar no mesmo tick cancela o download no Safari e no Firefox.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };

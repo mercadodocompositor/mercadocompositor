@@ -19,7 +19,7 @@ Pré-requisito: Node.js 20+.
    1. [`supabase/update_all_migrations.sql`](supabase/update_all_migrations.sql), somente como baseline quando aplicável;
    2. migrations legadas ou de infraestrutura ainda necessárias;
    3. [`supabase/buyer_request_receipt_2026_09_24.sql`](supabase/buyer_request_receipt_2026_09_24.sql);
-   4. [`supabase/release_delivery_2026_09_24.sql`](supabase/release_delivery_2026_09_24.sql);
+   4. [`supabase/release_delivery_2026_09_24.sql`](supabase/release_delivery_2026_09_24.sql), seguido de [`supabase/release_delivery_snapshot_2026_09_28.sql`](supabase/release_delivery_snapshot_2026_09_28.sql);
    5. [`supabase/request_consent_evidence_2026_09_24.sql`](supabase/request_consent_evidence_2026_09_24.sql);
    6. [`supabase/cpf_cnpj_validation_2026_09_24.sql`](supabase/cpf_cnpj_validation_2026_09_24.sql);
    7. [`supabase/remove_payment_integration_2026_09_23.sql`](supabase/remove_payment_integration_2026_09_23.sql), para instalações que possuíam o gateway antigo;
@@ -38,6 +38,7 @@ Pré-requisito: Node.js 20+.
    npx supabase functions deploy stripe-change-plan
    npx supabase functions deploy stripe-webhook --no-verify-jwt
    npx supabase functions deploy delete-my-account
+   npx supabase functions deploy release-delivery
    ```
 
 4. Execute `npm run check` e publique o conteúdo de `dist/` na Hostinger.

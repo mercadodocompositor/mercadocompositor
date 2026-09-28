@@ -201,7 +201,7 @@ export const ReleasesTab: React.FC = () => {
       setDeliveryStatuses(current => ({
         ...current,
         [doc.id]: {
-          ...(current[doc.id] || { releaseId: doc.id, emailQueuedAt: null, lastSentAt: null, emailFailedAt: null, emailLastError: null, views: 0, audioDownloads: 0, lyricsDownloads: 0, firstAudioDownloadAt: null, lastAccessAt: null }),
+          ...(current[doc.id] || { releaseId: doc.id, emailQueuedAt: null, lastSentAt: null, emailFailedAt: null, emailLastError: null, views: 0, audioDownloads: 0, lyricsDownloads: 0, documentDownloads: 0, firstAudioDownloadAt: null, lastAccessAt: null, composerNotifiedAt: null }),
           expiresAt: result.expiresAt, emailStatus: result.emailStatus, emailQueuedAt: result.queuedAt, lastSentAt: result.lastSentAt,
         },
       }));

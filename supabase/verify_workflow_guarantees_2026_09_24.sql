@@ -75,6 +75,17 @@ begin
       message = 'Garantia inválida: notify_release_issued foi sobrescrita. Reaplique release_delivery_2026_09_24.sql.';
   end if;
 
+  select pg_get_functiondef(p.oid) into v_definition
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'issue_release_delivery_token'
+    and pg_get_function_identity_arguments(p.oid) = 'p_release_id uuid, p_lyrics text';
+  if v_definition is null
+     or position('audio_path' in v_definition) = 0
+     or to_regprocedure('public.notify_composer_about_delivery(uuid,text)') is null then
+    raise exception using errcode = 'P0001',
+      message = 'Garantia inválida: a entrega não congela o áudio da emissão. Reaplique release_delivery_snapshot_2026_09_28.sql.';
+  end if;
+
   if not exists (
     select 1 from pg_trigger t
     join pg_class c on c.oid = t.tgrelid
