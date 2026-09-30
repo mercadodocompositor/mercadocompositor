@@ -229,7 +229,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
         {/* Metric 1: MRR */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative group hover:border-amber-500/30 transition shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">MRR (Recorrência)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400" title="Soma do valor do plano de todas as contas ativas, inclusive em teste grátis e cortesias. Para valores cobrados, use o painel do Stripe.">MRR estimado</span>
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
               <DollarSign className="w-5 h-5" />
             </div>
@@ -332,7 +332,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-amber-400" />
                 <h3 className="text-base font-bold text-white tracking-tight">
-                  Evolução Financeira (GMV & MRR)
+                  Evolução Financeira (GMV & MRR estimado)
                 </h3>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -441,7 +441,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-slate-300 font-medium">Assinaturas Recorrentes (MRR)</span>
+                <span className="text-slate-300 font-medium">Assinaturas Recorrentes (MRR estimado pela data de cadastro)</span>
               </div>
             </div>
           </div>

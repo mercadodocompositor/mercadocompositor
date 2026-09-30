@@ -4,6 +4,12 @@ import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { APP_CONFIG } from '../config/appConfig';
 import { useApp } from '../context/AppContext';
+import { applyPageMeta } from '../lib/pageMeta';
+import { APP_URL } from '../config/appConfig';
+
+// Data da última revisão do texto. Ao mudar o conteúdo, atualize aqui e suba a
+// versão em Admin > Configurações: o painel pede o aceite da nova versão.
+const LEGAL_UPDATED_AT = '30 de setembro de 2026';
 import { formatMoneyBR, listOfferedPlans } from '../lib/plans';
 import { 
   ShieldCheck, 
@@ -30,7 +36,15 @@ export const LegalPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'termos' | 'privacidade'>(isPrivacy ? 'privacidade' : 'termos');
   const [searchQuery, setSearchQuery] = useState('');
-  const { subscriptionPlans } = useApp();
+  const { subscriptionPlans, platformSettings } = useApp();
+
+  useEffect(() => applyPageMeta({
+    title: `${isPrivacy ? 'Política de Privacidade' : 'Termos de Uso'} | Mercado do Compositor`,
+    description: isPrivacy
+      ? 'Como o Mercado do Compositor trata os dados pessoais de compositores, intérpretes e visitantes, conforme a LGPD.'
+      : 'Regras de uso do Mercado do Compositor: planos, catálogo de obras, solicitações e termos de liberação.',
+    url: `${APP_URL.replace(/\/$/, '')}${isPrivacy ? '/privacidade' : '/termos'}`,
+  }), [isPrivacy]);
   // Mesmo catálogo que o checkout cobra: o termo não pode anunciar outro preço.
   const offeredPlans = useMemo(() => listOfferedPlans(subscriptionPlans), [subscriptionPlans]);
 
@@ -138,7 +152,7 @@ export const LegalPage: React.FC = () => {
                 <Music className="w-4 h-4" /> Prévia Pública de até 60 Segundos
               </span>
               <p className="text-xs text-slate-300">
-                O player público reproduz exclusivamente trechos de prévia de até 85 segundos com marcação de amostragem, permitindo a apreciação artística sem viabilizar apropriação indevida do fonograma completo.
+                O player público reproduz exclusivamente trechos de prévia de até 85 segundos, gerados como arquivos separados do fonograma completo, permitindo a apreciação artística sem viabilizar apropriação indevida do fonograma completo.
               </p>
             </div>
           </div>
@@ -201,7 +215,7 @@ export const LegalPage: React.FC = () => {
               <strong>Direito de Arrependimento (Art. 49 do CDC):</strong> Nos termos do art. 49 da Lei Federal nº 8.078/1990 (Código de Defesa do Consumidor), o usuário pode desistir da contratação no prazo de até <strong>7 (sete) dias corridos</strong> a contar da assinatura inicial, mediante solicitação ao suporte, com restituição dos valores pagos.
             </p>
             <p>
-              <strong>Estornos e Contestações:</strong> O estorno de uma cobrança ou sua contestação junto à operadora do cartão (chargeback) suspende a exibição pública do perfil e das obras até a regularização da assinatura.
+              <strong>Estornos e Contestações:</strong> Em caso de estorno de uma cobrança ou de contestação junto à operadora do cartão (chargeback), a equipe da plataforma pode suspender a exibição pública do perfil e das obras até a regularização da assinatura.
             </p>
             <p>
               <strong>Alteração de Valores:</strong> Eventual reajuste no valor dos planos será comunicado previamente aos assinantes pelo painel e pelo e-mail cadastrado, antes de ser aplicado às cobranças seguintes.
@@ -272,7 +286,7 @@ export const LegalPage: React.FC = () => {
       id: 'agentes-tratamento',
       number: '2',
       title: 'Controlador e Operadores de Dados Qualificados',
-      keywords: 'controlador operador supabase aws encarregado dpo',
+      keywords: 'controlador operador supabase aws stripe resend google hostinger encarregado dpo',
       content: (
         <div className="space-y-3">
           <p>
@@ -280,6 +294,10 @@ export const LegalPage: React.FC = () => {
           </p>
           <ul className="list-disc pl-5 space-y-2 text-slate-300 text-xs">
             <li><strong>Supabase Inc. / Amazon Web Services (AWS):</strong> Hospedagem em nuvem de alto desempenho, banco de dados PostgreSQL relacional seguro, autenticação multifator e armazenamento criptografado de áudios com certificações ISO 27001 e SOC 2 Type II.</li>
+            <li><strong>Stripe Payments:</strong> Processamento das assinaturas dos planos. Recebe o e-mail da conta, o plano contratado e os dados de pagamento, que são informados diretamente no ambiente do Stripe; a plataforma não recebe nem armazena números de cartão.</li>
+            <li><strong>Resend:</strong> Envio dos e-mails transacionais (confirmação de cadastro, recuperação de senha, avisos de solicitações e entrega do termo de liberação). Recebe o endereço de e-mail do destinatário e o conteúdo da mensagem, que pode incluir nomes do compositor e do intérprete e o título da obra.</li>
+            <li><strong>Google:</strong> Login opcional com a conta Google (nome, e-mail e foto do perfil informados pelo Google) e fornecimento das fontes tipográficas do site, o que envolve o endereço IP do visitante.</li>
+            <li><strong>Hostinger:</strong> Hospedagem do site e rede de distribuição de conteúdo, com registros técnicos de acesso (endereço IP, data e hora).</li>
           </ul>
         </div>
       )
@@ -492,9 +510,9 @@ export const LegalPage: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
               <div className="flex items-center gap-2 text-slate-300">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="font-bold text-white">Documento Oficial Vigente (Versão 1.2)</span>
+                <span className="font-bold text-white">Documento Oficial Vigente (Versão {platformSettings.termsVersion})</span>
                 <span>•</span>
-                <span className="text-slate-400">Atualizado em 21 de setembro de 2026</span>
+                <span className="text-slate-400">Atualizado em {LEGAL_UPDATED_AT}</span>
               </div>
               <div className="flex items-center gap-2 text-amber-400 font-medium text-[11px]">
                 <ShieldCheck className="w-4 h-4" />

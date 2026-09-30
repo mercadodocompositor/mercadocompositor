@@ -9,7 +9,16 @@ interface MonitoringEvent {
   release: string;
 }
 
-const endpoint = import.meta.env.VITE_OBSERVABILITY_ENDPOINT?.trim();
+// Sem endpoint próprio configurado, os erros vão para a Edge Function
+// client-telemetry do projeto: antes disso, nada era registrado em produção.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim().replace(/\/$/, '');
+const customEndpoint = import.meta.env.VITE_OBSERVABILITY_ENDPOINT?.trim();
+const endpoint = customEndpoint
+  || (import.meta.env.PROD && supabaseUrl ? `${supabaseUrl}/functions/v1/client-telemetry` : '');
+
+// O token de entrega é a credencial do cliente e está no caminho da página.
+const currentPath = () => (typeof window !== 'undefined' && window.location ? window.location.pathname : '/')
+  .replace(/^\/entrega\/.+/, '/entrega/[token]');
 const release = import.meta.env.VITE_APP_RELEASE?.trim() || 'development';
 const sensitiveKey = /(email|cpf|cnpj|phone|whatsapp|password|token|authorization|document|signature)/i;
 
@@ -37,7 +46,7 @@ export const captureException = (error: unknown, context?: Record<string,unknown
   message:error instanceof Error?error.message:'Erro inesperado',
   context:{error,...context},
   timestamp:new Date().toISOString(),
-  path:typeof window !== 'undefined' && window.location ? window.location.pathname : '/',
+  path:currentPath(),
   release
 });
 
@@ -46,14 +55,15 @@ export const captureEvent = (message:string,level:MonitoringLevel='info',context
   message,
   context,
   timestamp:new Date().toISOString(),
-  path:typeof window !== 'undefined' && window.location ? window.location.pathname : '/',
+  path:currentPath(),
   release
 });
 
 export const initializeMonitoring = () => {
   window.addEventListener('error',event=>captureException(event.error||event.message,{source:'window.error'}));
   window.addEventListener('unhandledrejection',event=>captureException(event.reason,{source:'unhandledrejection'}));
-  if(!endpoint||!('PerformanceObserver' in window)) return;
+  // Métricas de desempenho só fazem sentido para um coletor próprio; client-telemetry guarda apenas erros.
+  if(!customEndpoint||!('PerformanceObserver' in window)) return;
   try {
     const observer=new PerformanceObserver(list=>list.getEntries().forEach(entry=>{
       if(entry.entryType==='largest-contentful-paint'||entry.entryType==='layout-shift') captureEvent('web-vital','info',{type:entry.entryType,value:'value' in entry?Number((entry as PerformanceEntry & {value?:number}).value||0):entry.startTime});

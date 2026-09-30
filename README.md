@@ -16,16 +16,22 @@ Pré-requisito: Node.js 20+.
 
 1. Aplique os scripts SQL na ordem abaixo. `create or replace function` torna a ordem parte do contrato do deploy: migrations antigas executadas depois das novas podem remover garantias sem conflito de schema.
 
-   1. [`supabase/update_all_migrations.sql`](supabase/update_all_migrations.sql), somente como baseline quando aplicável;
-   2. migrations legadas ou de infraestrutura ainda necessárias;
-   3. [`supabase/buyer_request_receipt_2026_09_24.sql`](supabase/buyer_request_receipt_2026_09_24.sql);
-   4. [`supabase/release_delivery_2026_09_24.sql`](supabase/release_delivery_2026_09_24.sql), seguido de [`supabase/release_delivery_snapshot_2026_09_28.sql`](supabase/release_delivery_snapshot_2026_09_28.sql);
-   5. [`supabase/request_consent_evidence_2026_09_24.sql`](supabase/request_consent_evidence_2026_09_24.sql);
-   6. [`supabase/cpf_cnpj_validation_2026_09_24.sql`](supabase/cpf_cnpj_validation_2026_09_24.sql);
-   7. [`supabase/remove_payment_integration_2026_09_23.sql`](supabase/remove_payment_integration_2026_09_23.sql), para instalações que possuíam o gateway antigo;
-   8. [`supabase/verify_workflow_guarantees_2026_09_24.sql`](supabase/verify_workflow_guarantees_2026_09_24.sql), obrigatoriamente por último.
+   **Banco já em uso: não execute `supabase/schema.sql` nem `supabase/update_all_migrations.sql`.** Os dois são baseline de projeto novo e reinstalam versões antigas de funções, policies e permissões. Arquivos que não aparecem na lista abaixo estão superados ou pertencem ao gateway antigo.
 
-   O último script falha explicitamente se consentimento, validação de CPF/CNPJ, entrega automática ou sincronização do outbox tiverem sido sobrescritos.
+   1. `fix_auditoria_2026_09.sql` e `production_readiness_2026_09_18.sql` (somente logo após o baseline);
+   2. `fix_user_roles_created_at.sql`, `dashboard_metrics.sql`, `release_metrics.sql`, `terms_acceptance.sql`, `export_personal_data_lgpd_2026_09_22.sql`, `account_security_metadata_2026_09_22.sql`, `profile_privacy_lgpd_2026_09_22.sql`;
+   3. `notification_delivery_2026_09_22.sql`, `essential_notifications_2026_09_22.sql`, `buyer_copy_and_payment_failure_2026_09_22.sql`;
+   4. `stripe_integration_2026_09_23.sql`, `stripe_plans_and_invoices_2026_09_23.sql`, `stripe_cancel_at_2026_09_23.sql`, `remove_payment_integration_2026_09_23.sql`;
+   5. `stripe_subscription_notifications_2026_09_24.sql`, `account_deletion_notifications_2026_09_24.sql`, `self_account_deletion_2026_09_24.sql`, `self_account_deletion_no_reauth_2026_09_24.sql`, `fix_banned_until_infinity_2026_09_24.sql`, `fix_deleted_account_identities_2026_09_24.sql`, `fix_self_deletion_identity_guard_2026_09_24.sql`;
+   6. `fix_song_triggers_regression_2026_09_24.sql`, `remove_song_moderation_2026_09_24.sql`, `fix_validated_media_fk_deferred_2026_09_24.sql`, `fix_request_history_2026_09_24.sql`, `request_status_groups_2026_09_24.sql`;
+   7. [`supabase/request_consent_evidence_2026_09_24.sql`](supabase/request_consent_evidence_2026_09_24.sql), [`supabase/cpf_cnpj_validation_2026_09_24.sql`](supabase/cpf_cnpj_validation_2026_09_24.sql), [`supabase/buyer_request_receipt_2026_09_24.sql`](supabase/buyer_request_receipt_2026_09_24.sql), [`supabase/release_delivery_2026_09_24.sql`](supabase/release_delivery_2026_09_24.sql);
+   8. `release_interpreter_iswc_2026_09_25.sql`, `split_music_genres_2026_09_25.sql`, `preview_85_seconds_2026_09_25.sql`;
+   9. [`supabase/release_delivery_snapshot_2026_09_28.sql`](supabase/release_delivery_snapshot_2026_09_28.sql), `featured_composers_2026_09_28.sql`, `admin_safe_deletions_2026_09_28.sql`, `username_history_2026_09_28.sql`, `profile_save_and_email_2026_09_28.sql`, `welcome_email_2026_09_28.sql`, `plan_features_8_items_2026_09_28.sql`, `remove_test_plan_initial_2026_09_28.sql`;
+   10. `fix_composer_request_email_delivery_2026_09_29.sql`, `fix_preview_validation_85_seconds_2026_09_29.sql`, `maintenance_mode_enforcement.sql`;
+   11. [`supabase/fix_bloqueadores_2026_09_30.sql`](supabase/fix_bloqueadores_2026_09_30.sql), `admin_suspension_2026_09_30.sql`, `public_abuse_and_telemetry_2026_09_30.sql`, `medios_2026_09_30.sql`, `baixos_2026_09_30.sql`;
+   12. [`supabase/verify_workflow_guarantees_2026_09_24.sql`](supabase/verify_workflow_guarantees_2026_09_24.sql), obrigatoriamente por último.
+
+   O último script falha explicitamente se consentimento, validação de CPF/CNPJ, entrega automática, sincronização do outbox ou as permissões de coluna de `songs` e `profiles` tiverem sido sobrescritos. A análise completa dos conflitos está em `DIAGNOSTICO_PRODUCAO.md`, seção 6.
 2. Configure os secrets listados em [`supabase/functions/.env.example`](supabase/functions/.env.example), inclusive `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET`.
    Para usar o template HTML de entrega do termo no Resend, siga [`supabase/resend/README.md`](supabase/resend/README.md) antes de configurar `RESEND_RELEASE_DELIVERY_TEMPLATE_ID`.
 3. Publique as Edge Functions em uso:
@@ -40,6 +46,7 @@ Pré-requisito: Node.js 20+.
    npx supabase functions deploy stripe-webhook --no-verify-jwt
    npx supabase functions deploy delete-my-account
    npx supabase functions deploy release-delivery
+   npx supabase functions deploy client-telemetry --no-verify-jwt
    ```
 
 4. Execute `npm run check` e publique o conteúdo de `dist/` na Hostinger.

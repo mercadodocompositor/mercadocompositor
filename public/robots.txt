@@ -15,4 +15,6 @@ Disallow: /cadastro
 Disallow: /recuperar-senha
 Disallow: /entrega/
 
-Sitemap: https://mercadodocompositor.com.br/sitemap.xml
+# sitemap.php lista também os perfis públicos (o CDN da Hostinger serve o
+# sitemap.xml estático direto, sem passar pela regra do .htaccess).
+Sitemap: https://mercadodocompositor.com.br/sitemap.php

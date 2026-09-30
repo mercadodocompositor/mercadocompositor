@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { downloadCsv } from '../../lib/csvExport';
 import { useApp } from '../../context/AppContext';
 import { InterestRequest, ReleaseDocument, RequestStatus } from '../../types';
 import { AdminDrawer } from '../../components/admin/AdminDrawer';
@@ -233,12 +234,6 @@ export const AdminTransactionsTab: React.FC = () => {
       return;
     }
 
-    const csvCell = (value: unknown) => {
-      let text = String(value ?? '');
-      if (/^[=+\-@]/.test(text)) text = `'${text}`;
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-
     const headers = [
       'ID',
       'Obra_Musical',
@@ -260,21 +255,11 @@ export const AdminTransactionsTab: React.FC = () => {
       const netVal = r.composerNetAmount;
 
       return [
-        csvCell(r.id), csvCell(r.songTitle), csvCell(r.buyerName), csvCell(r.cpfCnpj),
-        csvCell(r.buyerEmail), csvCell(r.buyerWhatsapp), csvCell(r.status), csvCell(grossVal.toFixed(2)),
-        csvCell(feeVal?.toFixed(2) ?? 'NÃO REGISTRADA'),
-        csvCell(netVal?.toFixed(2) ?? 'NÃO REGISTRADO'), csvCell(r.purpose), csvCell(r.paymentReceivedAt || '')
+        r.id, r.songTitle, r.buyerName, r.cpfCnpj, r.buyerEmail, r.buyerWhatsapp, r.status, grossVal.toFixed(2),
+        feeVal?.toFixed(2) ?? 'NÃO REGISTRADA', netVal?.toFixed(2) ?? 'NÃO REGISTRADO', r.purpose, r.paymentReceivedAt || ''
       ];
     });
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `conciliacao_financeira_admin_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`conciliacao_financeira_admin_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
     toast.success('Relatório Financeiro Gerado', 'O arquivo CSV com split de intermediação foi baixado.');
     setExportRequested(false);
   };

@@ -42,6 +42,8 @@ import {
 export const RequestsTab: React.FC = () => {
   const { requestId } = useParams<{ requestId?: string }>();
   const navigate = useNavigate();
+  // API interna do React Router (sem useBlocker no BrowserRouter). Por isso a
+  // versão está fixada no package.json: revise este aviso antes de atualizá-la.
   const { navigator } = useContext(UNSAFE_NavigationContext);
   const [searchParams, setSearchParams] = useSearchParams();
   const { requests, songs, updateRequestStatus, queryRequests, getRequestById, issueRelease, retryReleaseArchive, releases, profile, authLoading, currentUserId } = useApp();
@@ -78,6 +80,8 @@ export const RequestsTab: React.FC = () => {
   const [draftStatus, setDraftStatus] = useState<RequestStatus>('nova');
   const [showBuyerDocument, setShowBuyerDocument] = useState(false);
   const [legalAcknowledged, setLegalAcknowledged] = useState(false);
+  // O termo vale para todos os autores da obra: quem emite declara que os demais concordam.
+  const [coauthorsDeclared, setCoauthorsDeclared] = useState(false);
   const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
   const [showArchiveConfirmation, setShowArchiveConfirmation] = useState(false);
   const [showReleaseReview, setShowReleaseReview] = useState(false);
@@ -754,7 +758,13 @@ export const RequestsTab: React.FC = () => {
 
     if (!reviewConfirmed) {
       setReleaseReviewError('');
+      setCoauthorsDeclared(false);
       setShowReleaseReview(true);
+      return;
+    }
+
+    if (!coauthorsDeclared) {
+      setReleaseReviewError('Confirme a declaração sobre os autores da obra para emitir o termo.');
       return;
     }
 
@@ -1083,7 +1093,12 @@ export const RequestsTab: React.FC = () => {
                 <div><dt className="text-xs text-slate-500">Música</dt><dd className="font-semibold text-white break-words">{activeRequest.songTitle}</dd></div>
                 <div><dt className="text-xs text-slate-500">Valor quitado</dt><dd className="font-semibold text-emerald-400">R$ {Number(agreedValueInput || activeRequest.agreedValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</dd></div>
                 <div><dt className="text-xs text-slate-500">Tipo</dt><dd className="font-semibold text-amber-400">{releaseTypeInput}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs text-slate-500">Autores que constam no termo</dt><dd className="font-semibold text-white break-words">{songs.find(song => song.id === activeRequest.songId)?.authors || '—'}</dd></div>
               </dl>
+              <label className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-xs leading-relaxed text-slate-300">
+                <input type="checkbox" checked={coauthorsDeclared} onChange={event => { setCoauthorsDeclared(event.target.checked); setReleaseReviewError(''); }} disabled={isIssuingRelease} className="mt-0.5" />
+                <span>Declaro que sou autor desta obra e que todos os autores listados acima autorizaram esta liberação nas condições informadas. O termo é emitido em nome de todos eles.</span>
+              </label>
               {releaseReviewError && (
                 <div role="alert" className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-3 text-xs leading-relaxed text-red-200">
                   <strong className="block text-red-300">O termo não foi emitido.</strong>
@@ -1095,7 +1110,7 @@ export const RequestsTab: React.FC = () => {
               )}
               <div className="mt-6 flex justify-end gap-3">
                 <button type="button" disabled={isIssuingRelease} onClick={closeReviewModal} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Voltar e corrigir</button>
-                <button data-autofocus type="button" disabled={isIssuingRelease} onClick={() => void handleCreateRelease(true)} className="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">{isIssuingRelease ? 'Emitindo...' : 'Confirmar e emitir'}</button>
+                <button data-autofocus type="button" disabled={isIssuingRelease || !coauthorsDeclared} onClick={() => void handleCreateRelease(true)} className="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 disabled:opacity-50">{isIssuingRelease ? 'Emitindo...' : 'Confirmar e emitir'}</button>
               </div>
             </div>
           </div>

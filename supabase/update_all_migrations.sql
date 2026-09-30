@@ -1,3 +1,6 @@
+-- ATENCAO: baseline. NAO EXECUTE DE NOVO EM UM BANCO JA EM USO sem reaplicar, em
+-- seguida, as migracoes posteriores listadas no README.md: este arquivo reinstala
+-- versoes antigas de funcoes e policies redefinidas depois.
 -- ==============================================================================
 -- MERCADO DO COMPOSITOR - SCRIPT CONSOLIDADO DE ATUALIZAÇÃO DO SUPABASE
 -- Execute este script completo no "SQL Editor" do painel do Supabase.
@@ -458,10 +461,11 @@ grant update (
   updated_at
 ) on table public.profiles to authenticated;
 
+alter table public.songs add column if not exists iswc text;
 revoke insert, update on table public.songs from anon, authenticated;
 grant insert (
   id, composer_id, title, genre, subgenre, authors, date_composed,
-  date_registered, lyrics, cover_url, registry_code, notes, status,
+  date_registered, lyrics, cover_url, registry_code, iswc, notes, status,
   is_available_for_release, value_type, suggested_value, summary,
   original_audio_path, preview_audio_url, original_media_id, preview_media_id,
   created_at, updated_at
@@ -469,7 +473,7 @@ grant insert (
 
 grant update (
   title, genre, subgenre, authors, date_composed, date_registered, lyrics,
-  cover_url, registry_code, notes, status, is_available_for_release,
+  cover_url, registry_code, iswc, notes, status, is_available_for_release,
   value_type, suggested_value, summary, original_audio_path,
   preview_audio_url, original_media_id, preview_media_id, updated_at
 ) on table public.songs to authenticated;
@@ -1494,10 +1498,12 @@ revoke execute on function public.update_interest_request(uuid,text,numeric,text
 grant execute on function public.update_interest_request(uuid,text,numeric,text,text,timestamptz,boolean) to authenticated;
 
 -- Permissões das tabelas para o Supabase client
-grant select, update on public.profiles to authenticated;
+-- Escrita em profiles e songs: somente as colunas concedidas acima ("Controle
+-- Granular de Colunas"). Um grant de tabela aqui anulava aquela lista.
+grant select on public.profiles to authenticated;
 grant select on public.private_profiles to authenticated;
 grant select on public.subscriptions to authenticated;
-grant select, insert, update, delete on public.songs to authenticated;
+grant select, delete on public.songs to authenticated;
 grant select, insert, update, delete on public.song_drafts to authenticated;
 grant select on public.interest_requests to authenticated;
 grant select on public.releases to authenticated;

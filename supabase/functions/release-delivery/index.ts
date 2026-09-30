@@ -113,16 +113,9 @@ Deno.serve(async req => {
       return json({ message: 'Não foi possível preparar o termo. Tente novamente.' }, 500)
     }
     await admin.rpc('register_release_delivery_access', { p_delivery_id: delivery.id, p_kind: 'document' })
-    // Preferência pela via arquivada na emissão: é o mesmo arquivo (e hash) do compositor.
-    if (term.document_path) {
-      const { data: signed, error: signError } = await admin.storage
-        .from('release-documents')
-        .createSignedUrl(term.document_path, SIGNED_URL_SECONDS)
-      if (!signError && signed?.signedUrl) {
-        return json({ kind: 'archived', url: signed.signedUrl, hash: term.document_hash || null, documentCode: term.document_code })
-      }
-      console.error('[release-delivery] termo arquivado', signError)
-    }
+    // O cliente recebe o termo gerado a partir do registro do banco, não o PDF que
+    // o navegador do compositor arquivou: esse arquivo é enviado pelo compositor e
+    // poderia ter um texto diferente do que foi registrado e é validado publicamente.
     const { document_path: _path, document_hash: _hash, ...releaseData } = term
     return json({ kind: 'generated', release: releaseData })
   }

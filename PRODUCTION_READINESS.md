@@ -1,15 +1,13 @@
 # Verificação de produção
 
-O fluxo de pagamento integrado foi descomissionado. A tela de assinatura é somente leitura e as alterações de plano são tratadas pelo suporte.
+Pagamentos: Stripe (assinaturas dos planos). O gateway anterior foi descomissionado.
 
-Antes do próximo deploy:
+Antes de cada deploy:
 
-- cancele no antigo provedor todas as cobranças recorrentes ainda ativas;
-- aplique `supabase/remove_payment_integration_2026_09_23.sql`;
-- remova do projeto Supabase as antigas funções publicadas de checkout e webhook;
-- exclua os secrets e o webhook do gateway anterior;
-- execute `supabase/check_production_readiness.sql` e confirme que o resultado está vazio;
+- aplique no Supabase as migrações novas na ordem do `README.md` (seção "Deploy"). Não execute `supabase/schema.sql` nem `supabase/update_all_migrations.sql` em um banco já em uso;
 - execute `supabase/verify_workflow_guarantees_2026_09_24.sql` por último e confirme o resultado `workflow_guarantees_ok`;
-- execute `npm run lint`, `npm run test` e `npm run build`.
+- publique as Edge Functions alteradas (lista no `README.md`);
+- execute `npm run check` e `npm run test:smoke`;
+- publique a pasta `dist/` inteira na Hostinger, incluindo o arquivo oculto `.htaccess`.
 
-O histórico financeiro existente é preservado para consulta e emissão de recibos.
+O diagnóstico completo, o histórico das correções e o checklist de lançamento (chaves do Stripe, Resend, Supabase Auth, backups) estão em `DIAGNOSTICO_PRODUCAO.md`.

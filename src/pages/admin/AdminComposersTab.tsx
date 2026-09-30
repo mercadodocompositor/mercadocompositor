@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { downloadCsv } from '../../lib/csvExport';
 import { useApp } from '../../context/AppContext';
 import { AdminComposer, SubscriptionStatus } from '../../types';
 import { useAdminToast } from '../../components/admin/AdminToast';
@@ -167,7 +168,7 @@ export const AdminComposersTab: React.FC = () => {
     const ids = [...selectedComposerIds];
     const results=await Promise.all(ids.map(id=>updateAdminComposerStatus(id,'suspended')));
     const saved=results.filter(Boolean).length;
-    if(saved)toast.warning('Assinaturas Suspensas', `${saved} compositores foram suspensos.`);
+    if(saved)toast.warning('Assinaturas Suspensas', `${saved} compositores foram suspensos. A cobrança no Stripe continua: cancele-a no painel do Stripe se for o caso.`);
     if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} assinaturas mantiveram o status anterior.`);
     setSelectedComposerIds(ids.filter((_, index) => !results[index]));
     setBulkActionType(null);
@@ -230,7 +231,7 @@ export const AdminComposersTab: React.FC = () => {
     const composer = composerToSuspend;
     const success = await suspendAdminComposer(composer.id);
     if (success) {
-      toast.warning('Conta suspensa', `A assinatura de ${composer.stageName} foi suspensa.`);
+      toast.warning('Conta suspensa', `A assinatura de ${composer.stageName} foi suspensa e não volta a ativa sozinha. A cobrança no Stripe continua: cancele-a no painel do Stripe se for o caso.`);
       if (selectedComposer?.id === composer.id) setSelectedComposer(null);
       setComposerToSuspend(null);
     } else {
@@ -327,12 +328,6 @@ export const AdminComposersTab: React.FC = () => {
       return;
     }
 
-    const csvCell = (value: unknown) => {
-      let text = String(value ?? '');
-      if (/^[=+\-@]/.test(text)) text = `'${text}`;
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-
     const headers = [
       'Nome_Civil',
       'Nome_Artistico',
@@ -350,29 +345,11 @@ export const AdminComposersTab: React.FC = () => {
     ];
 
     const rows = listToExport.map(c => [
-      csvCell(c.name),
-      csvCell(c.stageName),
-      csvCell(c.email),
-      csvCell(c.whatsapp),
-      csvCell(c.cpf),
-      csvCell(c.cityState),
-      csvCell(c.planName),
-      csvCell(c.monthlyValue.toFixed(2)),
-      csvCell(c.subscriptionStatus),
-      csvCell(c.songCount),
-      csvCell(c.totalPlays),
-      csvCell(c.revenueGenerated.toFixed(2)),
-      csvCell(c.isVerified ? 'Sim' : 'Nao')
+      c.name, c.stageName, c.email, c.whatsapp, c.cpf, c.cityState, c.planName,
+      c.monthlyValue.toFixed(2), c.subscriptionStatus, c.songCount, c.totalPlays,
+      c.revenueGenerated.toFixed(2), c.isVerified ? 'Sim' : 'Nao'
     ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `relatorio_compositores_admin_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`relatorio_compositores_admin_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
     toast.success('Relatório CSV Gerado', `${listToExport.length} compositores exportados.`);
     setExportRequest(null);
   };

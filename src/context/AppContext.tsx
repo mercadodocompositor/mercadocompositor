@@ -251,6 +251,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFeaturedSongIds([]);
     try {
       window.localStorage.removeItem('compositor-my-songs-filters-v1');
+      // Cópias locais de rascunho de música (com a letra) não ficam no navegador depois do logout.
+      Object.keys(window.localStorage)
+        .filter(key => key.startsWith('composer-song-draft-'))
+        .forEach(key => window.localStorage.removeItem(key));
       window.sessionStorage.clear();
     } catch { /* no-op */ }
   }, []);
@@ -307,14 +311,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setNotifications(userNotifs);
 
         if(data.isAdmin) {
+          // Cada papel carrega só o que o banco lhe permite ler. Antes o moderador
+          // pedia a lista financeira de compositores, recebia "acesso restrito" e
+          // o painel inteiro ficava vazio.
+          const role = data.adminRole;
+          const isMaster = role === 'master';
+          const seesFinance = isMaster || role === 'financial';
+          const seesSongs = isMaster || role === 'moderator';
           const [composers,allSongs,logs,admReqs,admRels,roles,delReqs]=await Promise.all([
-            loadAdminComposers(),loadAdminSongs(),loadSystemLogs(),
-            loadAdminRequests(),loadAdminReleases(),
-            loadTeamRoles().catch((err: unknown) => {
+            seesFinance ? loadAdminComposers() : Promise.resolve([] as AdminComposer[]),
+            seesSongs ? loadAdminSongs() : Promise.resolve([] as Song[]),
+            seesFinance ? loadSystemLogs() : Promise.resolve([] as SystemLog[]),
+            seesFinance ? loadAdminRequests() : Promise.resolve([] as InterestRequest[]),
+            seesFinance ? loadAdminReleases() : Promise.resolve([] as ReleaseDocument[]),
+            !isMaster ? Promise.resolve([] as UserRoleItem[]) : loadTeamRoles().catch((err: unknown) => {
               setAuthError(getFriendlyErrorMessage(err, 'Não foi possível carregar a equipe administrativa.'));
               return [] as UserRoleItem[];
             }),
-            loadAccountDeletionRequests().then(r => { setDeletionRequestsError(null); return r; })
+            !isMaster ? Promise.resolve([] as AccountDeletionRequest[]) : loadAccountDeletionRequests().then(r => { setDeletionRequestsError(null); return r; })
               .catch((err: unknown) => {
                 setDeletionRequestsError(err instanceof Error ? err.message : 'Falha ao carregar as solicitações de exclusão.');
                 return [] as AccountDeletionRequest[];

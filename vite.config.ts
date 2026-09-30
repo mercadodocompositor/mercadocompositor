@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 import {defineConfig, loadEnv, type Plugin} from 'vite';
 
@@ -28,10 +29,40 @@ function ogConfigPlugin(env: Record<string, string>): Plugin {
   };
 }
 
+/**
+ * Publica .htaccess, compositor.php e index.html com fim de linha LF. Num
+ * checkout no Windows eles saem com CRLF: a Hostinger aplicava os cabeçalhos do
+ * .htaccess, mas ignorava as regras de reescrita (o perfil nunca passava pelo
+ * compositor.php e o og-config.php não era bloqueado), e o hash CSP do script
+ * inline do index.html deixava de bater.
+ */
+function lfDeployFilesPlugin(): Plugin {
+  const toLf = (text: string) => text.replace(/\r\n/g, '\n');
+  let outDir = 'dist';
+  return {
+    name: 'lf-deploy-files',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    transformIndexHtml: {order: 'post', handler: toLf},
+    closeBundle() {
+      // Material de apoio de public/ que não deve ir para o site publicado.
+      for (const leftover of ['README.md', 'mockups', 'audio-previews']) {
+        fs.rmSync(path.join(outDir, leftover), {recursive: true, force: true});
+      }
+      for (const file of ['.htaccess', 'compositor.php', 'sitemap.php', 'index.html']) {
+        const target = path.join(outDir, file);
+        if (fs.existsSync(target)) fs.writeFileSync(target, toLf(fs.readFileSync(target, 'utf8')));
+      }
+    },
+  };
+}
+
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
   return {
-    plugins: [react(), tailwindcss(), ogConfigPlugin(env)],
+    plugins: [react(), tailwindcss(), ogConfigPlugin(env), lfDeployFilesPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

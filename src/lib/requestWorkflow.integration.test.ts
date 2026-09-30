@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const sql = fs.readFileSync(path.resolve('supabase/request_workflow_hardening.sql'), 'utf8');
+// Normaliza o fim de linha: num checkout no Windows os arquivos vêm com CRLF.
+const sql = fs.readFileSync(path.resolve('supabase/request_workflow_hardening.sql'), 'utf8').replace(/\r\n/g, '\n');
 
 describe('request workflow database integration contract', () => {
   it('locks the request, rejects stale tabs and records audit data atomically', () => {

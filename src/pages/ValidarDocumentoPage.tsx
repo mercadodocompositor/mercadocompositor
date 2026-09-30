@@ -5,6 +5,7 @@ import { Footer } from '../components/common/Footer';
 import { validateReleaseDocument, type PublicReleaseValidation } from '../lib/database';
 import { downloadReleasePdf } from '../lib/pdfGenerator';
 import { captureException } from '../lib/monitoring';
+import { applyPageMeta } from '../lib/pageMeta';
 import { 
   ShieldCheck, 
   Search, 
@@ -21,12 +22,18 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
-import { APP_CONFIG } from '../config/appConfig';
+import { APP_CONFIG, APP_URL } from '../config/appConfig';
 
 export const ValidarDocumentoPage: React.FC = () => {
   const { code } = useParams<{ code?: string }>();
   const [searchParams] = useSearchParams();
   const queryCode = searchParams.get('codigo') || code || '';
+
+  useEffect(() => applyPageMeta({
+    title: 'Validar termo de liberação | Mercado do Compositor',
+    description: 'Confira a autenticidade de um termo de liberação emitido pelo Mercado do Compositor a partir do código do documento.',
+    url: `${APP_URL.replace(/\/$/, '')}/validar-documento`,
+  }), []);
   const [inputCode, setInputCode] = useState(queryCode);
   const [searchedCode, setSearchedCode] = useState(queryCode.trim().toUpperCase());
   const [matchedDocument, setMatchedDocument] = useState<PublicReleaseValidation | null>(null);

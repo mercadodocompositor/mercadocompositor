@@ -11,5 +11,8 @@ Deno.serve(async req=>{
   if(!sub?.stripe_customer_id)return json({message:'Cliente Stripe não encontrado.'},404)
   const body=new URLSearchParams({customer:sub.stripe_customer_id,return_url:`${app}/dashboard/assinatura`})
   const response=await fetch('https://api.stripe.com/v1/billing_portal/sessions',{method:'POST',headers:{authorization:`Bearer ${key}`,'content-type':'application/x-www-form-urlencoded'},body})
-  const result=await response.json(); if(!response.ok)return json({message:'Não foi possível abrir o portal.'},502); return json({url:result.url})
+  const result=await response.json()
+  // Cliente de outro modo do Stripe (teste x produção) ou apagado no painel.
+  if(!response.ok&&result?.error?.code==='resource_missing')return json({message:'Não encontramos sua assinatura no Stripe. Assine um plano novamente na aba Assinatura.'},409)
+  if(!response.ok)return json({message:'Não foi possível abrir o portal.'},502); return json({url:result.url})
 })

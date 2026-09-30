@@ -26,7 +26,8 @@ describe('Unificação de Validações de Rascunho (Frontend e Trigger SQL)', ()
   // Script canônico da pilha: é o último a rodar e define a versão em vigor de
   // enforce_song_media_separation.
   const auditFixSql = readFileSync('supabase/fix_auditoria_2026_09.sql', 'utf8');
-  const addSongPageSrc = readFileSync('src/pages/dashboard/AddSongTab.tsx', 'utf8');
+  // Normaliza o fim de linha: num checkout no Windows os arquivos vêm com CRLF.
+  const addSongPageSrc = readFileSync('src/pages/dashboard/AddSongTab.tsx', 'utf8').replace(/\r\n/g, '\n');
   const mySongsPageSrc = readFileSync('src/pages/dashboard/MySongsTab.tsx', 'utf8');
 
   it('não confunde formulário recuperado com música enviada para aprovação', () => {

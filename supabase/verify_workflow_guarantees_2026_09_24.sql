@@ -97,6 +97,44 @@ begin
     raise exception using errcode = 'P0001',
       message = 'Garantia inválida: o status real de entrega não está sincronizado com o outbox.';
   end if;
+
+  -- Um grant de tabela anula a lista de colunas: o compositor passaria a gravar
+  -- is_verified, is_featured e os contadores na própria linha pela API.
+  if has_table_privilege('authenticated', 'public.profiles', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.songs', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.songs', 'INSERT')
+     or has_column_privilege('authenticated', 'public.profiles', 'is_verified', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.songs', 'is_featured', 'UPDATE') then
+    raise exception using errcode = 'P0001',
+      message = 'Garantia inválida: songs ou profiles com escrita ampla para authenticated. Reaplique fix_bloqueadores_2026_09_30.sql.';
+  end if;
+
+  select pg_get_functiondef(p.oid) into v_definition
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'get_featured_composers'
+    and pg_get_function_identity_arguments(p.oid) = 'p_limit integer';
+  if v_definition is null or position('includes_featured' in v_definition) = 0 then
+    raise exception using errcode = 'P0001',
+      message = 'Garantia inválida: get_featured_composers foi sobrescrita. Reaplique featured_composers_2026_09_28.sql.';
+  end if;
+
+  select pg_get_functiondef(p.oid) into v_definition
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'admin_moderate_song'
+    and pg_get_function_identity_arguments(p.oid) = 'p_song_id uuid, p_status text, p_notes text';
+  if v_definition is null or position('session_replication_role' in v_definition) > 0 then
+    raise exception using errcode = 'P0001',
+      message = 'Garantia inválida: admin_moderate_song desliga os gatilhos de songs. Reaplique fix_bloqueadores_2026_09_30.sql.';
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and policyname = 'media owner delete'
+      and qual like '%release_deliveries%'
+  ) then
+    raise exception using errcode = 'P0001',
+      message = 'Garantia inválida: o áudio já entregue pode ser apagado. Reaplique release_delivery_snapshot_2026_09_28.sql.';
+  end if;
 end $$;
 
 select 'workflow_guarantees_ok' as verification;

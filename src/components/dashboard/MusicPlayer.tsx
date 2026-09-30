@@ -242,14 +242,16 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
   };
 
   const processAudioFile = (file: File) => {
-    if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|m4a|aac|ogg|flac)$/i)) {
-      alert('Por favor, selecione um arquivo de áudio válido (.mp3, .wav, .m4a, .aac, .ogg)');
+    // Mesmos formatos que o servidor aceita (validate-media-upload): FLAC era
+    // aceito aqui e recusado só depois do envio.
+    if (!/\.(mp3|wav|m4a|aac|ogg)$/i.test(file.name)) {
+      setFeedbackMessage({ type: 'error', text: 'Selecione um arquivo de áudio MP3, WAV, M4A, AAC ou OGG.' });
       return;
     }
 
     const maxFileSize = 25 * 1024 * 1024;
     if (file.size > maxFileSize) {
-      alert('O arquivo deve ter no máximo 25 MB.');
+      setFeedbackMessage({ type: 'error', text: `O arquivo tem ${(file.size / 1024 / 1024).toFixed(1)} MB. O limite é 25 MB.` });
       return;
     }
 
@@ -322,7 +324,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ initialSongId, initial
           originalMediaId: stored.mediaId,
           previewAudioUrl: preview.value,
           previewMediaId: preview.mediaId,
-          lyrics: 'Letra em fase de edição pelo compositor.',
+          // Sem texto provisório: ele contava como letra preenchida e deixava publicar assim.
+          lyrics: '',
           dateComposed: new Date().toISOString().split('T')[0],
           isAvailableForRelease: true,
           valueType: 'consultation',

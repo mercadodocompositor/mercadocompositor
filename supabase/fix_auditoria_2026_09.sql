@@ -74,18 +74,19 @@ grant update (
   updated_at
 ) on table public.profiles to authenticated;
 
+alter table public.songs add column if not exists iswc text;
 revoke insert, update on table public.songs from anon, authenticated;
 grant select, delete on table public.songs to authenticated;
 grant insert (
   id, composer_id, title, genre, subgenre, authors, date_composed,
-  date_registered, lyrics, cover_url, registry_code, notes, status,
+  date_registered, lyrics, cover_url, registry_code, iswc, notes, status,
   is_available_for_release, value_type, suggested_value, summary,
   original_audio_path, preview_audio_url, original_media_id, preview_media_id,
   created_at, updated_at
 ) on table public.songs to authenticated;
 grant update (
   title, genre, subgenre, authors, date_composed, date_registered, lyrics,
-  cover_url, registry_code, notes, status, is_available_for_release,
+  cover_url, registry_code, iswc, notes, status, is_available_for_release,
   value_type, suggested_value, summary, original_audio_path,
   preview_audio_url, original_media_id, preview_media_id, updated_at
 ) on table public.songs to authenticated;

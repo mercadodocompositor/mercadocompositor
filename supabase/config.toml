@@ -30,6 +30,10 @@ verify_jwt = false
 [functions.process-notification-emails]
 verify_jwt = false
 
+# Recebe erros do navegador por sendBeacon, que não envia cabeçalhos de autenticação.
+[functions.client-telemetry]
+verify_jwt = false
+
 [functions.validate-media-upload]
 verify_jwt = true
 

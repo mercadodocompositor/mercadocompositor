@@ -24,7 +24,8 @@ import {
   Laptop
 } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
-import { beginMfaEnrollment, deleteMyAccount, exportPersonalData, listMfaFactors, loadPreferences, loadSettingsSecurityMetadata, revokeOtherSessions, savePreferences, verifyMfaEnrollment } from '../../lib/database';
+import { supabase } from '../../lib/supabase';
+import { beginMfaEnrollment, deleteMyAccount, disableMfa, verifyAdminPassword as verifyCurrentPassword, exportPersonalData, listMfaFactors, loadPreferences, loadSettingsSecurityMetadata, revokeOtherSessions, savePreferences, verifyMfaEnrollment } from '../../lib/database';
 import { useTheme } from '../../context/ThemeContext';
 import { useModalFocus } from '../../hooks/useModalFocus';
 import { maskEmail } from './settingsUtils';
@@ -62,6 +63,15 @@ export const SettingsTab: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  // Contas com senha confirmam a exclusão com ela: uma sessão esquecida aberta
+  // não basta para apagar a conta. Contas só com Google usam a palavra EXCLUIR.
+  const [hasPasswordLogin, setHasPasswordLogin] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  useEffect(() => {
+    void supabase?.auth.getUser().then(({ data }) => {
+      setHasPasswordLogin(Boolean(data.user?.identities?.some(identity => identity.provider === 'email')));
+    });
+  }, []);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [accountDeleted, setAccountDeleted] = useState(false);
@@ -234,6 +244,20 @@ export const SettingsTab: React.FC = () => {
     }
   };
 
+  const handleDisableMfa = async () => {
+    if (isConfiguringMfa) return;
+    setIsConfiguringMfa(true);
+    try {
+      await disableMfa();
+      setMfaEnabled(false);
+      setMessage({ type: 'success', text: 'Autenticação em duas etapas desativada.' });
+    } catch {
+      setMessage({ type: 'error', text: 'Não foi possível desativar. Saia, entre de novo com o código do aplicativo e tente novamente.' });
+    } finally {
+      setIsConfiguringMfa(false);
+    }
+  };
+
   const handleVerifyMfa = async () => {
     if (!mfaEnrollment || !/^\d{6}$/.test(mfaCode)) return;
     setIsConfiguringMfa(true);
@@ -267,7 +291,8 @@ export const SettingsTab: React.FC = () => {
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
-      URL.revokeObjectURL(url);
+      // Revogar no mesmo instante cancela o download no Safari e no Firefox.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       setMessage({ type: 'success', text: 'Relatório completo de dados pessoais baixado com sucesso.' });
     } catch {
       setMessage({ type: 'error', text: 'Não foi possível gerar seu relatório. Tente novamente.' });
@@ -281,6 +306,11 @@ export const SettingsTab: React.FC = () => {
     if (deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR') return;
     setIsDeletingAccount(true);
     setDeleteError('');
+    if (hasPasswordLogin && !(await verifyCurrentPassword(deletePassword))) {
+      setDeleteError('Senha incorreta. Digite a senha atual da sua conta para excluir.');
+      setIsDeletingAccount(false);
+      return;
+    }
     try {
       await deleteMyAccount();
       setAccountDeleted(true);
@@ -855,6 +885,14 @@ export const SettingsTab: React.FC = () => {
                 {isConfiguringMfa ? 'Preparando…' : 'Configurar aplicativo autenticador'}
               </button>
             )}
+            {mfaEnabled && (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-400">O código do aplicativo é pedido a cada novo login.</p>
+                <button type="button" onClick={handleDisableMfa} disabled={isConfiguringMfa} className="min-h-11 w-full rounded-xl border border-slate-700 px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-white disabled:opacity-50">
+                  {isConfiguringMfa ? 'Desativando…' : 'Desativar verificação em duas etapas'}
+                </button>
+              </div>
+            )}
             {mfaEnrollment && (
               <div className="space-y-3 rounded-xl border border-amber-500/30 bg-slate-900 p-3">
                 <img src={mfaEnrollment.qrCode} alt="QR Code para configurar autenticação em duas etapas" className="mx-auto h-40 w-40 rounded-lg bg-white p-2" />
@@ -1009,6 +1047,19 @@ export const SettingsTab: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-red-500"
                   />
                 </div>
+                {hasPasswordLogin && (
+                  <div className="space-y-1.5">
+                    <label htmlFor="delete-confirm-password" className="text-xs text-slate-300 font-semibold block">Senha atual</label>
+                    <input
+                      id="delete-confirm-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={deletePassword}
+                      onChange={e => setDeletePassword(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+                )}
 
                 {deleteError && (
                   <p role="alert" className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3.5 py-2.5">
@@ -1028,7 +1079,7 @@ export const SettingsTab: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleDeleteAccount}
-                    disabled={isDeletingAccount || deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR'}
+                    disabled={isDeletingAccount || deleteConfirmText.trim().toUpperCase() !== 'EXCLUIR' || (hasPasswordLogin && !deletePassword)}
                     className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-lg shadow-red-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                   >
                     {isDeletingAccount && <LoaderCircle className="w-3.5 h-3.5 animate-spin" />}

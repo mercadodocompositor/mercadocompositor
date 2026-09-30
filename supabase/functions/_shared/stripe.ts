@@ -11,7 +11,7 @@ export const stripeClient=(secretKey:string):StripeRequest=>async(path,method='G
   return result
 }
 
-const notFoundAsNull=(error:Error)=>{if(error.message.startsWith('Stripe 404'))return null;throw error}
+export const notFoundAsNull=(error:Error)=>{if(error.message.startsWith('Stripe 404'))return null;throw error}
 
 // Assinaturas que cobram ou ainda podem cobrar.
 export const LIVE_STATUSES=['active','trialing','past_due','unpaid']

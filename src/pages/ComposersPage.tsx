@@ -4,6 +4,8 @@ import { ArrowRight, ArrowUpDown, BadgeCheck, ChevronDown, Crown, Disc3, MapPin,
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { getPublicComposers } from '../lib/database';
+import { applyPageMeta } from '../lib/pageMeta';
+import { APP_URL } from '../config/appConfig';
 import { getSafePublicBio } from '../lib/profileSanitizer';
 import { MUSIC_GENRES, normalizeGenreList } from '../config/musicGenres';
 import type { FeaturedComposer } from '../types';
@@ -43,15 +45,24 @@ export const ComposersPage: React.FC = () => {
   const [sort, setSort] = useState<'songs' | 'name'>('songs');
   const [showAllGenres, setShowAllGenres] = useState(false);
 
-  useEffect(() => { document.title = 'Compositores | Mercado do Compositor'; }, []);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => applyPageMeta({
+    title: 'Compositores | Mercado do Compositor',
+    description: 'Conheça compositores de todo o Brasil, ouça as prévias das obras e solicite a liberação para gravar.',
+    url: `${APP_URL.replace(/\/$/, '')}/compositores`,
+  }), []);
   useEffect(() => {
     let active = true;
-    getPublicComposers({ limit: 100 }).then(data => {
+    setLoading(true);
+    setLoadError(false);
+    // A RPC devolve até 1.000 perfis; busca e filtros rodam sobre essa lista.
+    getPublicComposers({ limit: 1000 }).then(data => {
       if (!active) return;
       setComposers([...shuffle(data.filter(item => item.featured)), ...data.filter(item => !item.featured)]);
-    }).catch(() => { if (active) setComposers([]); }).finally(() => { if (active) setLoading(false); });
+    }).catch(() => { if (active) { setComposers([]); setLoadError(true); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [reloadKey]);
 
   const filteredComposers = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('pt-BR');
@@ -171,7 +182,8 @@ export const ComposersPage: React.FC = () => {
           </div>
         </div>
 
-        {loading ? <div className="mt-8 grid gap-4 lg:grid-cols-2">{Array.from({ length: 6 }, (_, index) => <div key={index} className="flex animate-pulse items-center gap-5 rounded-2xl border border-slate-800 bg-[#0d1b30] p-5"><div className="h-24 w-24 shrink-0 rounded-full bg-slate-800" /><div className="flex-1 space-y-3"><div className="h-5 w-2/3 rounded bg-slate-800" /><div className="h-4 w-1/2 rounded bg-slate-800" /><div className="h-8 w-3/4 rounded bg-slate-800/70" /></div></div>)}</div>
+        {loadError && !loading ? <div role="alert" className="mx-auto mt-10 max-w-lg rounded-2xl border border-red-500/30 bg-[#0d1b30] px-6 py-10 text-center"><p className="text-base font-semibold text-white">Não foi possível carregar os compositores</p><p className="mt-2 text-sm text-slate-400">Verifique sua conexão e tente de novo.</p><button type="button" onClick={() => setReloadKey(key => key + 1)} className="mt-5 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300">Tentar novamente</button></div>
+        : loading ? <div className="mt-8 grid gap-4 lg:grid-cols-2">{Array.from({ length: 6 }, (_, index) => <div key={index} className="flex animate-pulse items-center gap-5 rounded-2xl border border-slate-800 bg-[#0d1b30] p-5"><div className="h-24 w-24 shrink-0 rounded-full bg-slate-800" /><div className="flex-1 space-y-3"><div className="h-5 w-2/3 rounded bg-slate-800" /><div className="h-4 w-1/2 rounded bg-slate-800" /><div className="h-8 w-3/4 rounded bg-slate-800/70" /></div></div>)}</div>
         : gridComposers.length ? <div className="mt-8 grid gap-4 lg:grid-cols-2">{gridComposers.map(composer => <Link key={composer.id} to={`/compositor/${composer.username}`} className="group flex min-w-0 items-center gap-4 rounded-2xl border border-slate-800 bg-[#0d1b30] p-4 transition duration-300 hover:-translate-y-0.5 hover:border-amber-400/50 hover:shadow-xl hover:shadow-black/20 sm:gap-6 sm:p-5">
           <div className="relative shrink-0"><Photo composer={composer} className="h-20 w-20 rounded-full border-2 border-slate-700 p-1 transition group-hover:border-amber-400/60 sm:h-28 sm:w-28" />{composer.featured && <span className="absolute -right-1 -top-1 grid h-7 w-7 place-items-center rounded-full border-2 border-[#0d1b30] bg-amber-400 text-slate-950" aria-label="Compositor em destaque"><Crown className="h-3.5 w-3.5" /></span>}</div>
           <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><h3 className="flex items-center gap-1.5 font-serif text-xl font-semibold text-white group-hover:text-amber-300 sm:text-2xl"><span className="truncate">{composer.name}</span>{composer.isVerified && <BadgeCheck className="h-4 w-4 shrink-0 text-sky-400" aria-label="Perfil verificado" />}</h3>{composer.cityState && <p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><span>Compositor</span><span aria-hidden="true">•</span><MapPin className="h-3.5 w-3.5" /><span className="truncate">{composer.cityState}</span></p>}</div><div className="hidden shrink-0 border-l border-slate-700 pl-5 text-center sm:block"><strong className="block text-xl text-white">{composer.songCount || 0}</strong><span className="text-[11px] text-slate-400">{composer.songCount === 1 ? 'música' : 'músicas'}</span></div></div><div className="mt-4"><Tags genres={composer.genres} /></div><div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-3 sm:hidden"><span className="flex items-center gap-1.5 text-xs text-slate-400"><Disc3 className="h-4 w-4 text-amber-400" /><strong className="text-slate-200">{composer.songCount || 0}</strong> {composer.songCount === 1 ? 'música' : 'músicas'}</span><span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300">Ver perfil <ArrowRight className="h-3.5 w-3.5" /></span></div></div>

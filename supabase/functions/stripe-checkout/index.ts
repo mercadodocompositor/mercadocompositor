@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { ensurePlanPrice, LIVE_STATUSES, PLAN_COLUMNS, stripeClient } from '../_shared/stripe.ts'
+import { ensurePlanPrice, LIVE_STATUSES, notFoundAsNull, PLAN_COLUMNS, stripeClient } from '../_shared/stripe.ts'
 
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json','access-control-allow-origin':'*','access-control-allow-headers':'authorization, x-client-info, apikey, content-type','access-control-allow-methods':'POST, OPTIONS'}})
 
@@ -23,13 +23,26 @@ Deno.serve(async req=>{
     const {planName}=await req.json().catch(()=>({}))
     const {data:plan}=await admin.from('subscription_plans').select(PLAN_COLUMNS).eq('name',planName).maybeSingle()
     if(!plan?.is_active) return json({message:'Plano indisponível.'},400)
-    const {data:sub,error:subError}=await admin.from('subscriptions').select('stripe_customer_id,trial_started_at').eq('user_id',user.id).maybeSingle()
+    const {data:sub,error:subError}=await admin.from('subscriptions').select('stripe_customer_id,stripe_subscription_id,trial_started_at').eq('user_id',user.id).maybeSingle()
     if(subError) throw subError
     if(!sub) return json({message:'Cadastro de assinatura não encontrado. Fale com o suporte.'},409)
 
     // O cliente Stripe é criado antes do checkout para que sessões e assinaturas
     // fiquem sempre ligadas a ele; sem isso não há como achar checkouts abertos.
     let customerId:string|null=sub.stripe_customer_id
+    if(customerId){
+      // Cliente criado no outro modo do Stripe (teste x produção) ou apagado no painel:
+      // sem isto toda chamada seguinte falhava com "No such customer" e a conta nunca mais assinava.
+      const existing=await stripe(`customers/${encodeURIComponent(customerId)}`).catch(notFoundAsNull)
+      if(!existing||existing.deleted){
+        const reset:Record<string,unknown>={stripe_customer_id:null,stripe_subscription_id:null,stripe_subscription_status:null,stripe_cancel_at:null,updated_at:new Date().toISOString()}
+        // A assinatura desse cliente também não existe mais neste modo.
+        if(sub.stripe_subscription_id)reset.status='pending'
+        const {error:resetError}=await admin.from('subscriptions').update(reset).eq('user_id',user.id).eq('stripe_customer_id',customerId)
+        if(resetError) throw resetError
+        customerId=null
+      }
+    }
     if(!customerId){
       const created=await stripe('customers','POST',{...(user.email?{email:user.email}:{}),'metadata[user_id]':user.id})
       // Só grava se ainda estiver vazio: duas requisições simultâneas não podem deixar dois clientes para o mesmo usuário.

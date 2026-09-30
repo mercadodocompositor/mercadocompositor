@@ -1,3 +1,7 @@
+-- ATENCAO: NAO EXECUTE ESTE ARQUIVO EM UM BANCO JA EM USO.
+-- Ele serve apenas para criar um projeto do zero. Em producao ele repoe precos e
+-- recursos de fabrica nos planos e reinstala versoes antigas de funcoes e policies
+-- (vitrine, moderacao, limite de requisicoes, Storage). Veja a ordem no README.md.
 -- Schema de produção. Execute integralmente no SQL Editor do Supabase.
 create extension if not exists citext;
 

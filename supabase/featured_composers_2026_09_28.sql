@@ -118,7 +118,7 @@ select coalesce(jsonb_agg(item order by featured desc, featured_rank desc, is_ve
       p_genre = any(p.genres)
     )
   order by 2 desc, 3 desc, p.is_verified desc, p.views_count desc, p.created_at desc
-  limit greatest(1, least(p_limit, 100))
+  limit greatest(1, least(p_limit, 1000))
 ) q;
 $$;
 revoke execute on function public.get_public_composers(integer, text, text) from public;

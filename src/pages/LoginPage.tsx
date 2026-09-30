@@ -379,6 +379,7 @@ export const LoginPage: React.FC = () => {
           )}
           {mode !== 'forgot' && (
             <PasswordField
+              id="field-password"
               label={mode === 'new-password' ? 'Nova senha' : 'Senha'}
               value={password}
               onChange={v => { setPassword(v); clearFieldError('password'); }}
@@ -391,6 +392,7 @@ export const LoginPage: React.FC = () => {
           )}
           {(mode === 'register' || mode === 'new-password') && (
             <PasswordField
+              id="field-confirm-password"
               label="Confirmar senha"
               value={confirmPassword}
               onChange={v => { setConfirmPassword(v); clearFieldError('confirmPassword'); }}
@@ -480,6 +482,8 @@ const Field: React.FC<FieldProps> = ({ icon, label, value, onChange, type = 'tex
 );
 
 interface PasswordFieldProps {
+  /** id do campo; "Senha" e "Confirmar senha" usam o mesmo autoComplete. */
+  id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -491,6 +495,7 @@ interface PasswordFieldProps {
 }
 
 const PasswordField: React.FC<PasswordFieldProps> = ({
+  id,
   label,
   value,
   onChange,
@@ -501,19 +506,19 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
   required
 }) => (
   <div className="block text-xs font-semibold text-slate-300">
-    <label htmlFor={`field-${autoComplete}`} className="flex items-center justify-between">
+    <label htmlFor={id} className="flex items-center justify-between">
       <span>{label}{required && <span className="text-amber-400 ml-0.5">*</span>}</span>
     </label>
     <div className="relative mt-1.5">
       <Lock className={`w-4 h-4 absolute left-3.5 top-3.5 transition-colors ${error ? 'text-red-400' : 'text-slate-500'}`} />
       <input
-        id={`field-${autoComplete}`}
+        id={id}
         type={visible ? 'text' : 'password'}
         value={value}
         onChange={e => onChange(e.target.value)}
         autoComplete={autoComplete}
         aria-invalid={!!error}
-        aria-describedby={error ? `err-${autoComplete}` : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
         className={`w-full bg-slate-900 border rounded-xl pl-10 pr-11 py-3 text-sm text-white focus:outline-none transition ${
           error
             ? 'border-red-500 focus:border-red-400 bg-red-500/5 ring-1 ring-red-500/30'
@@ -530,7 +535,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
       </button>
     </div>
     {error && (
-      <p id={`err-${autoComplete}`} role="alert" className="mt-1.5 text-xs text-red-400 flex items-center gap-1 animate-fadeIn">
+      <p id={`${id}-error`} role="alert" className="mt-1.5 text-xs text-red-400 flex items-center gap-1 animate-fadeIn">
         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
         <span>{error}</span>
       </p>

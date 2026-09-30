@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { downloadCsv } from '../../lib/csvExport';
 import { useApp } from '../../context/AppContext';
 import { Song, SongStatus } from '../../types';
 import { useAdminToast } from '../../components/admin/AdminToast';
@@ -392,25 +393,11 @@ export const AdminSongsTab: React.FC = () => {
     ];
 
     const rows = listToExport.map(s => [
-      `"${s.id}"`,
-      `"${s.title.replace(/"/g, '""')}"`,
-      `"${s.genre}"`,
-      `"${s.authors.replace(/"/g, '""')}"`,
-      s.dateRegistered,
-      s.status,
-      s.playCount,
+      s.id, s.title, s.genre, s.authors, s.dateRegistered, s.status, s.playCount,
       s.suggestedValue ? s.suggestedValue.toFixed(2) : 'Sob Consulta',
       featuredSongIds.includes(s.id) ? 'Sim' : 'Nao'
     ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `relatorio_acervo_musicas_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`relatorio_acervo_musicas_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
     toast.success('Relatório CSV Gerado', `${listToExport.length} músicas exportadas.`);
   };
 

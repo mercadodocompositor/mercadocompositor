@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const [, , inputPath, outputPath, durationArg = '60'] = process.argv;
+// Mesmo limite da prévia pública do app (PREVIEW_MAX_SECONDS em src/config/media.ts).
+const [, , inputPath, outputPath, durationArg = '85'] = process.argv;
 
 if (!inputPath || !outputPath) {
   throw new Error('Uso: node scripts/create-mp3-preview.mjs <entrada.mp3> <saida.mp3> [segundos]');

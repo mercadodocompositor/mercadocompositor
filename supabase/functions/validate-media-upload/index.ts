@@ -14,6 +14,10 @@ const rules: Record<TargetBucket, { maxBytes: number; kinds: string[]; maxDurati
   'release-documents': { maxBytes: 10 * 1024 * 1024, kinds: ['pdf'] },
 }
 
+// Arquivos novos por conta em 24 horas. Sem teto, uma conta recém-criada (sem
+// assinatura) podia encher o Storage com arquivos de 25 MB.
+const MAX_UPLOADS_PER_DAY = 60
+
 const corsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
@@ -124,6 +128,14 @@ Deno.serve(async request => {
       return json({ value, mediaId: existing.id, detectedType: existing.mime_type, size: existing.size_bytes, duration: existing.duration_seconds })
     }
 
+    const { count: recentUploads, error: quotaError } = await admin
+      .from('validated_media')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userData.user.id)
+      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+    if (quotaError) throw new Error('validation_failed')
+    if ((recentUploads || 0) >= MAX_UPLOADS_PER_DAY) throw new Error('upload_quota_exceeded')
+
     const { data: file, error: downloadError } = await admin.storage.from('media-quarantine').download(path)
     if (downloadError || !file) return json({ error: 'quarantine_file_not_found' }, 404)
     if (file.size < 1) throw new Error('empty_file')
@@ -194,6 +206,7 @@ Deno.serve(async request => {
       validated_media_registry_failed: 'O arquivo foi validado, mas não conseguimos concluir o registro. Tente enviá-lo novamente.',
       validated_media_cleanup_failed: 'Não foi possível concluir a limpeza dos arquivos enviados.',
       quarantine_cleanup_failed: 'Não foi possível concluir a limpeza dos arquivos temporários expirados.',
+      upload_quota_exceeded: `Você atingiu o limite de ${MAX_UPLOADS_PER_DAY} arquivos enviados em 24 horas. Tente novamente amanhã ou fale com o suporte.`,
     }
     console.error('Media validation error', code)
     return json({ error: code, message: messages[code] || 'Não foi possível validar o arquivo.' }, 422)

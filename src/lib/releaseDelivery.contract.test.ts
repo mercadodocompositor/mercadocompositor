@@ -37,7 +37,9 @@ describe('entrega da obra ao cliente', () => {
   it('entrega ao cliente a via completa do termo, não a cópia mascarada', () => {
     expect(edge).toContain("const ACTIONS = ['info', 'audio', 'stream', 'lyrics', 'document', 'notify_composer']");
     expect(edge).toMatch(/composer_cpf[\s\S]+buyer_document[\s\S]+agreed_value[\s\S]+additional_conditions/);
-    expect(edge).toMatch(/from\('release-documents'\)\s*\.createSignedUrl\(term\.document_path, SIGNED_URL_SECONDS\)/);
+    // O cliente recebe o termo gerado do registro do banco, nunca o PDF enviado pelo compositor.
+    expect(edge).toContain("return json({ kind: 'generated', release: releaseData })");
+    expect(edge).not.toMatch(/from\('release-documents'\)/);
     expect(page).toContain('requestDeliveryTermDocument');
     expect(page).toContain('downloadDeliveryTerm');
   });

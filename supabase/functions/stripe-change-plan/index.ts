@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { ensurePlanPrice, PLAN_COLUMNS, stripeClient } from '../_shared/stripe.ts'
+import { ensurePlanPrice, notFoundAsNull, PLAN_COLUMNS, stripeClient } from '../_shared/stripe.ts'
 
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json','access-control-allow-origin':'*','access-control-allow-headers':'authorization, x-client-info, apikey, content-type','access-control-allow-methods':'POST, OPTIONS'}})
 
@@ -23,7 +23,8 @@ Deno.serve(async req=>{
     if(rowError) throw rowError
     if(!row?.stripe_subscription_id) return json({message:'Você ainda não tem uma assinatura para trocar de plano.'},409)
 
-    const sub=await stripe(`subscriptions/${encodeURIComponent(row.stripe_subscription_id)}`)
+    const sub=await stripe(`subscriptions/${encodeURIComponent(row.stripe_subscription_id)}`).catch(notFoundAsNull)
+    if(!sub) return json({message:'Não encontramos sua assinatura no Stripe. Assine um plano novamente na aba Assinatura.'},409)
     if(!['active','trialing'].includes(sub.status)) return json({message:sub.status==='past_due'||sub.status==='unpaid'
       ?'Regularize o pagamento em “Gerenciar cobrança” na aba Assinatura antes de trocar de plano.'
       :'Sua assinatura não está ativa. Assine um plano novamente.'},409)

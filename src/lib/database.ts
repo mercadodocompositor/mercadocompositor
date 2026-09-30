@@ -271,18 +271,9 @@ export async function loadPrivateData(userId: string) {
     pixKeyType: q.pix_key_type || preferences.pixKeyType || 'cpf',
     instagram:p.instagram,youtube:p.youtube,
     website:p.website,photo:p.photo_url,coverPhoto:p.cover_photo_url,viewsCount:Number(p.views_count),isVerified:Boolean(p.is_verified)};
+  // Sem URL assinada por música: nenhuma tela usa o áudio completo na abertura,
+  // e eram N requisições ao Storage a cada login, vencidas em 2 minutos.
   const mappedSongs = (songs.data||[]).map(camelSong);
-  const songsWithAudio = mappedSongs.filter(s => s.originalAudioPath);
-  if (songsWithAudio.length > 0) {
-    await Promise.all(songsWithAudio.map(async (song) => {
-      try {
-        const { data } = await supabase.storage.from('song-originals').createSignedUrl(song.originalAudioPath!, 120);
-        if (data?.signedUrl) song.audioUrl = data.signedUrl;
-      } catch (err) {
-        captureException(err, { operation: 'createSignedUrl', songId: song.id });
-      }
-    }));
-  }
   return {profile,songs:mappedSongs,requests:(requests.data||[]).map(camelRequest),
     releases:(releases.data||[]).map(camelRelease),
     subscription:{status:sub.status||'pending',planName:sub.plan_name||'Plano Bronze',monthlyPrice:sub.monthly_price||'0,00',nextBillingDate:sub.next_billing_date||'',
@@ -445,10 +436,12 @@ async function saveProfileLegacy(userId: string, p: ComposerProfile) {
   }
 }
 
+// Mesma lista de save_my_profile (medios_2026_09_30.sql), que é quem garante.
 export const RESERVED_USERNAMES = [
-  'admin', 'administrador', 'dashboard', 'login', 'cadastro', 'termos', 
-  'privacidade', 'autenticacao', 'validar-documento', 'suporte', 'api', 
-  'app', 'root', 'sistema', 'oficial', 'mercadodocompositor'
+  'admin', 'administrador', 'dashboard', 'login', 'cadastro', 'termos',
+  'privacidade', 'autenticacao', 'validar-documento', 'validar', 'suporte', 'api',
+  'app', 'root', 'sistema', 'oficial', 'mercadodocompositor', 'mercado-do-compositor',
+  'compositores', 'compositor', 'recuperar-senha', 'entrega', 'equipe', 'contato'
 ];
 
 export async function checkUsernameAvailability(slug: string): Promise<boolean> {
@@ -691,18 +684,15 @@ export async function getPublicComposers(options?: { search?: string; genre?: st
   const search = options?.search?.trim() || null;
   const genre = options?.genre?.trim() || null;
 
-  try {
-    const { data, error } = await supabase.rpc('get_public_composers', {
-      p_limit: limit,
-      p_search: search,
-      p_genre: genre
-    });
-    if (!error && Array.isArray(data)) {
-      return data as FeaturedComposer[];
-    }
-  } catch {
-    // Fallback gracioso caso a RPC ainda não tenha sido executada no banco
-  }
+  const { data, error } = await supabase.rpc('get_public_composers', {
+    p_limit: limit,
+    p_search: search,
+    p_genre: genre
+  });
+  if (!error && Array.isArray(data)) return data as FeaturedComposer[];
+  // Só a função ausente (implantação antiga) cai no catálogo reduzido; erro de
+  // rede ou do banco sobe para a tela mostrar a falha em vez de "nenhum compositor".
+  if (error && error.code !== 'PGRST202' && error.code !== '42883') throw error;
 
   const fallback = await getFeaturedComposers(Math.min(limit, 24)).catch(() => []);
   return fallback.filter(comp => {
@@ -978,7 +968,7 @@ export async function loadMySongsPage(userId:string,params:SongPageQuery):Promis
     query.range(from,from+pageSize-1),supabase.rpc('get_my_song_stats')
   ]);
   if(error||statsError)throw(error||statsError);
-  const songs=await Promise.all((data||[]).map(camelSong).map(signOriginalAudio));
+  const songs=(data||[]).map(camelSong);
   const raw=statsData||{};
   return{songs,total:count||0,stats:{published:Number(raw.published||0),drafts:Number(raw.drafts||0),pending:Number(raw.pending||0),rejected:Number(raw.rejected||0),plays:Number(raw.plays||0),interests:Number(raw.interests||0),genres:Array.isArray(raw.genres)?raw.genres:[]}};
 }
@@ -1090,9 +1080,26 @@ export async function listMfaFactors(): Promise<MfaFactorSummary[]> {
 
 export async function beginMfaEnrollment(): Promise<{ factorId: string; qrCode: string; secret: string }> {
   if (!supabase) throw new Error('Supabase não configurado.');
+  // Uma configuração abandonada no meio deixa um fator não verificado com o
+  // mesmo nome, e o Supabase recusa criar outro.
+  const { data: existing } = await supabase.auth.mfa.listFactors();
+  for (const factor of existing?.all || []) {
+    if (factor.factor_type === 'totp' && factor.status !== 'verified') await supabase.auth.mfa.unenroll({ factorId: factor.id });
+  }
   const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Mercado do Compositor' });
   if (error) throw error;
   return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
+}
+
+/** Desativa a verificação em duas etapas. Exige a sessão já confirmada com o código (aal2). */
+export async function disableMfa(): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado.');
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) throw error;
+  for (const factor of data.totp) {
+    const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+    if (unenrollError) throw unenrollError;
+  }
 }
 
 export async function verifyMfaEnrollment(factorId: string, code: string): Promise<void> {
@@ -1319,6 +1326,14 @@ export async function recordTermsAcceptance(version: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Versões de termos que o usuário já aceitou (a RLS só devolve as próprias linhas). */
+export async function loadMyTermsAcceptances(userId: string): Promise<string[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('terms_acceptances').select('terms_version').eq('user_id', userId);
+  if (error) throw error;
+  return (data || []).map((row: { terms_version: string }) => row.terms_version);
+}
+
 /**
  * O membro padrão existe apenas para o modo sem Supabase (desenvolvimento/testes).
  * Uma falha real de leitura propaga o erro: exibir um "Administrador Master"
@@ -1525,11 +1540,17 @@ export async function deleteMyAccount(): Promise<{ archivedRequests: number }> {
  */
 export async function adminFinalizeAccountDeletion(requestId: string, adminNotes?: string): Promise<void> {
   if (!supabase) throw new Error('Supabase não configurado.');
-  const { error } = await supabase.rpc('admin_finalize_account_deletion', {
-    p_request_id: requestId,
-    p_admin_notes: adminNotes || null
-  });
-  if (error) throw error;
+  // Pela Edge Function: além da rotina do banco, ela cancela a assinatura no
+  // Stripe e apaga os arquivos do Storage, que o SQL não alcança.
+  const { error } = await supabase.functions.invoke('delete-my-account', { body: { requestId, adminNotes: adminNotes || null } });
+  if (error) {
+    const response = (error as { context?: Response }).context;
+    const detail = response && typeof response.json === 'function'
+      ? await response.json().then((b: { message?: string }) => b?.message).catch(() => undefined)
+      : undefined;
+    captureException(error, { operation: 'adminFinalizeAccountDeletion', status: response?.status });
+    throw new Error(detail || 'Não foi possível concluir a exclusão da conta. Tente novamente.');
+  }
 }
 
 // ==========================================

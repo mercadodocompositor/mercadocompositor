@@ -1,0 +1,5 @@
+# Arquivos publicados como estão na Hostinger: sempre LF, mesmo em checkout no
+# Windows. Com CRLF o servidor ignorava as regras de reescrita do .htaccess.
+public/.htaccess text eol=lf
+public/*.php text eol=lf
+index.html text eol=lf

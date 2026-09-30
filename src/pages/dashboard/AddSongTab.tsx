@@ -88,7 +88,8 @@ export const AddSongTab: React.FC = () => {
   const [status, setStatus] = useState<SongStatus>(existingSong?.status || 'draft');
   const [isAvailableForRelease, setIsAvailableForRelease] = useState(existingSong?.isAvailableForRelease ?? true);
   const [valueType, setValueType] = useState<ValueType>(existingSong?.valueType || 'suggested');
-  const [suggestedValue, setSuggestedValue] = useState<number | ''>(existingSong?.suggestedValue ?? 3500);
+  // Sem valor pré-preenchido: um número de exemplo acabava publicado sem o compositor perceber.
+  const [suggestedValue, setSuggestedValue] = useState<number | ''>(existingSong?.suggestedValue ?? '');
 
   // File uploads & URLs
   const [previewFileName, setPreviewFileName] = useState<string | null>(null);
@@ -584,11 +585,12 @@ export const AddSongTab: React.FC = () => {
     setDateComposed(new Date().toISOString().split('T')[0]);
     setLyrics('');
     setRegistryCode('');
+    setIswc('');
     setNotes('');
     setStatus('draft');
     setIsAvailableForRelease(true);
     setValueType('suggested');
-    setSuggestedValue(3500);
+    setSuggestedValue('');
     setPreviewFileName(null);
     setPreviewFile(null);
     setPreviewObjectUrl(null);
@@ -1230,7 +1232,7 @@ export const AddSongTab: React.FC = () => {
               </div>
               <h4 className="font-bold text-white text-xs">{isProcessingPreview ? `Gerando prévia protegida de ${PREVIEW_MAX_SECONDS}s...` : previewSourceFile?.name || (existingSong?.originalAudioPath ? 'Música completa já enviada. Selecione outra para substituir' : 'Carregue a música completa')}</h4>
               <p className="text-[11px] text-slate-400">
-                Envie <strong className="text-white font-semibold">a música na íntegra</strong>, em MP3 e com até 25 MB. Ela fica guardada com segurança na sua área privada e é entregue ao cliente junto com o termo. No perfil público toca somente uma <strong className="text-white font-semibold">prévia de {PREVIEW_MAX_SECONDS} segundos</strong>, gerada automaticamente.
+                Envie <strong className="text-white font-semibold">a música na íntegra</strong>, em MP3 e com até 25 MB (arquivos WAV, M4A, AAC ou OGG podem ser enviados depois pelo Player Studio, em Minhas Músicas). Ela fica guardada com segurança na sua área privada e é entregue ao cliente junto com o termo. No perfil público toca somente uma <strong className="text-white font-semibold">prévia de {PREVIEW_MAX_SECONDS} segundos</strong>, gerada automaticamente.
               </p>
               {renderUploadStatus('preview')}
               {mediaErrors.preview && <p role="alert" className="relative z-10 rounded-lg bg-red-500/10 px-3 py-2 text-left text-xs leading-relaxed text-red-300">{mediaErrors.preview}</p>}

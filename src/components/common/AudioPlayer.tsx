@@ -108,6 +108,16 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     }
   };
 
+  // Depois do fim da prévia o visitante pode ouvir de novo desde o início.
+  const replay = () => {
+    setHasEnded(false);
+    setCurrentTime(0);
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    }
+  };
+
   const toggleMute = () => {
     setIsMuted(!isMuted);
     if (audioRef.current) {
@@ -245,6 +255,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             <p className="text-slate-300 leading-relaxed text-[11px]">
               Entre em contato com o compositor para solicitar a liberação desta obra e ouvir a guia completa.
             </p>
+            <button type="button" onClick={replay} className="mt-1 font-bold text-amber-300 hover:text-amber-200 block text-xs">
+              Ouvir a prévia de novo
+            </button>
             {onInterestClick && (
               <button
                 onClick={onInterestClick}

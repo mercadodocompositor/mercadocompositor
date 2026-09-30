@@ -55,6 +55,8 @@ export const KNOWN_FRIENDLY_TRANSLATIONS: Record<string, string> = {
   'email rate limit exceeded': 'Limite temporário de envio atingido. Aguarde antes de solicitar outro e-mail.',
   'over_email_send_rate_limit': 'Limite temporário de envio atingido. Aguarde antes de solicitar outro e-mail.',
   'new password should be different': 'A nova senha deve ser diferente da senha anterior.',
+  'user is banned': 'Esta conta foi encerrada ou está bloqueada. Se acha que é um engano, fale com o suporte.',
+  'user_banned': 'Esta conta foi encerrada ou está bloqueada. Se acha que é um engano, fale com o suporte.',
   'anonymous sign-ins are disabled': 'Acesso anônimo não permitido. Faça login com sua conta.',
 
   // Storage & Edge Function de Validação
@@ -170,7 +172,7 @@ export function parseApiError(error: unknown): ParsedApiError {
     return {
       code: 'SERVER_ERROR',
       statusCode: statusCode || 500,
-      userMessage: 'A estrutura do banco de dados precisa ser atualizada. Execute o script update_all_migrations.sql no Supabase.',
+      userMessage: 'Este recurso está temporariamente indisponível. Tente novamente em alguns minutos; se continuar, fale com o suporte.',
       technicalMessage: rawMsg
     };
   }

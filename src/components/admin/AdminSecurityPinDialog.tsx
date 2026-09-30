@@ -56,7 +56,8 @@ export const AdminSecurityPinDialog: React.FC<AdminSecurityPinDialogProps> = ({
     setIsVerifying(true);
     try {
       // Validação real via Supabase Auth
-      const isValid = await verifyAdminPassword(password.trim());
+      // A senha é conferida como foi digitada: espaços podem fazer parte dela.
+      const isValid = await verifyAdminPassword(password);
 
       if (isValid) {
         toast.success('Autorização Concedida', 'Operação crítica autorizada com sucesso.');
