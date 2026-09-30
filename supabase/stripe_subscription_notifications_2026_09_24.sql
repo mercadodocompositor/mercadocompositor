@@ -100,7 +100,7 @@ declare
   destination text;
   should_send boolean := true;
 begin
-  select coalesce(up.preferences,'{}'::jsonb), lower(btrim(coalesce(nullif(btrim(pp.email),''), au.email)))
+  select coalesce(up.preferences,'{}'::jsonb), lower(btrim(coalesce(nullif(btrim(au.email),''), nullif(btrim(pp.email),''))))
     into prefs,destination
   from auth.users au
   left join public.private_profiles pp on pp.user_id=au.id

@@ -3,12 +3,6 @@ import type { DashboardMetricPoint } from '../../types';
 import { DashboardCard, DashboardSectionHeader } from './DashboardUI';
 
 export const MetricsHistory: React.FC<{ points: DashboardMetricPoint[] }> = ({ points }) => {
-  const totals = points.reduce((sum, point) => ({
-    views: sum.views + point.profileViews,
-    plays: sum.plays + point.songPlays,
-    requests: sum.requests + point.interestRequests,
-    releases: sum.releases + point.releasesIssued,
-  }), { views: 0, plays: 0, requests: 0, releases: 0 });
   const chartPoints = points.slice(-14);
   const maxValue = Math.max(1, ...chartPoints.flatMap(point => [point.profileViews, point.songPlays]));
   const toPolyline = (key: 'profileViews' | 'songPlays') => chartPoints.map((point,index) => {
@@ -19,14 +13,11 @@ export const MetricsHistory: React.FC<{ points: DashboardMetricPoint[] }> = ({ p
 
   return (
     <DashboardCard className="overflow-hidden" aria-labelledby="metrics-history-title">
-      <DashboardSectionHeader title="Desempenho dos últimos 30 dias" description="Acompanhe o engajamento e a audiência das suas composições ao longo do tempo." titleId="metrics-history-title" />
-      <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4 sm:p-6">
-        {[['Visualizações',totals.views],['Reproduções',totals.plays],['Solicitações',totals.requests],['Liberações',totals.releases]].map(([label,value]) => <div key={label} className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 border border-transparent dark:border-slate-800/80"><span className="block text-xs text-slate-500 dark:text-slate-400">{label}</span><strong className="mt-1 block text-xl text-slate-900 dark:text-white">{Number(value).toLocaleString('pt-BR')}</strong></div>)}
-      </div>
+      <DashboardSectionHeader title="Desempenho do catálogo" description="Visualizações e reproduções registradas nos últimos 30 dias." titleId="metrics-history-title" />
       {points.length ? (
         <div className="px-5 pb-6 sm:px-6">
           <div className="mb-2 flex gap-4 text-xs text-slate-600 dark:text-slate-300"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-500" />Visualizações</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-blue-600" />Reproduções</span></div>
-          <svg viewBox="0 0 100 48" role="img" aria-label="Gráfico de visualizações e reproduções dos últimos 14 dias" className="h-44 w-full overflow-visible rounded-xl bg-slate-50 dark:bg-slate-800/40 p-3 border border-transparent dark:border-slate-800/60" preserveAspectRatio="none">
+          <svg viewBox="0 0 100 48" role="img" aria-label="Gráfico de visualizações e reproduções dos últimos 14 dias" className="h-56 w-full overflow-visible rounded-xl bg-slate-50 dark:bg-slate-800/40 p-3 border border-transparent dark:border-slate-800/60" preserveAspectRatio="none">
             <polyline points={toPolyline('profileViews')} fill="none" stroke="#f59e0b" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
             <polyline points={toPolyline('songPlays')} fill="none" stroke="#2563eb" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
           </svg>

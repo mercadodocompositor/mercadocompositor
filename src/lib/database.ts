@@ -347,6 +347,25 @@ export async function loadReleasePage(userId:string,params:ReleasePageQuery):Pro
 
 export async function saveProfile(userId: string, p: ComposerProfile) {
   if (!supabase) return;
+  // Uma transação só: perfil público e dados privados são gravados juntos ou
+  // nenhum é. O e-mail de notificações é o da conta e não sai daqui.
+  const { error: rpcError } = await supabase.rpc('save_my_profile', {
+    p_profile: {
+      username: p.username, name: p.name, stageName: p.stageName, city: p.city, state: p.state,
+      bio: p.bio, experienceYears: p.experienceYears, genres: p.genres, instagram: p.instagram,
+      youtube: p.youtube, website: p.website, photo: p.photo, coverPhoto: p.coverPhoto,
+      society: p.society || '', spotify: p.spotify || ''
+    },
+    p_private: { whatsapp: p.whatsapp, cpf: p.cpf, pixKey: p.pixKey || '', pixKeyType: p.pixKeyType || 'cpf' }
+  });
+  if (!rpcError) return;
+  // Função ainda não criada no banco (implantação gradual): segue pelo caminho antigo.
+  if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') throw rpcError;
+  await saveProfileLegacy(userId, p);
+}
+
+async function saveProfileLegacy(userId: string, p: ComposerProfile) {
+  if (!supabase) return;
   const profilePayload: Record<string, any> = {
     username: p.username,
     name: p.name,
@@ -367,33 +386,35 @@ export async function saveProfile(userId: string, p: ComposerProfile) {
   };
 
   const privPayload: Record<string, any> = {
-    email: p.email,
     whatsapp: p.whatsapp,
     cpf: p.cpf,
     pix_key: p.pixKey || '',
     pix_key_type: p.pixKeyType || 'cpf'
   };
 
+  // .select() devolve as linhas alteradas: um update que não encontra a linha
+  // não dá erro no PostgREST e virava um "salvo com sucesso" falso.
   const [resA, resB] = await Promise.all([
-    supabase.from('profiles').update(profilePayload).eq('user_id', userId),
-    supabase.from('private_profiles').update(privPayload).eq('user_id', userId)
+    supabase.from('profiles').update(profilePayload).eq('user_id', userId).select('user_id'),
+    supabase.from('private_profiles').update(privPayload).eq('user_id', userId).select('user_id')
   ]);
+  const ensureUpdated = (rows: unknown[] | null) => {
+    if (!rows?.length) throw new Error('Não foi possível localizar sua conta para salvar o perfil. Saia e entre novamente; se persistir, fale com o suporte.');
+  };
 
   if (resA.error) {
-    // Deployments created before society/spotify were added may either not have
-    // the columns yet or may still have the old column-level UPDATE grant.
+    // Bancos criados antes de society/spotify não têm essas colunas. Só a coluna
+    // ausente justifica o desvio: "permission denied" é um erro real e precisa
+    // aparecer, em vez de o dado ir parar em user_preferences em silêncio.
     const canUseLegacyProfileFallback =
       resA.error.code === 'PGRST204' ||
-      resA.error.code === '42703' ||
-      resA.error.code === '42501' ||
-      resA.error.message?.includes('society') ||
-      resA.error.message?.includes('spotify') ||
-      resA.error.message?.toLowerCase().includes('permission denied');
+      resA.error.code === '42703';
     if (canUseLegacyProfileFallback) {
       delete profilePayload.society;
       delete profilePayload.spotify;
-      const retry = await supabase.from('profiles').update(profilePayload).eq('user_id', userId);
+      const retry = await supabase.from('profiles').update(profilePayload).eq('user_id', userId).select('user_id');
       if (retry.error) throw retry.error;
+      ensureUpdated(retry.data);
       const { data: currentPrefs } = await supabase.from('user_preferences').select('preferences').eq('user_id', userId).maybeSingle();
       const nextPrefs = { ...(currentPrefs?.preferences || {}), society: p.society || '', spotify: p.spotify || '' };
       const { error: preferencesError } = await supabase.from('user_preferences').upsert({ user_id: userId, preferences: nextPrefs, updated_at: new Date().toISOString() });
@@ -401,14 +422,17 @@ export async function saveProfile(userId: string, p: ComposerProfile) {
     } else {
       throw resA.error;
     }
+  } else {
+    ensureUpdated(resA.data);
   }
 
   if (resB.error) {
-    if (resB.error.code === 'PGRST204' || resB.error.message?.includes('pix_key') || resB.error.code === '42703') {
+    if (resB.error.code === 'PGRST204' || resB.error.code === '42703') {
       delete privPayload.pix_key;
       delete privPayload.pix_key_type;
-      const retryPriv = await supabase.from('private_profiles').update(privPayload).eq('user_id', userId);
+      const retryPriv = await supabase.from('private_profiles').update(privPayload).eq('user_id', userId).select('user_id');
       if (retryPriv.error) throw retryPriv.error;
+      ensureUpdated(retryPriv.data);
       const { data: currentPrefs } = await supabase.from('user_preferences').select('preferences').eq('user_id', userId).maybeSingle();
       const nextPrefs = { ...(currentPrefs?.preferences || {}), pixKey: p.pixKey || '', pixKeyType: p.pixKeyType || 'cpf' };
       const { error: preferencesError } = await supabase.from('user_preferences').upsert({ user_id: userId, preferences: nextPrefs, updated_at: new Date().toISOString() });
@@ -416,6 +440,8 @@ export async function saveProfile(userId: string, p: ComposerProfile) {
     } else {
       throw resB.error;
     }
+  } else {
+    ensureUpdated(resB.data);
   }
 }
 
@@ -425,21 +451,18 @@ export const RESERVED_USERNAMES = [
   'app', 'root', 'sistema', 'oficial', 'mercadodocompositor'
 ];
 
-export async function checkUsernameAvailability(slug: string, currentUserId?: string): Promise<boolean> {
+export async function checkUsernameAvailability(slug: string): Promise<boolean> {
   if (!slug) return false;
   const normalized = slug.trim().toLowerCase();
   if (RESERVED_USERNAMES.includes(normalized)) return false;
   if (!supabase) return true;
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('user_id, username')
-    .eq('username', normalized)
-    .maybeSingle();
-  // Uma falha de leitura não prova disponibilidade: liberar aqui produziria
-  // violação de unicidade no save (ou um username duplicado se o índice cair).
+  // A RLS de profiles só mostra a própria linha: uma consulta direta nunca veria
+  // o endereço de outro compositor. A função responde só sim/não e já considera
+  // o endereço atual do próprio usuário como disponível.
+  const { data, error } = await supabase.rpc('is_username_available', { p_username: normalized });
+  // Uma falha não prova disponibilidade: a unicidade do banco segue como garantia final.
   if (error) throw error;
-  if (!data) return true;
-  return currentUserId ? data.user_id === currentUserId : false;
+  return data === true;
 }
 export async function insertSong(userId:string,s:Song){
   if(!supabase)return;
@@ -1090,7 +1113,7 @@ export const DEFAULT_SUBSCRIPTION_PLANS: SubscriptionPlanItem[] = [
     maxSongs: 100,
     isActive: true,
     sortOrder: 1,
-    features: ['Até 100 músicas publicadas', 'Liberação direta com termo PDF', 'Estatísticas de reprodução'],
+    features: ['Até 100 músicas no catálogo', 'Perfil público do Compositor', 'Prévia protegida de 85 segundos com letra completa', 'Contato direto com artistas, com aviso por e-mail', 'Gestão de solicitações e negociações', 'Termo de liberação em PDF com validação de autenticidade', 'Entrega da obra completa por link seguro', 'Estatísticas completas'],
     description: 'Plano inicial ideal para compositores'
   },
   {
@@ -1100,7 +1123,7 @@ export const DEFAULT_SUBSCRIPTION_PLANS: SubscriptionPlanItem[] = [
     maxSongs: 200,
     isActive: true,
     sortOrder: 2,
-    features: ['Até 200 músicas publicadas', 'Prioridade nas buscas', 'Liberação direta com termo PDF'],
+    features: ['Até 200 músicas no catálogo', 'Perfil público do Compositor', 'Prévia protegida de 85 segundos com letra completa', 'Contato direto com artistas, com aviso por e-mail', 'Gestão de solicitações e negociações', 'Termo de liberação em PDF com validação de autenticidade', 'Entrega da obra completa por link seguro', 'Estatísticas completas'],
     description: 'Catálogo ampliado para compositores ativos'
   },
   {
@@ -1110,19 +1133,9 @@ export const DEFAULT_SUBSCRIPTION_PLANS: SubscriptionPlanItem[] = [
     maxSongs: null,
     isActive: true,
     sortOrder: 3,
-    features: ['Catálogo ilimitado de músicas', 'Selo de compositor verificado', 'Destaque editorial', 'Suporte prioritário'],
+    features: ['Músicas ilimitadas no catálogo', 'Perfil público do Compositor', 'Prévia protegida de 85 segundos com letra completa', 'Contato direto com artistas, com aviso por e-mail', 'Gestão de solicitações e negociações', 'Termo de liberação em PDF com validação de autenticidade', 'Entrega da obra completa por link seguro', 'Estatísticas completas e elegibilidade para destaque no catálogo público'],
     description: 'Acesso total e ilimitado para profissionais da música',
     includesFeatured: true
-  },
-  {
-    id: 'Plano Inicial',
-    name: 'Plano Inicial',
-    monthlyPrice: 1.00,
-    maxSongs: 1,
-    isActive: true,
-    sortOrder: 0,
-    features: ['Plano exclusivo para testes', 'Até 1 música publicada', 'Validação do fluxo de assinatura e cobrança'],
-    description: 'Plano de R$ 1,00 destinado exclusivamente a testes'
   }
 ];
 
@@ -1141,7 +1154,9 @@ export async function loadSubscriptionPlans(): Promise<SubscriptionPlanItem[]> {
       .order('sort_order', { ascending: true });
     if (error) throw error;
     if (!data) return [];
-    return data.map((r: any) => ({
+    // Durante uma implantação gradual, bancos antigos ainda não retornam
+    // archived_at. A ausência equivale a "não arquivado".
+    return data.filter((r: any) => !r.archived_at).map((r: any) => ({
       id: r.id || r.name,
       name: r.name,
       monthlyPrice: Number(r.monthly_price),
@@ -1202,14 +1217,15 @@ export async function saveSubscriptionPlan(plan: SubscriptionPlanItem, originalN
 
 export async function deleteSubscriptionPlan(planId: string): Promise<void> {
   if (!supabase) return;
-  const { data, error } = await supabase
-    .from('subscription_plans')
-    .delete()
-    .eq('name', planId)
-    .select('name')
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('admin_remove_subscription_plan', { p_plan_name: planId });
   if (error) throw error;
   if (!data) throw new Error(`O plano "${planId}" não foi encontrado para exclusão.`);
+}
+
+export async function adminDeleteOrphanComposer(userId: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('admin_delete_orphan_composer', { p_user_id: userId });
+  if (error) throw error;
 }
 
 export async function checkUserPlanCapacity(userId?: string): Promise<PlanCapacityInfo> {

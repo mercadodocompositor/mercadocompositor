@@ -70,7 +70,7 @@ describe('Unificação de Validações de Rascunho (Frontend e Trigger SQL)', ()
     for (const sql of [migrationsSql, mediaSecuritySql, draftPublishFixSql, auditFixSql]) {
       expect(sql).toContain("old.status not in ('published', 'pending_approval')");
       expect(sql).toContain("bucket_id = 'song-previews'");
-      expect(sql).toContain('duration_seconds <= 60');
+      expect(sql).toContain('duration_seconds <= 85');
       expect(sql).toContain('consumed_by_song_id is null or consumed_by_song_id = new.id');
     }
   });

@@ -54,7 +54,7 @@ begin
      and nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
     raise exception using
       errcode = '23514',
-      message = 'Uma prévia pública de até 60 segundos é obrigatória para publicação.';
+      message = 'Uma prévia pública de até 85 segundos é obrigatória para publicação.';
   end if;
 
   -- Uma mídia informada enquanto a música era rascunho ainda precisa ser
@@ -79,7 +79,7 @@ begin
       and bucket_id = 'song-previews'
       and public_url = new.preview_audio_url
       and duration_seconds > 0
-      and duration_seconds <= 60
+      and duration_seconds <= 85
       and (consumed_by_song_id is null or consumed_by_song_id = new.id)
     for update;
 

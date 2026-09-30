@@ -10,7 +10,24 @@ import { downloadInvoiceReceipt } from '../../lib/invoiceReceipt';
 import { changeStripePlan, createStripeCheckout, createStripePortal } from '../../lib/stripe';
 import { AdminConfirmDialog } from '../../components/admin/AdminConfirmDialog';
 import type { Invoice } from '../../types';
-import { AlertCircle, CalendarClock, CheckCircle2, CreditCard, Download, ExternalLink, FileText, Info, Loader2, Lock, RefreshCw } from 'lucide-react';
+import {
+  AlertCircle,
+  BarChart3,
+  CalendarClock,
+  CheckCircle2,
+  CircleHelp,
+  CreditCard,
+  Crown,
+  Download,
+  ExternalLink,
+  FileText,
+  Info,
+  Loader2,
+  Lock,
+  Music2,
+  RefreshCw,
+  ShieldCheck
+} from 'lucide-react';
 
 const INVOICES_PREVIEW = 12;
 // O webhook grava a troca de plano alguns segundos depois da confirmação do Stripe.
@@ -28,6 +45,10 @@ const INVOICE_STATUS: Record<Invoice['status'], { label: string; className: stri
 };
 
 type CheckoutReturn = 'confirming' | 'confirmed' | 'delayed' | 'cancelled';
+
+// O item do limite de músicas é o que diferencia os planos: vai em destaque na lista.
+const SONG_LIMIT_FEATURE = /músicas (no catálogo|publicadas?)|músicas ilimitadas/i;
+const shortPlanName = (name: string) => name.replace(/^Plano\s+/i, '');
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -170,11 +191,41 @@ export const SubscriptionTab: React.FC = () => {
     : subscription.status === 'active' ? { label: 'Próxima cobrança', value: subscription.nextBillingDate }
     : { label: 'Válido até', value: subscription.nextBillingDate };
 
-  const plansTitle = isPending ? 'Escolha seu plano' : canChangePlan ? 'Trocar de plano' : 'Assinar novamente';
+  const plansTitle = isPending ? 'Escolha o plano ideal para você' : canChangePlan ? 'Compare e escolha seu plano' : 'Assinar novamente';
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
-      <header><h1 className="text-2xl font-black text-slate-900 dark:text-white">Assinatura</h1><p className="text-sm text-slate-500 dark:text-slate-400">Gerencie seu plano, pagamentos e faturas.</p></header>
+    <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn pb-10">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white">{isPending ? 'Escolha seu plano' : 'Assinatura'}</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{isPending ? 'Publique suas músicas e conecte-se com artistas' : 'Gerencie seu plano, pagamentos e faturas.'}</p>
+        </div>
+        <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+          <Lock className="h-4 w-4 text-slate-800 dark:text-slate-200" />
+          <span>Pagamento seguro pelo <strong className="text-slate-950 dark:text-white">Stripe</strong></span>
+        </div>
+      </header>
+
+      {isPending && trialAvailable && (
+        <section className="relative isolate overflow-hidden rounded-3xl border border-slate-800 bg-[#081a38] px-6 py-7 text-white shadow-xl sm:px-9 sm:py-8">
+          <div className="absolute inset-0 -z-20 bg-[url('/hero-composers-v2.webp')] bg-cover bg-[center_36%] opacity-35" />
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#07152f] via-[#07152f]/95 to-[#07152f]/35" />
+          <div className="absolute -right-20 top-1/2 -z-10 h-48 w-[55%] -translate-y-1/2 rounded-full bg-amber-400/10 blur-3xl" />
+          <div className="max-w-3xl">
+            <span className="inline-flex rounded-lg bg-amber-400 px-4 py-1.5 text-xs font-black tracking-wide text-slate-950 shadow-lg shadow-amber-500/20">7 DIAS GRÁTIS</span>
+            <h2 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">Comece agora. Cancele quando quiser.</h2>
+            <p className="mt-1 text-sm text-slate-200 sm:text-base">Você só será cobrado após o período de teste.</p>
+            <div className="mt-5 flex flex-col gap-3 text-sm font-semibold text-slate-100 sm:flex-row sm:items-center sm:gap-6">
+              {['Sem taxa de adesão', 'Cancele online', 'Seus dados protegidos'].map((item, index) => (
+                <span key={item} className="inline-flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-400 text-slate-950">{index === 2 ? <ShieldCheck className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</span>
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {checkoutReturn === 'confirming' && <Banner tone="info" icon={<Loader2 className="w-5 h-5 animate-spin" />} title="Pagamento recebido. Ativando sua assinatura...">Isso leva só alguns segundos.</Banner>}
       {checkoutReturn === 'confirmed' && <Banner tone="success" icon={<CheckCircle2 className="w-5 h-5" />} title={isTrialing ? 'Seu teste grátis começou!' : 'Assinatura ativa!'}>
@@ -198,12 +249,7 @@ export const SubscriptionTab: React.FC = () => {
         Até lá tudo continua funcionando. Depois dessa data seu catálogo sai do ar e não há novas cobranças.
       </Banner>}
 
-      {isPending ? <DashboardCard>
-        <DashboardSectionHeader title="Nenhum plano contratado" description={statusMeta.label} />
-        <div className="p-5 sm:p-6 text-sm text-slate-600 dark:text-slate-300 space-y-1">
-          <p>Você ainda não tem uma assinatura paga. Escolha um dos planos abaixo para liberar seu perfil e suas músicas no catálogo público.</p>
-          {trialAvailable && <p className="font-semibold text-emerald-600 dark:text-emerald-400">Sua primeira assinatura tem 7 dias grátis. A cobrança só começa depois do período de teste, e você pode cancelar antes.</p>}        </div>
-      </DashboardCard> : <DashboardCard>
+      {!isPending && <DashboardCard>
         <DashboardSectionHeader title={subscription.planName} description={statusMeta.label} />
         <div className="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div><span className="text-xs text-slate-500 block">Valor mensal contratado</span><strong className="text-xl">R$ {formatMoneyBR(contractedPrice)}</strong></div>
@@ -217,24 +263,79 @@ export const SubscriptionTab: React.FC = () => {
         </div>}
       </DashboardCard>}
 
-      <section className="space-y-3">
+      <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-bold">{plansTitle}</h2>
-          <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-1"><Lock className="w-3.5 h-3.5" />Pagamento processado pelo Stripe. A plataforma não recebe nem armazena os dados do seu cartão.</p>
+          <h2 className="text-xl font-black tracking-tight text-slate-950 dark:text-white">{plansTitle}</h2>
+          {!isPending && <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><Lock className="h-3.5 w-3.5" />A troca é processada com segurança pelo Stripe.</p>}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{offeredPlans.map(item => {
+        <div className="grid grid-cols-1 gap-5 pt-3 md:grid-cols-3">{offeredPlans.map((item, index) => {
           const isCurrent = !isPending && subscription.planName === item.name;
-          return <div key={item.name} className={`p-5 rounded-3xl border bg-white dark:bg-slate-900 flex flex-col ${isCurrent ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-slate-200 dark:border-slate-800'}`}>
-            <div className="flex items-center justify-between gap-2"><strong>{item.name}</strong>{isCurrent && <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Seu plano</span>}</div>
-            <span className="text-2xl font-black text-amber-500 mt-2">R$ {formatMoneyBR(item.monthlyPrice)}<small className="text-xs font-normal text-slate-500">/mês</small></span>
-            {!canChangePlan && trialAvailable && <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1">7 dias grátis, depois R$ {formatMoneyBR(item.monthlyPrice)}/mês</span>}
-            <ul className="my-4 space-y-2 flex-1">{item.features.map(feature => <li key={feature} className="text-xs text-slate-500 flex gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />{feature}</li>)}</ul>
-            {canChangePlan
-              ? <button type="button" onClick={() => setPlanToChange(item)} disabled={paymentLoading !== null || isCurrent} className="px-4 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold text-sm disabled:opacity-50">{paymentLoading === item.name ? 'Trocando plano...' : isCurrent ? 'Plano atual' : item.monthlyPrice > contractedPrice ? 'Fazer upgrade' : 'Mudar para este plano'}</button>
-              : <button type="button" onClick={() => void openStripe(item.name)} disabled={paymentLoading !== null} className="px-4 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold text-sm disabled:opacity-50">{paymentLoading === item.name ? 'Abrindo Stripe...' : trialAvailable ? 'Começar 7 dias grátis' : 'Assinar com Stripe'}</button>}
-          </div>;
+          const isFeatured = /prata/i.test(item.name) || (offeredPlans.length === 3 && index === 1);
+          const isGold = /ouro/i.test(item.name);
+          const PlanIcon = isGold ? Crown : isFeatured ? BarChart3 : Music2;
+          const planSubtitle = item.description || (isGold ? 'Para quem não tem limites' : isFeatured ? 'Ideal para compositores ativos' : 'Para quem está começando');
+          const badge = isCurrent ? 'SEU PLANO' : isFeatured ? 'MAIS ESCOLHIDO' : null;
+          const cardTone = isCurrent ? 'border-emerald-400 ring-2 ring-emerald-400/20' : isFeatured ? 'border-amber-400 ring-2 ring-amber-400/20 md:-translate-y-2 md:hover:-translate-y-2.5' : 'border-slate-200 dark:border-slate-800';
+          return <article key={item.name} aria-current={isCurrent ? 'true' : undefined} className={`relative flex flex-col rounded-3xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl dark:bg-slate-900 sm:p-6 ${cardTone}`}>
+            {badge && <span className={`absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg px-4 py-1 text-[10px] font-black tracking-wide shadow ${isCurrent ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-slate-950'}`}>{badge}</span>}
+            <div className="flex items-center gap-3">
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${isGold ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300' : isFeatured ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200' : 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300'}`}><PlanIcon className="h-5 w-5" aria-hidden="true" /></span>
+              <h3 className="text-lg font-black text-slate-950 dark:text-white">{item.name}</h3>
+            </div>
+            <p className="mt-2 min-h-8 line-clamp-2 text-xs text-slate-600 dark:text-slate-300">{planSubtitle}</p>
+            <p className="mt-4 whitespace-nowrap text-3xl font-black tracking-tight text-slate-950 dark:text-white">R$ {formatMoneyBR(item.monthlyPrice)}<small className="text-sm font-bold text-slate-600 dark:text-slate-300">/mês</small></p>
+            <div className="mt-5">
+              {canChangePlan
+                ? <button type="button" onClick={() => setPlanToChange(item)} disabled={paymentLoading !== null || isCurrent} className="min-h-11 w-full rounded-xl bg-amber-400 px-4 text-sm font-black text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 dark:disabled:bg-slate-800">{paymentLoading === item.name ? 'Trocando plano...' : isCurrent ? 'Plano atual' : item.monthlyPrice > contractedPrice ? 'Fazer upgrade' : 'Mudar para este plano'}</button>
+                : <button type="button" onClick={() => void openStripe(item.name)} disabled={paymentLoading !== null} className={`min-h-11 w-full rounded-xl px-4 text-sm font-black transition disabled:opacity-50 ${isFeatured ? 'bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 hover:bg-amber-300' : 'border-2 border-amber-400 text-slate-950 hover:bg-amber-50 dark:text-white dark:hover:bg-amber-500/10'}`}>{paymentLoading === item.name ? 'Abrindo Stripe...' : trialAvailable ? 'Começar 7 dias grátis' : 'Assinar com Stripe'}</button>}
+              {!canChangePlan && trialAvailable && <p className="mt-2 text-center text-[11px] font-medium text-slate-600 dark:text-slate-300">Grátis por 7 dias, depois R$ {formatMoneyBR(item.monthlyPrice)}/mês</p>}
+            </div>
+            <div className="mt-5 flex-1 border-t border-slate-200 pt-5 dark:border-slate-800">
+              <p className="mb-3 text-xs font-bold text-slate-950 dark:text-white">Inclui:</p>
+              <ul className="space-y-2.5">
+                {item.features.map(feature => {
+                  const isSongLimit = SONG_LIMIT_FEATURE.test(feature);
+                  return <li key={feature} className={`flex gap-2 text-xs leading-relaxed ${isSongLimit ? 'font-bold text-slate-950 dark:text-white' : 'text-slate-700 dark:text-slate-200'}`}><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />{feature}</li>;
+                })}
+              </ul>
+            </div>
+          </article>;
         })}</div>
       </section>
+
+      {offeredPlans.length > 1 && (
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800"><h2 className="font-black text-slate-950 dark:text-white">Compare os planos</h2></div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-xs">
+              <thead><tr className="bg-slate-50 text-slate-700 dark:bg-slate-950/60 dark:text-slate-200"><th className="px-5 py-3 text-left font-semibold">Recursos</th>{offeredPlans.map(item => <th key={item.name} className="px-4 py-3 text-center font-black">{shortPlanName(item.name)}</th>)}</tr></thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                <tr><td className="px-5 py-3 font-semibold">Músicas no catálogo</td>{offeredPlans.map(item => <td key={item.name} className="px-4 py-3 text-center">{item.maxSongs === null ? 'Ilimitadas' : `Até ${item.maxSongs}`}</td>)}</tr>
+                {['Prévias protegidas', 'Liberações digitais', 'Estatísticas completas'].map(resource => <tr key={resource}><td className="px-5 py-3 font-semibold">{resource}</td>{offeredPlans.map(item => <td key={item.name} className="px-4 py-3 text-center"><CheckCircle2 className="mx-auto h-4 w-4 text-emerald-500" aria-label="Incluído" /></td>)}</tr>)}
+                <tr>
+                  <td className="px-5 py-3 font-semibold">Destaque no catálogo público</td>
+                  {offeredPlans.map(item => {
+                    const hasCatalogHighlight = /ouro/i.test(item.name)
+                      || item.features.some(feature => /destaque no catálogo público|elegibilidade para destaque/i.test(feature));
+                    return <td key={item.name} className="px-4 py-3 text-center">
+                      {hasCatalogHighlight
+                        ? <CheckCircle2 className="mx-auto h-4 w-4 text-emerald-500" aria-label="Incluído" />
+                        : <span className="text-slate-300 dark:text-slate-700" aria-label="Não incluído">—</span>}
+                    </td>;
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {isPending && trialAvailable && (
+        <section className="flex flex-col gap-4 rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-950 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-100 sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-center gap-3"><ShieldCheck className="h-8 w-8 shrink-0 text-emerald-500" /><div><strong className="block text-sm">Cobrança segura e transparente</strong><span className="text-xs">Você pode cancelar antes do fim do teste e não pagar nada.</span></div></div>
+          <a href={`mailto:${APP_CONFIG.company.supportEmail}?subject=Dúvidas sobre a assinatura`} className="inline-flex items-center gap-2 text-xs font-bold text-blue-700 hover:underline dark:text-blue-300"><CircleHelp className="h-4 w-4" />Dúvidas sobre a assinatura?</a>
+        </section>
+      )}
 
       {subscription.invoices.length > 0 && <DashboardCard className="overflow-hidden">
         <DashboardSectionHeader title="Histórico financeiro" description="Cobranças da sua assinatura" />
@@ -273,7 +374,7 @@ export const SubscriptionTab: React.FC = () => {
       />
 
       <footer className="text-center text-xs text-slate-500 space-y-2">
-        <p>{hasBillingPortal ? 'Para trocar o cartão, baixar faturas ou cancelar, use “Gerenciar cobrança”. ' : ''}Outras dúvidas: <a className="underline" href={`mailto:${APP_CONFIG.company.supportEmail}?subject=Assinatura`}>{APP_CONFIG.company.supportEmail}</a></p>
+        {hasBillingPortal && <p>Para trocar o cartão, baixar faturas ou cancelar, use “Gerenciar cobrança”.</p>}
         <nav className="flex justify-center gap-3"><Link to="/termos" className="hover:underline">Termos de Uso</Link><Link to="/privacidade" className="hover:underline">Privacidade</Link></nav>
       </footer>
     </div>

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { stripeClient } from '../_shared/stripe.ts'
+import { renderBrandedEmail } from '../_shared/email-template.ts'
 
 const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{'content-type':'application/json','access-control-allow-origin':'*','access-control-allow-headers':'authorization, x-client-info, apikey, content-type','access-control-allow-methods':'POST, OPTIONS'}})
 // Status do Stripe em que a assinatura não cobra mais nada.
@@ -11,7 +12,7 @@ async function sendFarewell(recipient:string){
   // Enviado direto, sem passar pela fila: a fila guardaria o e-mail que acabou de ser eliminado.
   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${resendKey}`,'content-type':'application/json'},
     body:JSON.stringify({from:sender,to:[recipient],subject:'Sua conta foi excluída',
-      html:`<!doctype html><html lang="pt-BR"><body style="margin:0;background:#060b18;font-family:Arial,sans-serif;color:#e2e8f0"><table width="100%" role="presentation" style="padding:32px 16px"><tr><td align="center"><table width="100%" role="presentation" style="max-width:560px;background:#0a1128;border:1px solid #263147;border-radius:20px"><tr><td style="padding:34px"><p style="color:#fbbf24;font-size:12px;font-weight:bold;letter-spacing:2px">MERCADO DO COMPOSITOR</p><h1 style="color:#fff;font-size:24px">Sua conta foi excluída</h1><p style="color:#cbd5e1;line-height:1.6">Concluímos a exclusão da sua conta. Seus dados pessoais foram eliminados, suas obras saíram do catálogo e a assinatura foi cancelada. Termos de liberação já emitidos e o histórico financeiro são mantidos sem identificação pessoal, por obrigação legal.</p><p style="margin-top:26px;color:#64748b;font-size:12px">Esta é a última mensagem que você receberá do Mercado do Compositor.</p></td></tr></table></td></tr></table></body></html>`})})
+      html:renderBrandedEmail({preheader:'Confirmação da exclusão da sua conta',eyebrow:'Privacidade e transparência',title:'Sua conta foi excluída',body:'Concluímos a exclusão da sua conta. Seus dados pessoais foram eliminados, suas obras saíram do catálogo e a assinatura foi cancelada.\n\nTermos de liberação já emitidos e o histórico financeiro são mantidos sem identificação pessoal, conforme as obrigações legais.',footer:'Esta é a última mensagem que você receberá do Mercado do Compositor.'})})})
   if(!response.ok)console.error('[delete-my-account] e-mail de despedida',response.status,(await response.text()).slice(0,300))
 }
 

@@ -42,8 +42,13 @@ describe('validateProfileForm', () => {
   });
 
   it('ordena os erros na ordem visual dos campos (o primeiro recebe o foco)', () => {
-    const form = { ...validForm(), stageName: '', city: '', email: 'invalido' };
-    expect(Object.keys(validateProfileForm(form, options))).toEqual(['stageName', 'city', 'email']);
+    const form = { ...validForm(), stageName: '', city: '', whatsapp: '123' };
+    expect(Object.keys(validateProfileForm(form, options))).toEqual(['stageName', 'city', 'whatsapp']);
+  });
+
+  it('não valida o e-mail: é o da conta, somente leitura, e não pode travar o salvamento', () => {
+    const form = { ...validForm(), email: 'formato-antigo' };
+    expect(validateProfileForm(form, options).email).toBeUndefined();
   });
 
   it('exige a biografia mínima também usada no checklist', () => {

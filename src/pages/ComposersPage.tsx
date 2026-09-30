@@ -1,29 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowRight, ArrowUpDown, BadgeCheck, ChevronDown, Crown, Disc3, MapPin, Music2, Search, Sparkles, X } from 'lucide-react';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { getPublicComposers } from '../lib/database';
 import { getSafePublicBio } from '../lib/profileSanitizer';
-import type { FeaturedComposer } from '../types';
 import { MUSIC_GENRES, normalizeGenreList } from '../config/musicGenres';
-import { 
-  Search, 
-  X, 
-  Music, 
-  MapPin, 
-  Sparkles, 
-  ArrowRight, 
-  Disc, 
-  SlidersHorizontal,
-  ArrowLeft,
-  Users,
-  Crown,
-  BadgeCheck
-} from 'lucide-react';
+import type { FeaturedComposer } from '../types';
 
-const GENRE_FILTERS = ['Todos', ...MUSIC_GENRES.filter(genre => genre !== 'Outro')];
+const GENRES = ['Todos', ...MUSIC_GENRES.filter(genre => genre !== 'Outro')];
 
-// Ordem aleatória a cada visita: todos os destacados dividem o topo da vitrine.
 const shuffle = <T,>(items: T[]) => {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -33,467 +19,168 @@ const shuffle = <T,>(items: T[]) => {
   return copy;
 };
 
-const ComposerAvatarImage: React.FC<{ composer: FeaturedComposer; className: string; textClass: string }> = ({ composer, className, textClass }) => {
+const Photo: React.FC<{ composer: FeaturedComposer; className: string }> = ({ composer, className }) => {
   const initial = (composer.name || 'C').trim().charAt(0).toUpperCase();
-  const fallback = `w-full h-full rounded-full items-center justify-center bg-gradient-to-br from-[#0A1128] via-slate-900 to-slate-950 font-serif font-bold text-amber-400 ${textClass}`;
-  return (
-    <div className={className}>
-      {composer.photo ? (
-        <>
-          <img
-            src={composer.photo}
-            onError={event => {
-              event.currentTarget.style.display = 'none';
-              const next = event.currentTarget.nextElementSibling;
-              if (next) (next as HTMLElement).style.display = 'flex';
-            }}
-            alt={composer.name}
-            className="w-full h-full rounded-full object-cover bg-slate-950"
-          />
-          <div style={{ display: 'none' }} className={fallback} aria-hidden="true">{initial}</div>
-        </>
-      ) : (
-        <div className={`flex ${fallback}`} aria-hidden="true">{initial}</div>
-      )}
-    </div>
-  );
+  const fallback = 'h-full w-full items-center justify-center rounded-[inherit] bg-gradient-to-br from-slate-700 via-slate-900 to-[#060b16] font-serif text-3xl font-bold text-amber-400';
+  return <div className={`overflow-hidden bg-slate-900 ${className}`}>
+    {composer.photo ? <>
+      <img src={composer.photo} alt={composer.name} className="h-full w-full rounded-[inherit] object-cover transition duration-500 group-hover:scale-[1.03]" onError={event => { event.currentTarget.style.display = 'none'; const next = event.currentTarget.nextElementSibling; if (next) (next as HTMLElement).style.display = 'flex'; }} />
+      <div style={{ display: 'none' }} className={fallback} aria-hidden="true">{initial}</div>
+    </> : <div className={`flex ${fallback}`} aria-hidden="true">{initial}</div>}
+  </div>;
 };
+
+const Tags: React.FC<{ genres: string[] }> = ({ genres }) => <div className="flex flex-wrap gap-1.5">
+  {(genres || []).slice(0, 3).map(genre => <span key={genre} className="rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-[10px] text-slate-300">{genre}</span>)}
+</div>;
 
 export const ComposersPage: React.FC = () => {
   const [composers, setComposers] = useState<FeaturedComposer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedGenre, setSelectedGenre] = useState('Todos');
-  const [sortBy, setSortBy] = useState<'songs' | 'name'>('songs');
+  const [genre, setGenre] = useState('Todos');
+  const [stateFilter, setStateFilter] = useState('Todos');
+  const [sort, setSort] = useState<'songs' | 'name'>('songs');
+  const [showAllGenres, setShowAllGenres] = useState(false);
 
-  useEffect(() => {
-    document.title = 'Compositores em Destaque | Mercado do Compositor';
-  }, []);
-
+  useEffect(() => { document.title = 'Compositores | Mercado do Compositor'; }, []);
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    getPublicComposers({ limit: 100 })
-      .then(data => {
-        if (!active) return;
-        const featured = shuffle(data.filter(comp => comp.featured));
-        setComposers([...featured, ...data.filter(comp => !comp.featured)]);
-      })
-      .catch(() => {
-        if (active) setComposers([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    getPublicComposers({ limit: 100 }).then(data => {
+      if (!active) return;
+      setComposers([...shuffle(data.filter(item => item.featured)), ...data.filter(item => !item.featured)]);
+    }).catch(() => { if (active) setComposers([]); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
   const filteredComposers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    let result = composers.filter(comp => {
-      // Filtro de gênero
-      if (selectedGenre !== 'Todos') {
-        // Igualdade ou prefixo de palavra: "Sertanejo" encontra "Sertanejo Universitário",
-        // mas "Rap" não encontra "Trap".
-        const selected = selectedGenre.toLowerCase();
-        const matchesGenre = normalizeGenreList(comp.genres || []).some(g => {
-          const genre = g.toLowerCase();
-          return genre === selected || genre.startsWith(`${selected} `);
-        });
-        if (!matchesGenre) return false;
-      }
-      // Filtro de busca textual
-      if (q) {
-        const nameMatch = comp.name?.toLowerCase().includes(q);
-        const cityMatch = comp.cityState?.toLowerCase().includes(q);
-        const bioMatch = comp.bio?.toLowerCase().includes(q);
-        const genresMatch = comp.genres?.some(g => g.toLowerCase().includes(q));
-        return Boolean(nameMatch || cityMatch || bioMatch || genresMatch);
-      }
-      return true;
+    const query = search.trim().toLocaleLowerCase('pt-BR');
+    const result = composers.filter(item => {
+      const genreMatch = genre === 'Todos' || normalizeGenreList(item.genres || []).some(value => {
+        const normalized = value.toLocaleLowerCase('pt-BR');
+        const selected = genre.toLocaleLowerCase('pt-BR');
+        return normalized === selected || normalized.startsWith(`${selected} `);
+      });
+      if (!genreMatch) return false;
+      if (stateFilter !== 'Todos' && !item.cityState?.endsWith(` - ${stateFilter}`)) return false;
+      return !query || [item.name, item.cityState, item.bio, ...(item.genres || [])].some(value => value?.toLocaleLowerCase('pt-BR').includes(query));
     });
-
-    // Ordenação: destacados primeiro, depois o critério escolhido.
-    result.sort((a, b) => {
+    return result.sort((a, b) => {
       if (Boolean(a.featured) !== Boolean(b.featured)) return a.featured ? -1 : 1;
-      if (sortBy === 'songs') {
-        return (b.songCount || 0) - (a.songCount || 0);
-      }
-      return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+      return sort === 'songs' ? (b.songCount || 0) - (a.songCount || 0) : (a.name || '').localeCompare(b.name || '', 'pt-BR');
     });
+  }, [composers, search, genre, stateFilter, sort]);
 
-    return result;
-  }, [composers, search, selectedGenre, sortBy]);
+  const availableStates = useMemo(() => Array.from(new Set(composers.map(item => item.cityState?.split(' - ').pop()?.trim()).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b, 'pt-BR')), [composers]);
 
-  const hasActiveFilters = search.trim() !== '' || selectedGenre !== 'Todos';
-
-  // Sem filtros, os destacados ganham seção própria e saem da grade geral.
   const featuredComposers = useMemo(() => composers.filter(comp => comp.featured), [composers]);
+  const hasActiveFilters = Boolean(search.trim()) || genre !== 'Todos' || stateFilter !== 'Todos';
   const showFeaturedSection = !loading && !hasActiveFilters && featuredComposers.length > 0;
   const gridComposers = showFeaturedSection ? filteredComposers.filter(comp => !comp.featured) : filteredComposers;
 
-  const clearFilters = () => {
-    setSearch('');
-    setSelectedGenre('Todos');
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
-      <Navbar />
-
-      <main className="flex-grow">
-        {/* HEADER HERO */}
-        <section className="relative py-12 md:py-16 overflow-hidden bg-[#0A1128] border-b border-amber-500/20 text-white">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-amber-500/10 blur-[130px] rounded-full pointer-events-none" />
-
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            {/* Breadcrumb back */}
-            <div className="mb-6">
-              <Link
-                to="/"
-                className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-amber-400 transition"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Voltar para a página inicial</span>
-              </Link>
+  return <div className="flex min-h-screen flex-col bg-[#06101f] font-sans text-slate-100 selection:bg-amber-400 selection:text-slate-950">
+    <Navbar />
+    <main className="flex-1">
+      <section className="relative isolate overflow-hidden border-b border-amber-400/15 bg-[#081426]">
+        <img src="/hero-composers-v2.webp" alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover object-center md:object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#06101f]/95 via-[#06101f]/35 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#06101f] via-transparent to-[#06101f]/20" />
+        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+          <div className="max-w-3xl">
+            <div className="mb-5 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.24em] text-amber-300"><span className="h-px w-8 bg-amber-400" /> Música real conecta pessoas</div>
+            <h1 className="font-serif text-4xl font-semibold leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">Encontre a voz autoral da sua <span className="text-amber-300">próxima música</span></h1>
+            <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">Descubra compositores de todo o Brasil, conheça seus repertórios e encontre a parceria certa para o seu próximo projeto.</p>
+            <div className="mt-8 grid overflow-hidden rounded-2xl border border-slate-600/60 bg-[#071425]/90 shadow-2xl shadow-black/25 backdrop-blur-md sm:grid-cols-[minmax(0,1fr)_190px]">
+              <label className="relative flex min-h-14 items-center"><Search className="absolute left-4 h-5 w-5 text-slate-400" /><span className="sr-only">Buscar compositores</span>
+                <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por compositor, cidade ou gênero" className="min-h-14 w-full bg-transparent py-4 pl-12 pr-11 text-sm text-white outline-none placeholder:text-slate-400" />
+                {search && <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca" className="absolute right-3 rounded-full p-2 text-slate-400 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>}
+              </label>
+              <button type="button" onClick={() => document.getElementById('catalogo-compositores')?.scrollIntoView({ behavior: 'smooth' })} className="min-h-14 bg-amber-400 px-6 text-sm font-extrabold text-slate-950 transition hover:bg-amber-300">Buscar compositores</button>
             </div>
-
-            <div className="max-w-3xl space-y-4">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold">
-                <Users className="w-4 h-4 text-amber-400" />
-                <span>Vitrine de Talentos Brasileiros</span>
-              </div>
-
-              <h1 className="text-3xl sm:text-5xl font-serif tracking-tight text-white leading-tight">
-                Catálogo de <span className="italic text-amber-400 font-serif">Compositores</span>
-              </h1>
-
-              <p className="text-slate-300 text-base sm:text-lg leading-relaxed">
-                Descubra os autores por trás das grandes canções. Explore os perfis, conheça suas obras registradas e conecte-se diretamente para autorizações e gravações.
-              </p>
-            </div>
+            <p className="mt-3 text-xs text-slate-400">Pesquise por nome artístico, localização, estilo ou palavra da apresentação.</p>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* SEARCH & FILTERS SECTION */}
-        <section className="py-4 sm:py-6 bg-[#060B18]/95 border-b border-slate-800 sticky top-20 z-30 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
-            
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-              {/* Search Bar */}
-              <div className="relative w-full md:max-w-md">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Buscar por compositor, cidade, gênero..."
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => setSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+      {showFeaturedSection && <section className="border-b border-slate-800 bg-[#081426]" aria-labelledby="featured-title">
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
+          <div className="mb-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div>
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300"><Sparkles className="h-4 w-4" /> Curadoria da plataforma</div>
+            <h2 id="featured-title" className="font-serif text-3xl font-semibold text-white">Seleção em destaque</h2>
+            <p className="mt-2 text-sm text-slate-400">Perfis ativos com repertório pronto para ser descoberto.</p>
+          </div><a href="#catalogo-compositores" className="inline-flex items-center gap-2 text-sm font-bold text-amber-300 hover:text-amber-200">Ver todos os compositores <ArrowRight className="h-4 w-4" /></a></div>
+          <div className="grid gap-4 lg:grid-cols-3">{featuredComposers.slice(0, 3).map(composer => <Link key={composer.id} to={`/compositor/${composer.username}`} className="group rounded-2xl border border-amber-400/35 bg-[#0d1b30] p-5 transition duration-300 hover:-translate-y-1 hover:border-amber-400/70 hover:shadow-xl hover:shadow-black/20">
+            <div className="flex min-h-full items-start gap-4"><Photo composer={composer} className="h-24 w-24 shrink-0 rounded-full border-2 border-amber-400/50 p-1 sm:h-28 sm:w-28" />
+              <div className="flex min-w-0 flex-1 flex-col"><span className="mb-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-300"><Crown className="h-3 w-3" /> Destaque</span>
+                <h3 className="flex items-center gap-1.5 font-serif text-xl font-semibold text-white group-hover:text-amber-300"><span className="truncate">{composer.name}</span>{composer.isVerified && <BadgeCheck className="h-4 w-4 shrink-0 text-amber-400" aria-label="Perfil verificado" />}</h3>
+                {composer.cityState && <p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><MapPin className="h-3.5 w-3.5" /><span className="truncate">{composer.cityState}</span></p>}
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-300">{getSafePublicBio(composer.bio, composer.name, composer.username)}</p><div className="mt-3"><Tags genres={composer.genres} /></div>
+                <div className="mt-auto flex items-center justify-between gap-3 pt-4"><span className="flex items-center gap-1.5 text-xs text-slate-300"><Disc3 className="h-4 w-4 text-amber-400" /><strong>{composer.songCount || 0}</strong> {composer.songCount === 1 ? 'música' : 'músicas'}</span><span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300">Ver perfil <ArrowRight className="h-3.5 w-3.5" /></span></div>
+              </div></div>
+          </Link>)}</div>
+        </div>
+      </section>}
 
-              {/* Counter and Sort Controls */}
-              <div className="w-full md:w-auto flex flex-wrap items-center justify-between md:justify-end gap-3 text-xs text-slate-400">
-                <span>
-                  <strong className="text-white">{filteredComposers.length}</strong> {filteredComposers.length === 1 ? 'compositor encontrado' : 'compositores encontrados'}
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-                  <select
-                    value={sortBy}
-                    onChange={e => setSortBy(e.target.value as 'songs' | 'name')}
-                    aria-label="Ordenar compositores"
-                    className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-400 cursor-pointer"
-                  >
-                    <option value="songs">Mais músicas</option>
-                    <option value="name">Nome (A - Z)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Genre Pills (Wrapping layout - zero horizontal scrollbar or dragging) */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 text-xs">
-              <span className="text-slate-400 text-xs font-semibold mr-1 flex items-center gap-1 shrink-0">
-                <Music className="w-3.5 h-3.5 text-amber-400" />
-                <span>Gêneros:</span>
-              </span>
-              {GENRE_FILTERS.map(genre => {
-                const isSelected = selectedGenre === genre;
-                return (
-                  <button
-                    key={genre}
-                    type="button"
-                    onClick={() => setSelectedGenre(genre)}
-                    className={`px-3 py-1.5 rounded-full font-medium transition cursor-pointer text-xs ${
-                      isSelected
-                        ? 'bg-amber-500 text-slate-950 shadow-md font-bold ring-2 ring-amber-400/40'
-                        : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700/80 hover:border-amber-500/40'
-                    }`}
-                  >
-                    {genre}
-                  </button>
-                );
-              })}
-              {selectedGenre !== 'Todos' && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedGenre('Todos')}
-                  className="px-2.5 py-1 text-xs text-amber-400 hover:text-amber-300 hover:underline cursor-pointer ml-1 font-medium"
-                >
-                  Limpar filtro ({selectedGenre})
-                </button>
-              )}
-            </div>
-
-          </div>
-        </section>
-
-        {/* FEATURED COMPOSERS */}
-        {showFeaturedSection && (
-          <section aria-labelledby="featured-composers-title" className="relative overflow-hidden border-b border-amber-500/20 bg-gradient-to-b from-[#0A1128] to-slate-950">
-            <div className="absolute -top-24 right-0 w-[420px] h-[420px] bg-yellow-500/10 blur-[120px] rounded-full pointer-events-none" />
-            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-14">
-              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-8">
-                <div>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-[11px] font-bold uppercase tracking-wider">
-                    <Crown className="w-3.5 h-3.5" /> Em destaque
-                  </span>
-                  <h2 id="featured-composers-title" className="mt-3 text-2xl sm:text-3xl font-serif tracking-tight text-white">
-                    Compositores <span className="italic text-amber-400">em destaque</span>
-                  </h2>
-                </div>
-                <p className="text-xs text-slate-400 max-w-sm sm:text-right">
-                  Catálogos selecionados para quem procura repertório agora.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {featuredComposers.map(comp => (
-                  <Link
-                    key={comp.id}
-                    to={`/compositor/${comp.username}`}
-                    className="group relative flex gap-4 rounded-3xl border border-yellow-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-[#0A1128] p-5 shadow-xl shadow-yellow-500/5 hover:border-yellow-400/60 hover:-translate-y-0.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-                  >
-                    <span className="absolute top-4 right-4 text-yellow-400" aria-hidden="true"><Crown className="w-4 h-4" /></span>
-                    <ComposerAvatarImage
-                      composer={comp}
-                      className="w-20 h-20 shrink-0 p-[3px] rounded-full bg-gradient-to-tr from-yellow-500 via-amber-300 to-yellow-600 shadow-lg shadow-yellow-500/20"
-                      textClass="text-xl"
-                    />
-                    <div className="min-w-0 flex-1 pr-5">
-                      <h3 className="flex items-center gap-1.5 text-lg font-serif italic font-bold text-white group-hover:text-amber-300 transition-colors">
-                        <span className="truncate">{comp.name}</span>
-                        {comp.isVerified && <BadgeCheck className="w-4 h-4 shrink-0 text-amber-400" aria-label="Verificado" />}
-                      </h3>
-                      {comp.cityState && (
-                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
-                          <MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{comp.cityState}</span>
-                        </p>
-                      )}
-                      <p className="mt-2 text-xs text-slate-400 leading-relaxed line-clamp-2">
-                        {getSafePublicBio(comp.bio, comp.name, comp.username)}
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300">
-                          <Disc className="w-3 h-3" /> {comp.songCount || 0} {comp.songCount === 1 ? 'música' : 'músicas'}
-                        </span>
-                        {(comp.genres || []).slice(0, 2).map(genre => (
-                          <span key={genre} className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700/80">{genre}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* COMPOSERS GRID SECTION */}
-        <section className="py-12 md:py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {showFeaturedSection && gridComposers.length > 0 && (
-            <h2 className="mb-8 text-xl sm:text-2xl font-serif text-white">Todos os compositores</h2>
-          )}
-          
-          {loading ? (
-            /* Skeletons */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden p-6 space-y-4 animate-pulse">
-                  <div className="h-44 bg-slate-800 rounded-2xl" />
-                  <div className="space-y-2">
-                    <div className="h-6 w-48 bg-slate-800 rounded" />
-                    <div className="h-4 w-32 bg-slate-800/60 rounded" />
-                  </div>
-                  <div className="h-10 bg-slate-800/40 rounded-xl" />
-                </div>
-              ))}
-            </div>
-          ) : gridComposers.length > 0 ? (
-            /* Composer Cards */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {gridComposers.map(comp => (
-                <div
-                  key={comp.id}
-                  className={`bg-slate-900 border rounded-3xl overflow-hidden transition group flex flex-col justify-between shadow-xl relative ${comp.featured ? 'border-yellow-500/40 hover:border-yellow-400/70' : 'border-slate-800 hover:border-amber-500/40'}`}
-                >
-                  {comp.featured && (
-                    <span className="absolute top-4 right-4 z-10 inline-flex items-center gap-1 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-0.5 text-[10px] font-bold text-yellow-300">
-                      <Crown className="w-3 h-3" /> Destaque
-                    </span>
-                  )}
-                  <div>
-                    {/* Header Banner & Circular Avatar */}
-                    <div className="relative pt-8 pb-3 px-6 flex flex-col items-center text-center">
-                      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-amber-500/10 via-[#0A1128]/50 to-transparent pointer-events-none rounded-t-3xl" />
-
-                      {/* Instagram-style circular avatar with story ring */}
-                      <Link to={`/compositor/${comp.username}`} className="relative mb-3 group/avatar block focus:outline-none">
-                        <div className="w-24 h-24 sm:w-28 sm:h-28 p-1 rounded-full bg-gradient-to-tr from-amber-500 via-amber-400 to-amber-600 shadow-xl shadow-amber-500/20 ring-4 ring-slate-900 group-hover:scale-105 transition-transform duration-300">
-                          {comp.photo ? (
-                            <>
-                              <img
-                                src={comp.photo}
-                                onError={event => {
-                                  event.currentTarget.style.display = 'none';
-                                  const fallback = event.currentTarget.nextElementSibling;
-                                  if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                                }}
-                                alt={comp.name}
-                                className="w-full h-full rounded-full object-cover bg-slate-950"
-                              />
-                              <div
-                                style={{ display: 'none' }}
-                                className="w-full h-full rounded-full items-center justify-center bg-gradient-to-br from-[#0A1128] via-slate-900 to-slate-950 text-2xl font-serif font-bold text-amber-400"
-                                aria-hidden="true"
-                              >
-                                {(comp.name || 'C').trim().charAt(0).toUpperCase()}
-                              </div>
-                            </>
-                          ) : (
-                            <div className="w-full h-full rounded-full flex items-center justify-center bg-gradient-to-br from-[#0A1128] via-slate-900 to-slate-950 text-2xl font-serif font-bold text-amber-400" aria-hidden="true">
-                              {(comp.name || 'C').trim().charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                        <span className="absolute bottom-1 right-1 p-1 bg-amber-500 text-slate-950 rounded-full shadow-md ring-2 ring-slate-900 flex items-center justify-center">
-                          <Music className="w-3 h-3" />
-                        </span>
-                      </Link>
-
-                      {/* City/State badge */}
-                      {comp.cityState && (
-                        <span className="inline-flex items-center gap-1 bg-[#0A1128]/90 border border-amber-500/30 text-amber-400 text-xs px-3 py-0.5 rounded-full font-medium">
-                          <MapPin className="w-3 h-3" />
-                          <span>{comp.cityState}</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Card Body */}
-                    <div className="p-6 pt-2 space-y-3 text-center">
-                      <h2 className="text-xl font-serif italic font-bold text-white group-hover:text-amber-400 transition-colors">
-                        <Link to={`/compositor/${comp.username}`}>
-                          {comp.name}
-                        </Link>
-                      </h2>
-
-                      <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">
-                        {getSafePublicBio(comp.bio, comp.name, comp.username)}
-                      </p>
-
-                      {comp.genres && comp.genres.length > 0 && (
-                        <div className="flex flex-wrap justify-center gap-1.5 pt-2">
-                          {comp.genres.map((g, idx) => (
-                            <span
-                              key={idx}
-                              className="text-[10px] bg-slate-800 text-amber-300 px-2.5 py-0.5 rounded-full border border-slate-700/80 font-medium"
-                            >
-                              {g}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Card Footer */}
-                  <div className="p-6 pt-0 flex items-center justify-between border-t border-slate-800/60 mt-4">
-                    <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                      <Disc className="w-3.5 h-3.5 text-amber-400" />
-                      <span><strong>{comp.songCount || 0}</strong> {comp.songCount === 1 ? 'música' : 'músicas'}</span>
-                    </span>
-
-                    <Link
-                      to={`/compositor/${comp.username}`}
-                      className="px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs transition inline-flex items-center gap-1.5"
-                    >
-                      <span>Ver perfil</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : showFeaturedSection ? null : (
-            /* Empty State */
-            <div className="text-center py-16 px-4 bg-slate-900/50 border border-slate-800 rounded-3xl max-w-lg mx-auto space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
-                <Music className="w-7 h-7" />
-              </div>
-              <h3 className="text-xl font-bold text-white font-serif">Nenhum compositor encontrado</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Não encontramos compositores para os critérios informados. Experimente buscar outro termo ou limpar os filtros.
-              </p>
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="mt-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-semibold border border-slate-700 transition cursor-pointer"
-                >
-                  Limpar todos os filtros
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Bottom Call to Action for Composers */}
-          <div className="mt-16 p-8 md:p-12 rounded-3xl bg-gradient-to-r from-[#0A1128] to-slate-900 border border-amber-500/30 text-center space-y-4 max-w-4xl mx-auto shadow-2xl">
-            <span className="text-amber-400 text-xs uppercase font-bold tracking-widest block">
-              É um compositor?
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-serif italic text-white">
-              Crie seu catálogo e apareça nesta vitrine
-            </h2>
-            <p className="text-slate-300 text-xs sm:text-sm max-w-xl mx-auto leading-relaxed">
-              Proteja suas composições com prévias de 85 segundos, organize suas letras e receba propostas diretas de gravação de artistas de todo o país.
-            </p>
-            <div className="pt-2">
-              <Link
-                to="/cadastro"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-amber-500/20"
-              >
-                <span>Criar Perfil de Compositor</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
+      <section id="catalogo-compositores" className="scroll-mt-24 bg-[#06101f]"><div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
+        <div className="border-b border-slate-800 pb-7">
+          <div>
+            <h2 className="font-serif text-3xl font-semibold text-white sm:text-4xl">Todos os compositores</h2>
+            <p className="mt-2 text-sm text-slate-400"><strong className="font-medium text-slate-200">{filteredComposers.length}</strong> {filteredComposers.length === 1 ? 'perfil encontrado' : 'perfis encontrados'}</p>
           </div>
 
-        </section>
-      </main>
+          <div className="mt-7 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(280px,1.7fr)_1fr_1fr_0.85fr]">
+            <label className="relative flex min-h-14 items-center rounded-xl border border-slate-700 bg-[#0d1b30] transition focus-within:border-amber-400">
+              <Search className="pointer-events-none absolute left-4 h-5 w-5 text-slate-400" />
+              <span className="sr-only">Buscar no catálogo</span>
+              <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar no catálogo" className="min-h-14 w-full bg-transparent py-3 pl-12 pr-11 text-sm font-medium text-white outline-none placeholder:text-slate-400" />
+              {search && <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca" className="absolute right-2 rounded-full p-2 text-slate-400 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>}
+            </label>
 
-      <Footer />
-    </div>
-  );
+            <label className="relative flex min-h-14 items-center rounded-xl border border-slate-700 bg-[#0d1b30] transition focus-within:border-amber-400">
+              <Music2 className="pointer-events-none absolute left-4 h-5 w-5 text-slate-400" />
+              <span className="sr-only">Filtrar por gênero</span>
+              <select value={genre} onChange={event => setGenre(event.target.value)} className="min-h-14 w-full appearance-none bg-transparent py-3 pl-12 pr-10 text-sm font-semibold text-slate-100 outline-none">
+                {GENRES.map(item => <option key={item} value={item} className="bg-[#0d1b30]">{item === 'Todos' ? 'Todos os gêneros' : item}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-4 h-4 w-4 text-slate-400" />
+            </label>
+
+            <label className="relative flex min-h-14 items-center rounded-xl border border-slate-700 bg-[#0d1b30] transition focus-within:border-amber-400">
+              <MapPin className="pointer-events-none absolute left-4 h-5 w-5 text-slate-400" />
+              <span className="sr-only">Filtrar por estado</span>
+              <select value={stateFilter} onChange={event => setStateFilter(event.target.value)} className="min-h-14 w-full appearance-none bg-transparent py-3 pl-12 pr-10 text-sm font-semibold text-slate-100 outline-none">
+                <option value="Todos" className="bg-[#0d1b30]">Todo o Brasil</option>
+                {availableStates.map(state => <option key={state} value={state} className="bg-[#0d1b30]">{state}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-4 h-4 w-4 text-slate-400" />
+            </label>
+
+            <label className="relative flex min-h-14 items-center rounded-xl border border-slate-700 bg-[#0d1b30] transition focus-within:border-amber-400">
+              <ArrowUpDown className="pointer-events-none absolute left-4 h-5 w-5 text-slate-400" />
+              <span className="sr-only">Ordenar compositores</span>
+              <select value={sort} onChange={event => setSort(event.target.value as 'songs' | 'name')} className="min-h-14 w-full appearance-none bg-transparent py-3 pl-12 pr-10 text-sm font-semibold text-slate-100 outline-none">
+                <option value="songs" className="bg-[#0d1b30]">Mais músicas</option><option value="name" className="bg-[#0d1b30]">Nome (A–Z)</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-4 h-4 w-4 text-slate-400" />
+            </label>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2" aria-label="Atalhos de gêneros">
+            {(showAllGenres ? GENRES : GENRES.slice(0, 14)).map(item => <button key={item} type="button" aria-pressed={genre === item} onClick={() => setGenre(item)} className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${genre === item ? 'border-amber-300 bg-amber-400 text-slate-950' : 'border-slate-700 bg-[#0d1b30] text-slate-300 hover:border-amber-400/50 hover:text-white'}`}>{item}</button>)}
+            {GENRES.length > 14 && <button type="button" onClick={() => setShowAllGenres(value => !value)} aria-expanded={showAllGenres} className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-[#0d1b30] px-4 py-2 text-xs font-semibold text-slate-300 hover:border-amber-400/50 hover:text-white">{showAllGenres ? 'Menos' : 'Mais'} <ChevronDown className={`h-3.5 w-3.5 transition ${showAllGenres ? 'rotate-180' : ''}`} /></button>}
+          </div>
+        </div>
+
+        {loading ? <div className="mt-8 grid gap-4 lg:grid-cols-2">{Array.from({ length: 6 }, (_, index) => <div key={index} className="flex animate-pulse items-center gap-5 rounded-2xl border border-slate-800 bg-[#0d1b30] p-5"><div className="h-24 w-24 shrink-0 rounded-full bg-slate-800" /><div className="flex-1 space-y-3"><div className="h-5 w-2/3 rounded bg-slate-800" /><div className="h-4 w-1/2 rounded bg-slate-800" /><div className="h-8 w-3/4 rounded bg-slate-800/70" /></div></div>)}</div>
+        : gridComposers.length ? <div className="mt-8 grid gap-4 lg:grid-cols-2">{gridComposers.map(composer => <Link key={composer.id} to={`/compositor/${composer.username}`} className="group flex min-w-0 items-center gap-4 rounded-2xl border border-slate-800 bg-[#0d1b30] p-4 transition duration-300 hover:-translate-y-0.5 hover:border-amber-400/50 hover:shadow-xl hover:shadow-black/20 sm:gap-6 sm:p-5">
+          <div className="relative shrink-0"><Photo composer={composer} className="h-20 w-20 rounded-full border-2 border-slate-700 p-1 transition group-hover:border-amber-400/60 sm:h-28 sm:w-28" />{composer.featured && <span className="absolute -right-1 -top-1 grid h-7 w-7 place-items-center rounded-full border-2 border-[#0d1b30] bg-amber-400 text-slate-950" aria-label="Compositor em destaque"><Crown className="h-3.5 w-3.5" /></span>}</div>
+          <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><h3 className="flex items-center gap-1.5 font-serif text-xl font-semibold text-white group-hover:text-amber-300 sm:text-2xl"><span className="truncate">{composer.name}</span>{composer.isVerified && <BadgeCheck className="h-4 w-4 shrink-0 text-sky-400" aria-label="Perfil verificado" />}</h3>{composer.cityState && <p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><span>Compositor</span><span aria-hidden="true">•</span><MapPin className="h-3.5 w-3.5" /><span className="truncate">{composer.cityState}</span></p>}</div><div className="hidden shrink-0 border-l border-slate-700 pl-5 text-center sm:block"><strong className="block text-xl text-white">{composer.songCount || 0}</strong><span className="text-[11px] text-slate-400">{composer.songCount === 1 ? 'música' : 'músicas'}</span></div></div><div className="mt-4"><Tags genres={composer.genres} /></div><div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-3 sm:hidden"><span className="flex items-center gap-1.5 text-xs text-slate-400"><Disc3 className="h-4 w-4 text-amber-400" /><strong className="text-slate-200">{composer.songCount || 0}</strong> {composer.songCount === 1 ? 'música' : 'músicas'}</span><span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300">Ver perfil <ArrowRight className="h-3.5 w-3.5" /></span></div></div>
+        </Link>)}</div>
+        : <div className="mx-auto mt-10 max-w-lg rounded-2xl border border-slate-800 bg-[#0d1b30] px-6 py-12 text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-400/10 text-amber-300"><Music2 className="h-7 w-7" /></div><h3 className="mt-5 font-serif text-2xl font-semibold text-white">Nenhum compositor encontrado</h3><p className="mt-2 text-sm text-slate-400">Tente outro nome, localidade ou gênero musical.</p>{hasActiveFilters && <button type="button" onClick={() => { setSearch(''); setGenre('Todos'); setStateFilter('Todos'); }} className="mt-6 rounded-full bg-amber-400 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-300">Limpar filtros</button>}</div>}
+
+        <div className="relative mt-16 overflow-hidden rounded-3xl border border-amber-400/25 bg-[#0d1b30] px-6 py-10 text-center sm:px-10 lg:py-14"><div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.14),transparent_38%)]" /><div className="relative mx-auto max-w-2xl"><span className="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-300">Seu repertório merece ser ouvido</span><h2 className="mt-3 font-serif text-3xl font-semibold text-white sm:text-4xl">Também compõe? Faça parte desta vitrine.</h2><p className="mt-4 text-sm leading-7 text-slate-300">Crie seu catálogo, publique prévias protegidas e conecte suas obras a artistas de todo o Brasil.</p><Link to="/cadastro" className="mt-7 inline-flex items-center gap-2 rounded-full bg-amber-400 px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-slate-950 hover:bg-amber-300">Criar perfil de compositor <ArrowRight className="h-4 w-4" /></Link></div></div>
+      </div></section>
+    </main>
+    <Footer />
+  </div>;
 };

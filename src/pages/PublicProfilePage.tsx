@@ -92,6 +92,7 @@ export const PublicProfilePage: React.FC = () => {
 
   const publishedSongs = useMemo(() => songs.filter(s => s.status === 'published'), [songs]);
   const availableCount = publishedSongs.filter(s => s.isAvailableForRelease).length;
+  const totalPlays = publishedSongs.reduce((total, song) => total + Number(song.playCount || 0), 0);
   const catalogGenres = useMemo(
     () => Array.from(new Set(publishedSongs.map(s => s.genre?.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [publishedSongs]
@@ -172,8 +173,17 @@ export const PublicProfilePage: React.FC = () => {
     setCatalogLoading(true);
     setLoadError(null);
     if (!requestedUsername) { setCatalog(null); setCatalogLoading(false); return; }
+    let redirecting = false;
     getPublicComposer(requestedUsername).then(async data => {
       if (!active) return;
+      // Endereço antigo (o compositor trocou): o banco devolve o perfil atual e o
+      // link divulgado continua funcionando, redirecionado para o endereço novo.
+      const currentUsername = data?.profile.username?.toLowerCase();
+      if (currentUsername && currentUsername !== requestedUsername) {
+        redirecting = true;
+        navigate(`/compositor/${currentUsername}${window.location.search}${window.location.hash}`, { replace: true });
+        return;
+      }
       setCatalog(data);
       if (data) {
         try {
@@ -187,7 +197,8 @@ export const PublicProfilePage: React.FC = () => {
         setLoadError('Não foi possível carregar as informações do compositor no momento devido a uma falha de conexão.');
       }
     }).finally(() => {
-      if (active) setCatalogLoading(false);
+      // No redirecionamento o carregamento continua até o endereço novo responder.
+      if (active && !redirecting) setCatalogLoading(false);
     });
     return () => { active = false; };
   }, [requestedUsername, retryCount]);
@@ -369,15 +380,16 @@ export const PublicProfilePage: React.FC = () => {
         {/* get_public_composer só devolve perfis com assinatura ativa; os demais caem em "não disponível". */}
         <>
             {/* HERO PROFILE COVER */}
-            <section className="relative bg-slate-900 border-b border-slate-800">
+            <section className="relative overflow-hidden border-b border-slate-700 bg-[#06101d]">
               
               {/* Cover Banner */}
-              <div className="h-36 sm:h-64 md:h-80 w-full relative overflow-hidden bg-gradient-to-r from-[#060B18] via-[#0A1128] to-[#111C44]">
+              <div className="relative h-[390px] w-full overflow-hidden bg-[#06101d] sm:h-[430px]">
+                <img src="/hero-composers-v2.webp" alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover object-center opacity-55" />
                 {/* Background Artwork / Studio Lighting Pattern */}
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/15 via-blue-900/10 to-transparent pointer-events-none" />
                 
                 {/* Acoustic Soundwave / Equalizer SVG Pattern */}
-                <div className="absolute inset-0 opacity-25 flex items-center justify-around px-8 pointer-events-none select-none overflow-hidden" aria-hidden="true">
+                <div className="absolute inset-0 opacity-10 flex items-center justify-around px-8 pointer-events-none select-none overflow-hidden" aria-hidden="true">
                   <svg className="w-full h-32 text-amber-400" viewBox="0 0 1200 120" preserveAspectRatio="none" fill="none">
                     <path
                       d="M0,60 Q30,10 60,60 T120,60 T180,20 T240,60 T300,90 T360,60 T420,15 T480,60 T540,100 T600,60 T660,10 T720,60 T780,105 T840,60 T900,25 T960,60 T1020,95 T1080,60 T1140,30 T1200,60"
@@ -399,27 +411,24 @@ export const PublicProfilePage: React.FC = () => {
                     src={profile.coverPhoto} 
                     onError={event => { event.currentTarget.style.display = 'none'; }}
                     alt="Capa do perfil" 
-                    className="w-full h-full object-cover opacity-45 mix-blend-luminosity relative z-1"
+                    className="relative z-1 h-full w-full object-cover opacity-70"
                   />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent z-2" />
+                <div className="absolute inset-0 z-2 bg-gradient-to-r from-[#06101d]/95 via-[#06101d]/45 to-[#06101d]/25" />
+                <div className="absolute inset-0 z-2 bg-gradient-to-t from-[#06101d] via-transparent to-[#06101d]/20" />
               </div>
 
               {/* Profile Details Bar */}
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative -mt-14 sm:-mt-20 pb-8 z-10">
-                <div className="flex flex-col md:flex-row items-center md:items-end justify-between gap-6">
+              <div className="relative z-10 mx-auto -mt-[255px] max-w-[1460px] px-4 pb-8 sm:px-8 lg:px-12">
+                <div className="flex flex-col items-center justify-between gap-8 lg:flex-row lg:items-end">
                   
                   {/* Photo & Main Info */}
-                  <div className="flex flex-col md:flex-row items-center md:items-end gap-4 sm:gap-5 text-center md:text-left">
-                    <ComposerAvatar name={profile.stageName} photoUrl={profile.photo} className="w-24 h-24 sm:w-36 sm:h-36 md:w-40 md:h-40" />
+                  <div className="flex flex-col items-center gap-5 text-center md:flex-row md:items-end md:text-left">
+                    <ComposerAvatar name={profile.stageName} photoUrl={profile.photo} className="h-[7.2rem] w-[7.2rem] shrink-0 sm:h-[9.6rem] sm:w-[9.6rem] lg:h-[11.2rem] lg:w-[11.2rem]" />
 
                     <div className="space-y-2 pb-2">
                       <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
-                        {profile.isVerified && (
-                          <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" /> Compositor Verificado
-                          </span>
-                        )}
+                        {profile.isVerified && <span className="flex items-center gap-1 rounded-full border border-sky-400/35 bg-sky-500/15 px-2.5 py-1 text-xs font-bold text-sky-300"><Sparkles className="h-3.5 w-3.5" /> Compositor verificado</span>}
                         {profile.society && (
                           <span className="bg-slate-800 text-slate-200 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-slate-700">
                             {profile.society.split(' - ')[0]}
@@ -427,7 +436,7 @@ export const PublicProfilePage: React.FC = () => {
                         )}
                       </div>
 
-                      <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                      <h1 className="font-serif text-4xl font-semibold tracking-tight text-white sm:text-5xl">
                         {profile.stageName}
                       </h1>
 
@@ -455,7 +464,8 @@ export const PublicProfilePage: React.FC = () => {
                   </div>
 
                   {/* Actions & Social Links */}
-                  <div className="flex items-center gap-2.5 sm:gap-3 pb-2 flex-wrap justify-center md:justify-end w-full sm:w-auto">
+                  <div className="flex w-full max-w-xl flex-col gap-5 pb-2 lg:w-auto lg:items-end">
+                    <div className="flex w-full flex-wrap justify-center gap-3 lg:justify-end">
                     {profile.instagram && (
                       <a href={instagramUrl(profile.instagram)} target="_blank" rel="noreferrer" aria-label="Instagram do compositor" className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 rounded-xl border border-slate-700 transition">
                         <Instagram className="w-5 h-5" />
@@ -481,7 +491,7 @@ export const PublicProfilePage: React.FC = () => {
                       type="button"
                       onClick={handleShareProfile}
                       aria-live="polite"
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition"
+                      className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-white/70 bg-[#071426]/75 px-5 py-3 text-xs font-bold text-white backdrop-blur transition hover:border-amber-400 sm:flex-none"
                     >
                       {shareStatus === 'copied' ? (
                         <>
@@ -500,6 +510,12 @@ export const PublicProfilePage: React.FC = () => {
                         </>
                       )}
                     </button>
+                    </div>
+                    <div className="grid w-full grid-cols-3 divide-x divide-slate-600 text-center lg:min-w-[430px]">
+                      <div className="px-3"><strong className="block font-serif text-2xl text-white">{publishedSongs.length}</strong><span className="text-[11px] text-slate-300">Músicas publicadas</span></div>
+                      <div className="px-3"><strong className="block font-serif text-2xl text-white">{totalPlays.toLocaleString('pt-BR')}</strong><span className="text-[11px] text-slate-300">Reproduções</span></div>
+                      <div className="px-3"><strong className="block font-serif text-2xl text-white">{availableCount}</strong><span className="text-[11px] text-slate-300">Para gravação</span></div>
+                    </div>
                   </div>
 
                 </div>
@@ -507,15 +523,15 @@ export const PublicProfilePage: React.FC = () => {
             </section>
 
             {/* BIO & CATALOG CONTENT */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="mx-auto max-w-[1460px] px-4 py-10 sm:px-8 lg:px-12">
+              <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
                 
                 {/* Left Sidebar: Bio & Musical Genres */}
-                <div className="lg:col-span-4 space-y-6">
+                <aside className="space-y-6 lg:order-2 lg:col-span-4">
                   
                   {/* Bio Card */}
-                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-                    <h2 className="text-lg font-bold text-white border-b border-slate-800 pb-3">
+                  <div className="border-l border-slate-700 bg-[#071426]/65 p-6 shadow-xl">
+                    <h2 className="border-b border-amber-500/50 pb-3 font-serif text-2xl font-semibold text-white">
                       Sobre o compositor
                     </h2>
                     <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
@@ -539,7 +555,7 @@ export const PublicProfilePage: React.FC = () => {
                   </div>
 
                   {/* Como funciona: explicado uma vez aqui, em vez de repetido em cada obra */}
-                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
                     <h2 className="text-lg font-bold text-white border-b border-slate-800 pb-3">
                       Como funciona
                     </h2>
@@ -562,15 +578,15 @@ export const PublicProfilePage: React.FC = () => {
                     </p>
                   </div>
 
-                </div>
+                </aside>
 
                 {/* Right Area: Songs List */}
-                <div className="lg:col-span-8 space-y-6">
+                <div id="catalogo" className="space-y-6 lg:order-1 lg:col-span-8">
                   
                   <div className="flex flex-col gap-3 border-b border-slate-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h2 className="text-2xl font-extrabold text-white tracking-tight">
-                        Catálogo de obras
+                      <h2 className="font-serif text-3xl font-semibold tracking-tight text-white">
+                        Músicas publicadas
                       </h2>
                       <p className="text-xs text-slate-400">
                         Ouça a prévia e envie uma solicitação direta ao compositor
@@ -676,7 +692,7 @@ export const PublicProfilePage: React.FC = () => {
                           <div
                             key={song.id}
                             id={`musica-${song.id}`}
-                            className={`bg-slate-900 border rounded-3xl p-6 shadow-xl transition space-y-5 ${
+                            className={`space-y-4 rounded-xl border bg-[#081522] p-4 shadow-xl transition sm:p-5 ${
                               highlightedSongId === song.id
                                 ? 'border-amber-500 ring-2 ring-amber-500/20'
                                 : 'border-slate-800 hover:border-slate-700'
@@ -740,7 +756,7 @@ export const PublicProfilePage: React.FC = () => {
                             <div className="pt-2">
                               <AudioPlayer
                                 audioUrl={song.previewAudioUrl || song.audioUrl}
-                                maxDurationSeconds={60}
+                                maxDurationSeconds={85}
                                 songId={song.id}
                                 songTitle={song.title}
                               />

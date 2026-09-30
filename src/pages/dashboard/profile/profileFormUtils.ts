@@ -189,10 +189,6 @@ export const validateProfileForm = (
     }
   }
 
-  if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) {
-    errors.email = 'Informe um e-mail de contato válido.';
-  }
-
   const phoneDigits = form.whatsapp.replace(/\D/g, '');
   if (phoneDigits.length < 10) {
     errors.whatsapp = 'Informe um WhatsApp com DDD válido (ex: 11 99999-9999).';

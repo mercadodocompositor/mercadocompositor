@@ -19,10 +19,10 @@ const SOCIAL_FIELDS: Array<{ key: SocialField; label: string; placeholder: strin
 ];
 
 export const ProfileSocialSection: React.FC<ProfileSocialSectionProps> = ({ form, set, errors }) => (
-  <section id="section-social" aria-labelledby="section-social-title" className="space-y-4 border-t border-slate-800 pt-6 scroll-mt-28">
+  <section id="section-social" aria-labelledby="section-social-title" className="space-y-5 scroll-mt-28">
     <SectionHeader
       titleId="section-social-title"
-      title="Redes Sociais & Links Externos"
+      title="Redes sociais e links"
       description="Canais para artistas conhecerem mais do seu trabalho e ouvirem suas produções."
       visibility="public"
     />

@@ -144,7 +144,6 @@ begin
     if jwt_iat<extract(epoch from now()-interval '5 minutes')::bigint then raise exception using errcode='42501',message='Reautenticação recente necessária.'; end if;
   end if;
   select id into uid from auth.users where lower(email)=lower(btrim(p_email)) limit 1;
-  if uid is null then select user_id into uid from public.private_profiles where lower(email)=lower(btrim(p_email)) limit 1; end if;
   if uid is null then raise exception using errcode='P0002',message='Usuário não encontrado.'; end if;
   insert into public.user_roles(user_id,role) values(uid,r) on conflict do nothing;
   perform public.write_system_audit_log(gen_random_uuid()::text,'auth','Papel administrativo concedido',concat('Papel ',r,' concedido ao usuário ',uid),'warning');

@@ -4,6 +4,7 @@ import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { FAQSection } from '../components/common/FAQSection';
 import { APP_CONFIG } from '../config/appConfig';
+import { PREVIEW_MAX_SECONDS } from '../config/media';
 import { getFeaturedComposers, getFeaturedSongs } from '../lib/database';
 import { getSafePublicBio } from '../lib/profileSanitizer';
 import { formatMoneyBR, listOfferedPlans } from '../lib/plans';
@@ -72,7 +73,7 @@ export const LandingPage: React.FC = () => {
       audio.play().then(() => incrementPlayCount(song.id)).catch(() => {});
       audio.onended = () => setPlayingSongId(null);
       const onTimeUpdate = () => {
-        if (audio.currentTime >= 60) {
+        if (audio.currentTime >= PREVIEW_MAX_SECONDS) {
           audio.pause();
           audio.currentTime = 0;
           setPlayingSongId(null);
@@ -91,8 +92,76 @@ export const LandingPage: React.FC = () => {
 
       <main className="flex-grow">
 
+        {/* EDITORIAL HERO */}
+        <section className="relative isolate overflow-hidden border-b border-amber-400/20 bg-[#06101f] text-white">
+          <img src={heroComposerStudioImg} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover object-center opacity-70" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#06101f] via-[#06101f]/90 to-[#06101f]/15" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#06101f]/80 via-transparent to-[#06101f]/20" />
+          <div className="relative mx-auto grid min-h-[520px] max-w-7xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-12 lg:px-8 lg:py-20">
+            <div className="lg:col-span-7 xl:col-span-6">
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-300">Compositores e artistas mais perto</p>
+              <h1 className="mt-4 max-w-3xl font-serif text-4xl font-semibold leading-[1.04] tracking-tight text-white sm:text-5xl lg:text-6xl">Suas músicas merecem encontrar a <span className="text-amber-300">voz certa</span></h1>
+              <p className="mt-5 max-w-xl text-sm leading-7 text-slate-300 sm:text-base">Publique suas composições com prévias protegidas e conecte-se diretamente com cantores e artistas de todo o Brasil.</p>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link to="/cadastro" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-amber-400 px-7 text-sm font-extrabold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:-translate-y-0.5 hover:bg-amber-300">Publicar minhas músicas <ArrowRight className="h-4 w-4" /></Link>
+                <Link to="/compositores" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-500 bg-slate-950/45 px-7 text-sm font-bold text-white backdrop-blur transition hover:border-amber-300 hover:text-amber-300">Explorar compositores</Link>
+              </div>
+            </div>
+
+            {featuredSongs[0] && <div className="self-end lg:col-span-5 lg:self-center xl:col-span-6">
+              <div className="ml-auto max-w-md rounded-2xl border border-white/20 bg-slate-950/65 p-5 shadow-2xl backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <button type="button" onClick={() => handlePlayPreview(featuredSongs[0])} aria-label={playingSongId === featuredSongs[0].id ? 'Pausar prévia' : 'Ouvir prévia'} className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-amber-400 hover:text-slate-950">{playingSongId === featuredSongs[0].id ? <Pause className="h-5 w-5 fill-current" /> : <Play className="ml-0.5 h-5 w-5 fill-current" />}</button>
+                  <div className="min-w-0 flex-1"><strong className="block truncate font-serif text-lg text-white">{featuredSongs[0].title}</strong><span className="block truncate text-xs text-slate-400">{featuredSongs[0].authors}</span><div className="mt-3 flex h-5 items-end gap-1" aria-hidden="true">{[8,14,10,18,12,20,9,16,12,18,8,15,10,19,12,16,7,13].map((height, index) => <span key={index} className="w-1 rounded-full bg-amber-300/80" style={{ height }} />)}</div></div>
+                  <span className="text-xs text-slate-400">0:30</span>
+                </div>
+                <div className="mt-4 flex items-center gap-2 border-t border-white/10 pt-3 text-[11px] font-semibold text-amber-300"><Lock className="h-3.5 w-3.5" /> Prévia protegida de até 85 segundos</div>
+              </div>
+            </div>}
+          </div>
+        </section>
+
+        {/* VALUE STRIP */}
+        <section className="border-b border-slate-800 bg-[#0d1b30] text-white">
+          <div className="mx-auto grid max-w-7xl divide-y divide-slate-700 px-4 sm:px-6 md:grid-cols-3 md:divide-x md:divide-y-0 lg:px-8">
+            {[{ icon: ShieldCheck, title: 'Prévia protegida', text: 'Suas composições seguras, com áudio em prévia.' }, { icon: UserPlus, title: 'Contato direto', text: 'Conecte-se sem intermediários com artistas reais.' }, { icon: FileCheck, title: 'Liberação digital', text: 'Formalize o uso das suas músicas com clareza.' }].map(item => { const Icon = item.icon; return <div key={item.title} className="flex items-center gap-4 px-3 py-6 md:px-7"><Icon className="h-8 w-8 shrink-0 text-amber-300" /><div><h2 className="font-serif text-base font-semibold text-white">{item.title}</h2><p className="mt-1 text-xs leading-5 text-slate-400">{item.text}</p></div></div>; })}
+          </div>
+        </section>
+
+        {/* FEATURED COMPOSERS EDITORIAL */}
+        {featuredComposers.length > 0 && <section id="compositores" className="scroll-mt-24 border-b border-slate-800 bg-[#06101f] py-12 text-white">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-7 flex items-end justify-between gap-5"><div><h2 className="font-serif text-3xl font-semibold">Compositores em destaque</h2><p className="mt-1 text-sm text-slate-400">Talento brasileiro em todos os ritmos</p></div><Link to="/compositores" className="hidden items-center gap-2 text-xs font-bold text-amber-300 hover:text-amber-200 sm:inline-flex">Ver todos os compositores <ArrowRight className="h-4 w-4" /></Link></div>
+            <div className="grid gap-5 md:grid-cols-3">{featuredComposers.slice(0, 3).map(comp => <Link key={comp.id} to={`/compositor/${comp.username}`} className="group flex items-center gap-4 border-slate-800 py-2 md:border-r md:pr-5 md:last:border-r-0"><div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-amber-300/70 p-1">{comp.photo ? <img src={comp.photo} alt={comp.name} className="h-full w-full rounded-full object-cover" /> : <div className="grid h-full w-full place-items-center rounded-full bg-slate-800 font-serif text-2xl font-bold text-amber-300">{(comp.name || 'C')[0]}</div>}</div><div className="min-w-0"><h3 className="flex items-center gap-1.5 truncate font-serif text-lg font-semibold group-hover:text-amber-300">{comp.name}{comp.isVerified && <BadgeCheck className="h-4 w-4 shrink-0 text-amber-300" />}</h3><p className="mt-1 line-clamp-2 text-xs italic leading-5 text-slate-400">“{getSafePublicBio(comp.bio, comp.name, comp.username)}”</p><div className="mt-3 flex flex-wrap gap-1.5">{comp.genres.slice(0, 3).map(genre => <span key={genre} className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] text-slate-300">{genre}</span>)}</div></div></Link>)}</div>
+          </div>
+        </section>}
+
+        {/* HOW IT WORKS EDITORIAL */}
+        <section id="como-funciona" className="relative isolate scroll-mt-24 overflow-hidden border-b border-slate-200 bg-[#f8f4ed] py-14 text-slate-900 lg:py-16">
+          <img src="/how-it-works-studio.webp" alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-center" />
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#f8f4ed]/95 via-[#f8f4ed]/85 to-[#f8f4ed]/65" aria-hidden="true" />
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="max-w-4xl"><span className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-800">Músicas conectam pessoas</span><h2 className="mt-2 font-serif text-4xl font-semibold leading-none text-[#0A1128] sm:text-5xl">Como funciona</h2><p className="mt-3 text-sm font-medium text-slate-800 sm:text-base">Do seu talento a novas oportunidades, em três passos simples.</p></div>
+            <div className="mt-10 grid max-w-5xl gap-8 md:grid-cols-3 md:gap-5">
+              {[{ icon: Upload, title: 'Publique suas músicas', text: 'Envie suas composições, adicione informações e defina suas condições de licenciamento.' }, { icon: UserPlus, title: 'Conecte-se com artistas', text: 'Seus trabalhos ficam disponíveis para artistas, produtores e selos que buscam novas músicas.' }, { icon: Zap, title: 'Transforme sua música', text: 'Receba solicitações, negocie e veja suas composições ganharem o mundo.' }].map((step, index) => { const Icon = step.icon; return <div key={step.title} className="relative flex gap-4 md:block md:pr-8"><div className="flex shrink-0 items-start gap-4 md:items-center"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f5dfbd] font-serif text-lg font-bold text-[#0A1128]">{index + 1}</span><Icon className="h-12 w-12 text-[#0A1128]" strokeWidth={1.5} /></div>{index < 2 && <span className="absolute left-[calc(100%-2rem)] top-5 hidden h-px w-16 bg-amber-700/80 md:block" aria-hidden="true" />}<div className="md:mt-4"><h3 className="font-serif text-xl font-bold text-[#050b18]">{step.title}</h3><p className="mt-2 max-w-xs text-sm font-medium leading-6 text-[#172033]">{step.text}</p></div></div>; })}
+            </div>
+          </div>
+        </section>
+
+        {/* BENEFITS EDITORIAL */}
+        <section id="beneficios" className="relative isolate scroll-mt-24 overflow-hidden bg-[#071426] py-14 text-white lg:py-16">
+          <img src="/composer-benefits-studio.webp" alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-center opacity-65" />
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#071426]/45 via-[#071426]/95 to-[#071426]" />
+          <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.65fr] lg:px-8">
+            <div className="self-center"><span className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-300">Mais que uma plataforma</span><h2 className="mt-3 font-serif text-4xl font-semibold leading-[1.03] text-white sm:text-5xl">Benefícios exclusivos para <span className="text-amber-300">o compositor</span></h2><p className="mt-5 max-w-md text-sm leading-7 text-slate-300">Ferramentas pensadas para valorizar seu talento, proteger suas criações e aproximar você de novas oportunidades na música.</p><Link to="/cadastro" className="mt-7 inline-flex items-center gap-3 rounded-full bg-amber-400 px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-slate-950 transition hover:bg-amber-300">Faça parte <ArrowRight className="h-4 w-4" /></Link></div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[{ icon: UserPlus, title: 'Perfil profissional', text: 'Apresente sua história, seu estilo e suas influências.' }, { icon: Disc, title: 'Catálogo organizado', text: 'Mantenha suas músicas fáceis de encontrar.' }, { icon: ShieldCheck, title: 'Prévias protegidas de 85 segundos', text: 'Permita audições com mais segurança.', featured: true }, { icon: MessageSquare, title: 'Contato direto', text: 'Converse com artistas e produtores interessados.' }, { icon: CheckCircle2, title: 'Gestão de solicitações', text: 'Acompanhe propostas e negociações em um só lugar.' }, { icon: FileCheck, title: 'Termos de liberação', text: 'Formalize acordos de forma simples e digital.' }, { icon: Sparkles, title: 'Maior visibilidade', text: 'Amplie as chances de suas músicas serem encontradas.' }].map(item => { const Icon = item.icon; return <div key={item.title} className={`rounded-xl border p-5 ${item.featured ? 'border-amber-400/55 bg-gradient-to-br from-amber-400/15 to-white/5 sm:col-span-2' : 'border-slate-700 bg-[#0c1b30]/85'}`}><Icon className="h-8 w-8 text-amber-300" strokeWidth={1.6} /><h3 className="mt-4 font-serif text-base font-semibold text-white">{item.title}</h3><p className="mt-2 text-xs leading-5 text-slate-300">{item.text}</p>{item.featured && <div className="mt-5 flex h-8 items-center gap-1" aria-hidden="true">{[12,20,28,17,32,24,15,27,20,31,18,25,13,21,16,11].map((height, index) => <span key={index} className={`w-1 rounded-full ${index < 10 ? 'bg-amber-300' : 'bg-slate-600'}`} style={{ height }} />)}</div>}</div>; })}
+            </div>
+          </div>
+        </section>
+
         {/* HERO SECTION */}
-        <section className="relative pt-12 pb-20 md:pt-20 md:pb-32 overflow-hidden bg-[#0A1128] border-b border-amber-500/20 text-white">
+        <section className="hidden relative pt-12 pb-20 md:pt-20 md:pb-32 overflow-hidden bg-[#0A1128] border-b border-amber-500/20 text-white">
 
           {/* Subtle Background Glows */}
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -214,7 +283,7 @@ export const LandingPage: React.FC = () => {
 
 
         {/* COMO FUNCIONA (4 STEPS) SECTION */}
-        <section id="como-funciona" className="scroll-mt-24 py-20 bg-white border-b border-slate-200 text-slate-900">
+        <section id="como-funciona-old" className="hidden scroll-mt-24 py-20 bg-white border-b border-slate-200 text-slate-900">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
             <div className="text-center max-w-3xl mx-auto mb-16 space-y-3">
@@ -282,7 +351,7 @@ export const LandingPage: React.FC = () => {
 
 
         {/* BENEFÍCIOS SECTION */}
-        <section id="beneficios" className="scroll-mt-24 py-20 bg-[#F1F5F9] text-slate-900 relative">
+        <section id="beneficios-old" className="hidden scroll-mt-24 py-20 bg-[#F1F5F9] text-slate-900 relative">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
             <div className="text-center max-w-3xl mx-auto mb-16 space-y-3">
@@ -460,7 +529,7 @@ export const LandingPage: React.FC = () => {
 
 
         {/* COMPOSITORES EM DESTAQUE SECTION */}
-        {featuredComposers.length > 0 && <section id="compositores" className="scroll-mt-24 py-20 bg-[#0A1128] text-white border-t border-amber-500/20">
+        {featuredComposers.length > 0 && <section id="compositores-old" className="hidden scroll-mt-24 py-20 bg-[#0A1128] text-white border-t border-amber-500/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
             <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
@@ -579,47 +648,45 @@ export const LandingPage: React.FC = () => {
 
 
         {/* PRICING PLAN SECTION */}
-        <section id="planos" className="scroll-mt-24 py-20 bg-white text-slate-900 relative">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <section id="planos" className="scroll-mt-24 bg-[#f8f4ed] py-16 text-[#071426] md:py-20">
+          <div className="mx-auto grid max-w-[1536px] gap-12 px-5 sm:px-8 lg:grid-cols-[0.82fr_2fr] lg:items-center lg:gap-10 xl:px-16">
+            <div className="max-w-xl">
+              <span className="mb-5 block text-[11px] font-bold uppercase tracking-[0.32em] text-[#a66b17]">Mais música para um mundo real</span>
+              <h2 className="font-serif text-5xl font-semibold leading-[0.96] tracking-tight sm:text-6xl lg:text-[4.4rem]">Planos para cada fase da sua jornada</h2>
+              <p className="mt-5 max-w-lg text-lg leading-relaxed text-slate-700">Mais do que planos, oportunidades reais para a sua música chegar mais longe.</p>
 
-            <div className="text-center max-w-3xl mx-auto mb-16 space-y-3">
-              <span className="text-amber-600 font-bold text-xs uppercase tracking-widest block">
-                Investimento Acessível
-              </span>
-              <h2 className="text-3xl sm:text-4xl font-serif italic text-[#0A1128]">
-                Escolha o Plano Ideal para seu Catálogo
-              </h2>
-              <p className="text-slate-500 text-base">
-                Três opções transparentes para cada fase da sua carreira. Comece com 7 dias grátis.
-              </p>
+              <div className="mt-8 space-y-5 text-base font-medium text-[#122037]">
+                <div className="flex items-center gap-4"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#f1e4cd] text-[#b57920]"><Music className="h-6 w-6" /></span><span>Conecte sua arte<br />a novos artistas</span></div>
+                <div className="flex items-center gap-4"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#f1e4cd] text-[#b57920]"><UserPlus className="h-6 w-6" /></span><span>Faça parte de um ecossistema<br />que valoriza compositores</span></div>
+                <div className="flex items-center gap-4"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#f1e4cd] text-[#b57920]"><Zap className="h-6 w-6" /></span><span>Mais visibilidade, mais histórias,<br />mais música no mundo</span></div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-              {offeredPlans.map(plan => {
-                // Preço vem do mesmo catálogo que o checkout cobra. Destaque e
-                // benefícios são o texto comercial aprovado do appConfig; o
-                // catálogo só é usado para planos que não existem lá.
-                const configured = APP_CONFIG.plans.find(item => item.name === plan.name);
-                const highlight = configured?.highlight ?? false;
-                const features = configured?.features ?? plan.features;
-                return (
-                <div key={plan.name} className={`bg-[#0A1128] text-white rounded-3xl p-7 shadow-2xl relative space-y-6 border-2 ${highlight ? 'border-amber-500' : 'border-slate-800'}`}>
-                  {highlight && <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 font-bold text-xs uppercase tracking-widest px-4 py-1 rounded-full">Mais Popular</div>}
-                  <div className="text-center border-b border-slate-800 pb-5">
-                    <h3 className="text-2xl font-serif italic font-bold">{plan.name}</h3>
-                    <div className="flex items-baseline justify-center gap-1 pt-3"><span className="text-slate-400 text-sm">R$</span><span className="text-4xl font-serif italic font-bold text-amber-400">{formatMoneyBR(plan.monthlyPrice)}</span><span className="text-slate-400 text-sm">/ mês</span></div>
-                    <p className="mt-2 text-xs font-bold text-emerald-400">7 dias grátis • cobrança só depois</p>
-                  </div>
-                  <ul className="space-y-3 text-xs text-slate-300">
-                    {features.map(feature => <li key={feature} className="flex items-start gap-3"><CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" /><span>{feature}</span></li>)}
-                  </ul>
-                  <Link to={`/cadastro?plano=${encodeURIComponent(plan.name)}`} className="block w-full py-3 text-center rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm">Testar grátis por 7 dias</Link>
-                </div>
-                );
-              })}
+            <div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {offeredPlans.map(plan => {
+                  const configured = APP_CONFIG.plans.find(item => item.name === plan.name);
+                  const highlight = plan.name.toLowerCase().includes('ouro');
+                  const features = configured?.features ?? plan.features;
+                  const eyebrow = plan.name.includes('Bronze') ? 'O essencial para começar' : plan.name.includes('Prata') ? 'Mais alcance para sua música' : 'Sem limites para o seu talento';
+                  return (
+                    <article key={plan.name} className={`relative flex min-h-[420px] flex-col rounded-xl border-2 p-5 shadow-sm ${highlight ? 'border-[#d99a2b] bg-[#071426] text-white shadow-xl' : 'border-[#26364b] bg-white/55 text-[#071426]'}`}>
+                      {highlight && <div className="absolute -top-4 right-3 rounded-full bg-[#eab74f] px-4 py-1.5 text-xs font-bold text-[#071426]">Mais completo</div>}
+                      <div className="flex items-center gap-3">
+                        <span className={`flex h-11 w-11 items-center justify-center rounded-full ${highlight ? 'bg-[#f1c45f] text-[#071426]' : 'bg-[#efe5d3] text-[#a66b17]'}`}><Music className="h-5 w-5" /></span>
+                        <div><h3 className="font-serif text-2xl font-semibold">{plan.name}</h3><p className={`mt-0.5 text-[9px] font-bold uppercase tracking-[0.14em] ${highlight ? 'text-slate-300' : 'text-slate-600'}`}>{eyebrow}</p></div>
+                      </div>
+                      <div className="mt-5 flex items-baseline gap-1"><span className="font-serif text-2xl">R$</span><span className="font-serif text-4xl font-semibold">{formatMoneyBR(plan.monthlyPrice)}</span><span className={highlight ? 'text-slate-300' : 'text-slate-600'}>/mês</span></div>
+                      <ul className={`mt-5 space-y-2.5 text-[10px] ${highlight ? 'text-slate-200' : 'text-[#172338]'}`}>
+                        {features.map(feature => <li key={feature} className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#bd7c19]" /><span>{feature}</span></li>)}
+                      </ul>
+                      <Link to={`/cadastro?plano=${encodeURIComponent(plan.name)}`} className="mt-auto block w-full rounded-lg bg-gradient-to-r from-[#bd7a17] to-[#e9b64f] py-3 text-center font-serif text-lg font-bold text-[#071426] transition hover:brightness-105">Começar agora</Link>
+                      <p className={`mt-3 text-center text-[11px] ${highlight ? 'text-slate-300' : 'text-slate-600'}`}>7 dias grátis, sem compromisso</p>
+                    </article>
+                  );
+                })}
+              </div>
             </div>
-            <p className="text-center text-xs text-slate-500 mt-6">Teste disponível uma vez por conta na assinatura automática. Cancele antes do fim e não haverá cobrança. {APP_CONFIG.plan.cancelNotice}</p>
-
           </div>
         </section>
 

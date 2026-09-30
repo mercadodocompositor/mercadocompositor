@@ -31,7 +31,7 @@ interface ProfilePresentationSectionProps {
 const UsernameStatusText: React.FC<{ status: UsernameStatus; hasError: boolean }> = ({ status, hasError }) => {
   if (status === 'checking') {
     return (
-      <span className="text-amber-400 flex items-center gap-1">
+      <span className="text-amber-700 dark:text-amber-400 flex items-center gap-1">
         <LoaderCircle className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> Verificando disponibilidade...
       </span>
     );
@@ -39,13 +39,13 @@ const UsernameStatusText: React.FC<{ status: UsernameStatus; hasError: boolean }
   if (hasError) return null;
   switch (status) {
     case 'available':
-      return <span className="text-emerald-400 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Endereço disponível</span>;
+      return <span className="text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Endereço disponível</span>;
     case 'taken':
-      return <span className="text-red-400 font-semibold flex items-center gap-1"><XCircle className="w-3.5 h-3.5" aria-hidden="true" /> Este endereço já está em uso por outro compositor.</span>;
+      return <span className="text-red-700 dark:text-red-400 font-semibold flex items-center gap-1"><XCircle className="w-3.5 h-3.5" aria-hidden="true" /> Este endereço já está em uso por outro compositor.</span>;
     case 'current':
-      return <span className="text-slate-400 flex items-center gap-1"><Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" /> Seu endereço público atual</span>;
+      return <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1"><Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /> Seu endereço público atual</span>;
     case 'invalid':
-      return <span className="text-amber-400/90">Mínimo de {USERNAME_MIN_LENGTH} caracteres (apenas letras, números e hífens)</span>;
+      return <span className="text-amber-700 dark:text-amber-400/90">Mínimo de {USERNAME_MIN_LENGTH} caracteres (apenas letras, números e hífens)</span>;
     default:
       return null;
   }
@@ -82,16 +82,16 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
   };
 
   return (
-    <section id="section-presentation" aria-labelledby="section-presentation-title" className="space-y-4 border-t border-slate-800 pt-6 scroll-mt-28">
+    <section id="section-presentation" aria-labelledby="section-presentation-title" className="space-y-5 scroll-mt-28">
       <SectionHeader
         titleId="section-presentation-title"
-        title="Apresentação Artística & Vitrine Pública"
+        title="Apresentação artística"
         description="Informações visíveis para cantores, empresários e produtoras musicais."
         visibility="public"
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div id="field-stageName">
+        <div id="field-stageName" className="sm:col-span-2">
           <FieldLabel htmlFor="input-stageName" required>Nome artístico / pseudônimo</FieldLabel>
           <input
             id="input-stageName"
@@ -107,10 +107,10 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
           <FieldError errors={errors} name="stageName" />
         </div>
 
-        <div id="field-username">
+        <div id="field-username" className="sm:col-span-2">
           <FieldLabel htmlFor="input-username" required>Endereço público (link da vitrine)</FieldLabel>
           <div className="mt-1.5 flex">
-            <span aria-hidden="true" className="bg-slate-800 rounded-l-xl px-3 py-2.5 text-xs text-slate-400 border border-r-0 border-slate-800 select-none">
+            <span aria-hidden="true" className="select-none rounded-l-xl border border-r-0 border-slate-300 bg-slate-100 px-3 py-2.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400">
               /compositor/
             </span>
             <input
@@ -122,8 +122,8 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
               spellCheck={false}
               aria-required="true"
               {...fieldA11y(errors, 'username', 'username-status username-hint')}
-              className={`min-w-0 flex-1 bg-slate-950 border rounded-r-xl px-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 font-mono ${
-                errors.username ? 'border-red-500 ring-2 ring-red-500/20 bg-red-950/20' : 'border-slate-800 focus:border-amber-500'
+              className={`min-w-0 flex-1 rounded-r-xl border bg-white px-3 text-sm font-medium text-slate-950 placeholder:text-slate-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-amber-500/15 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 font-mono ${
+                errors.username ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50 dark:bg-red-950/20' : 'border-slate-300 focus:border-amber-500 dark:border-slate-800'
               }`}
             />
             <button
@@ -131,7 +131,7 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
               onClick={onCopyLink}
               aria-label="Copiar link público"
               title="Copiar link da vitrine"
-              className="ml-2 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              className="ml-2 px-3.5 rounded-xl border border-slate-300 bg-white text-slate-700 hover:border-amber-400 hover:text-amber-700 dark:border-slate-700 dark:bg-slate-800 dark:text-amber-400 dark:hover:bg-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
             >
               {linkCopied ? <Check className="w-4 h-4" aria-hidden="true" /> : <Copy className="w-4 h-4" aria-hidden="true" />}
             </button>
@@ -140,16 +140,16 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
           <div id="username-status" aria-live="polite" className="flex items-center gap-1.5 mt-1 text-xs min-h-4">
             <UsernameStatusText status={usernameStatus} hasError={Boolean(errors.username)} />
           </div>
-          <p id="username-hint" aria-live="polite" className="text-xs text-slate-500 mt-1">
+          <p id="username-hint" aria-live="polite" className="text-xs text-slate-600 dark:text-slate-400 mt-1">
             {linkCopied
-              ? <span className="inline-flex items-center gap-1 text-emerald-400"><Check className="w-3.5 h-3.5" aria-hidden="true" /> Link copiado para a área de transferência.</span>
+              ? <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check className="w-3.5 h-3.5" aria-hidden="true" /> Link copiado para a área de transferência.</span>
               : 'Use apenas letras minúsculas, números e hífens.'}
           </p>
           {usernameChanged && (
-            <p role="note" className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" aria-hidden="true" />
+            <p role="note" className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
               <span>
-                Ao salvar, o link atual <strong className="font-mono">/compositor/{currentUsername}</strong> e os links das suas músicas deixam de funcionar. Atualize-os onde já foram divulgados.
+                Ao salvar, o link <strong className="font-mono">/compositor/{currentUsername}</strong> e os links das suas músicas redirecionam para o novo endereço por 180 dias. Atualize-os onde já foram divulgados.
               </span>
             </p>
           )}
@@ -224,7 +224,7 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
       <div id="field-bio">
         <div className="flex justify-between items-center gap-3">
           <FieldLabel htmlFor="input-bio" required>Biografia artística / apresentação</FieldLabel>
-          <span id="bio-counter" className={`text-xs ${bioLength < BIO_MIN_LENGTH ? 'text-amber-400/90' : 'text-slate-500'}`}>
+          <span id="bio-counter" className={`text-xs ${bioLength < BIO_MIN_LENGTH ? 'text-amber-700 dark:text-amber-400/90' : 'text-slate-600 dark:text-slate-400'}`}>
             {bioLength < BIO_MIN_LENGTH
               ? `${bioLength} / mín. ${BIO_MIN_LENGTH}`
               : `${form.bio.length} / ${BIO_MAX_LENGTH}`}
@@ -252,12 +252,12 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
         className="space-y-2 pt-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <FieldLabel id="genres-label" required>Gêneros musicais de destaque</FieldLabel>
-          <span id="genres-counter" aria-live="polite" className={`text-xs ${genreLimitReached ? 'text-amber-400/90' : 'text-slate-500'}`}>
+          <span id="genres-counter" aria-live="polite" className={`text-xs ${genreLimitReached ? 'text-amber-700 dark:text-amber-400/90' : 'text-slate-600 dark:text-slate-400'}`}>
             {form.genres.length} de {MAX_GENRES} selecionados
             {genreLimitReached ? '. Desmarque um para escolher outro.' : ''}
           </span>
         </div>
-        <p className="text-xs text-slate-500">Os {FEATURED_GENRES} primeiros escolhidos aparecem em destaque na vitrine.</p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">Os {FEATURED_GENRES} primeiros escolhidos aparecem em destaque na vitrine.</p>
         <div className="flex flex-wrap gap-2">
           {GENRES.map(genre => {
             const isSelected = form.genres.includes(genre);
@@ -272,7 +272,7 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-40 ${
                   isSelected
                     ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md font-bold'
-                    : 'bg-slate-950/80 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
+                    : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:text-amber-800 dark:bg-slate-950/80 dark:text-slate-400 dark:border-slate-800 dark:hover:text-white dark:hover:border-slate-700'
                 }`}
               >
                 {genre}
@@ -290,13 +290,13 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
             placeholder={genreLimitReached ? `Limite de ${MAX_GENRES} gêneros atingido` : 'Adicionar outro estilo...'}
             aria-label="Novo gênero musical personalizado"
             disabled={genreLimitReached}
-            className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+            className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-950 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
           />
           <button
             type="button"
             onClick={addGenre}
             disabled={genreLimitReached || !customGenre.trim()}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-xs flex items-center gap-1 border border-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-slate-700 dark:bg-slate-800 dark:text-amber-400 dark:hover:bg-slate-700 font-bold text-xs flex items-center gap-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
             <span>Adicionar</span>
@@ -306,13 +306,13 @@ export const ProfilePresentationSection: React.FC<ProfilePresentationSectionProp
         {customGenres.length > 0 && (
           <ul className="flex flex-wrap gap-2 pt-1" aria-label="Gêneros personalizados">
             {customGenres.map(genre => (
-              <li key={genre} className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 pl-2.5 pr-1 py-1 rounded-xl text-xs">
+              <li key={genre} className="inline-flex items-center gap-1 border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 pl-2.5 pr-1 py-1 rounded-xl text-xs">
                 {genre}
                 <button
                   type="button"
                   onClick={() => toggleGenre(genre)}
                   aria-label={`Remover gênero ${genre}`}
-                  className="p-0.5 rounded-md text-amber-400 hover:text-white hover:bg-amber-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                  className="p-0.5 rounded-md text-amber-700 hover:bg-amber-200 dark:text-amber-400 dark:hover:text-white dark:hover:bg-amber-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                 >
                   <X className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>

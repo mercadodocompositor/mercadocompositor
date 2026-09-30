@@ -354,7 +354,7 @@ export const AdminSettingsTab: React.FC = () => {
   const handleConfirmDeletePlan = async () => {
     if (!planToDelete) return;
     const ok = await deletePlan(planToDelete);
-    if (ok) toast.success('Plano Excluído', 'O plano foi removido do catálogo.');
+    if (ok) toast.success('Plano removido', 'O plano saiu do catálogo. Quando há assinaturas vinculadas, o histórico é preservado por arquivamento.');
     else toast.error('Erro', 'Não foi possível excluir o plano.');
     setPlanToDelete(null);
   };
@@ -996,9 +996,9 @@ export const AdminSettingsTab: React.FC = () => {
           {/* CONFIRM DELETE PLAN DIALOG */}
           <AdminConfirmDialog
             isOpen={Boolean(planToDelete)}
-            title="Excluir este plano de assinatura?"
-            description="Compositores já assinantes permanecerão com seus benefícios, mas novos usuários não poderão contratá-lo."
-            confirmLabel="Sim, Excluir"
+            title="Remover este plano do catálogo?"
+            description="Se não houver assinaturas vinculadas, o plano será excluído. Caso exista histórico, ele será arquivado e não poderá mais ser contratado."
+            confirmLabel="Sim, remover"
             cancelLabel="Cancelar"
             variant="danger"
             onConfirm={handleConfirmDeletePlan}

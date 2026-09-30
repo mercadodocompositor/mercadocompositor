@@ -50,6 +50,7 @@ export const AdminComposersTab: React.FC = () => {
     toggleComposerVerified, 
     toggleComposerFeatured,
     suspendAdminComposer,
+    deleteOrphanAdminComposer,
     subscriptionPlans,
     addSystemLog,
     profile
@@ -79,6 +80,7 @@ export const AdminComposersTab: React.FC = () => {
 
   // Password confirmation state for account suspension
   const [composerToSuspend, setComposerToSuspend] = useState<AdminComposer | null>(null);
+  const [composerToDelete, setComposerToDelete] = useState<AdminComposer | null>(null);
   const [exportRequest, setExportRequest] = useState<boolean | null>(null);
 
 
@@ -233,6 +235,19 @@ export const AdminComposersTab: React.FC = () => {
       setComposerToSuspend(null);
     } else {
       toast.error('Falha ao suspender', 'A conta permaneceu com o status anterior.');
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!composerToDelete) return;
+    const composer = composerToDelete;
+    const success = await deleteOrphanAdminComposer(composer.id);
+    if (success) {
+      toast.success('Registro excluído', `O cadastro residual de ${composer.stageName} foi removido.`);
+      if (selectedComposer?.id === composer.id) setSelectedComposer(null);
+      setComposerToDelete(null);
+    } else {
+      toast.error('Exclusão não permitida', 'Somente registros cuja conta de autenticação já foi removida podem ser excluídos por esta ação.');
     }
   };
 
@@ -689,7 +704,14 @@ export const AdminComposersTab: React.FC = () => {
                         <button
                           onClick={() => setComposerToSuspend(composer)}
                           className="p-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 transition"
-                          title="Suspender conta (Requer senha)"
+                          title="Suspender assinatura (Requer senha)"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setComposerToDelete(composer)}
+                          className="p-2 rounded-xl bg-slate-900 hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-slate-800 transition"
+                          title="Excluir cadastro residual"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -928,8 +950,16 @@ export const AdminComposersTab: React.FC = () => {
                 onClick={() => setComposerToSuspend(selectedComposer)}
                 className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition"
               >
-                <Trash2 className="w-4 h-4" />
+                <XCircle className="w-4 h-4" />
                 <span>Suspender conta</span>
+              </button>
+
+              <button
+                onClick={() => setComposerToDelete(selectedComposer)}
+                className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-red-500/20 text-red-400 border border-slate-800 hover:border-red-500/30 text-xs font-semibold flex items-center gap-2 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Excluir registro</span>
               </button>
             </div>
           </div>
@@ -944,6 +974,15 @@ export const AdminComposersTab: React.FC = () => {
         actionLabel="Confirmar Suspensão"
         onSuccess={handleConfirmSuspend}
         onCancel={() => setComposerToSuspend(null)}
+      />
+
+      <AdminSecurityPinDialog
+        isOpen={!!composerToDelete}
+        title={`Excluir o cadastro de ${composerToDelete?.stageName}?`}
+        description="Esta ação remove definitivamente o cadastro residual e seus dados associados. Por segurança, ela só funciona quando a conta de autenticação do usuário já foi removida."
+        actionLabel="Excluir definitivamente"
+        onSuccess={handleConfirmDelete}
+        onCancel={() => setComposerToDelete(null)}
       />
 
       <AdminSecurityPinDialog

@@ -2,7 +2,6 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { APP_CONFIG } from '../../config/appConfig';
-import { MusicPlayer } from '../../components/dashboard/MusicPlayer';
 import { SUBSCRIPTION_STATUS_META } from '../../lib/subscriptionStatus';
 import { DashboardCard, DashboardSectionHeader } from '../../components/dashboard/DashboardUI';
 import { MetricsHistory } from '../../components/dashboard/MetricsHistory';
@@ -35,7 +34,6 @@ export const OverviewTab: React.FC = () => {
 
   // Top songs
   const topSongs = [...songs].sort((a, b) => b.playCount - a.playCount).slice(0, 3);
-  const featuredSong = topSongs[0];
   const subscriptionMeta = SUBSCRIPTION_STATUS_META[subscription.status];
   const rejectedSongs = songs.filter(song => song.status === 'rejected');
   const draftSongs = songs.filter(song => song.status === 'draft');
@@ -116,35 +114,32 @@ export const OverviewTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="flex flex-col gap-6 animate-fadeIn">
       
       {/* Editorial Welcome Header */}
-      <div className="bg-white dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden transition-colors duration-200">
+      <div className="order-1 flex flex-col justify-between gap-5 py-2 md:flex-row md:items-center">
         <div className="space-y-2 relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-300 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Visão Geral do Catálogo
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-serif italic text-[#0A1128] dark:text-white">
-            Olá, {profile.stageName}!
+          <h1 className="text-2xl font-bold tracking-tight text-[#0A1128] dark:text-white sm:text-3xl">
+            Boa tarde, {profile.stageName}!
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
-            Acompanhe seu catálogo, as reproduções e as solicitações que precisam da sua atenção.
+            Aqui está um resumo do seu trabalho no Mercado do Compositor.
           </p>
         </div>
 
         <div className="flex items-center gap-3 relative z-10 shrink-0">
           <button
             onClick={() => navigate('/dashboard/musicas/nova')}
-            className="px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
+            className="flex min-h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-300 px-6 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:brightness-105"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Nova Música</span>
+            <span>Adicionar música</span>
           </button>
         </div>
       </div>
 
       {/* Subscription status */}
-      <section className={`rounded-2xl border p-4 ${subscriptionMeta.panelClass}`} aria-labelledby="subscription-status-title">
+      {subscription.status !== 'active' && <section className={`order-2 rounded-2xl border p-4 ${subscriptionMeta.panelClass}`} aria-labelledby="subscription-status-title">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <CreditCard className="h-5 w-5 shrink-0" aria-hidden="true" />
           <div className="flex-1">
@@ -155,14 +150,15 @@ export const OverviewTab: React.FC = () => {
             Ver assinatura
           </button>
         </div>
-      </section>
+      </section>}
 
       {/* Prioritized work queue and onboarding */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <DashboardCard className="xl:col-span-3" aria-labelledby="pending-actions-title">
+      <div className="order-4 grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <div className="xl:col-span-3"><MetricsHistory points={dashboardMetrics} /></div>
+        <DashboardCard className="xl:col-span-2" aria-labelledby="pending-actions-title">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 p-5">
             <div>
-              <h2 id="pending-actions-title" className="flex items-center gap-2 font-serif text-lg font-bold text-[#0A1128] dark:text-white"><ListTodo className="h-5 w-5 text-amber-600 dark:text-amber-400" /> Central de pendências</h2>
+              <h2 id="pending-actions-title" className="flex items-center gap-2 font-serif text-lg font-bold text-[#0A1128] dark:text-white"><ListTodo className="h-5 w-5 text-amber-600 dark:text-amber-400" /> Próximas ações</h2>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Ações organizadas por impacto no seu catálogo.</p>
             </div>
             <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600 dark:text-slate-300">{pendingActions.length} {pendingActions.length === 1 ? 'ação' : 'ações'}</span>
@@ -191,9 +187,9 @@ export const OverviewTab: React.FC = () => {
           </div>
         </DashboardCard>
 
-        <DashboardCard className="p-5 xl:col-span-2" aria-labelledby="onboarding-title">
+        <DashboardCard className="p-5 xl:col-span-5" aria-labelledby="onboarding-title">
           <div className="flex items-start justify-between gap-4">
-            <div><h2 id="onboarding-title" className="font-serif text-lg font-bold text-[#0A1128] dark:text-white">Primeiros passos</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Prepare sua vitrine para receber interessados.</p></div>
+            <div><h2 id="onboarding-title" className="font-serif text-lg font-bold text-[#0A1128] dark:text-white">Saúde do catálogo</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Qualidade e preparação da sua vitrine profissional.</p></div>
             <span className="text-sm font-extrabold text-amber-700 dark:text-amber-400">{onboardingPercent}%</span>
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800" role="progressbar" aria-label="Progresso da configuração" aria-valuemin={0} aria-valuemax={100} aria-valuenow={onboardingPercent}>
@@ -206,7 +202,7 @@ export const OverviewTab: React.FC = () => {
             </div>
           ) : (
             <>
-              <div className="mt-4 space-y-1">
+              <div className="mt-4 grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
                 {onboardingItems.map(item => (
                   <button key={item.label} type="button" onClick={() => !item.complete && navigate(item.path)} disabled={item.complete} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 disabled:cursor-default transition">
                     {item.complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden="true" /> : <Circle className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600" aria-hidden="true" />}
@@ -223,72 +219,18 @@ export const OverviewTab: React.FC = () => {
         </DashboardCard>
       </div>
 
-      <MetricsHistory points={dashboardMetrics} />
-
       {/* STATS SECTION - Editorial Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        
-        {/* Total Songs */}
-        <div className="bg-white dark:bg-slate-900/95 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-1 transition-colors duration-200">
-          <p className="text-slate-400 dark:text-slate-400 text-[10px] uppercase font-bold tracking-wider">Músicas</p>
-          <p className="text-3xl font-serif italic text-[#0A1128] dark:text-white">{songs.length}</p>
-          <div className="mt-1 flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
-            <TrendingUp className="w-3 h-3" />
-            <span>No catálogo</span>
-          </div>
-        </div>
-
-        {/* Profile Views */}
-        <div className="bg-white dark:bg-slate-900/95 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-1 transition-colors duration-200">
-          <p className="text-slate-400 dark:text-slate-400 text-[10px] uppercase font-bold tracking-wider">Visualizações</p>
-          <p className="text-3xl font-serif italic text-[#0A1128] dark:text-white">{profile.viewsCount}</p>
-          <div className="mt-1 flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
-            <span>Total acumulado</span>
-          </div>
-        </div>
-
-        {/* Plays */}
-        <div className="bg-white dark:bg-slate-900/95 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-1 transition-colors duration-200">
-          <p className="text-slate-400 dark:text-slate-400 text-[10px] uppercase font-bold tracking-wider">Reproduções</p>
-          <p className="text-3xl font-serif italic text-[#0A1128] dark:text-white">{totalPlays}</p>
-          <div className="mt-1 flex items-center gap-1 text-slate-400 dark:text-slate-400 text-[10px]">
-            <span>Prévias ouvidas</span>
-          </div>
-        </div>
-
-        {/* Requests */}
-        <div className="bg-white dark:bg-slate-900/95 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-1 transition-colors duration-200">
-          <p className="text-slate-400 dark:text-slate-400 text-[10px] uppercase font-bold tracking-wider">Solicitações</p>
-          <p className="text-3xl font-serif italic text-[#0A1128] dark:text-white">{requests.length}</p>
-          <div className="mt-1 flex items-center gap-1 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
-            <span>{pendingRequests.length} pendentes</span>
-          </div>
-        </div>
-
-        {/* Releases */}
-        <div className="bg-white dark:bg-slate-900/95 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-1 transition-colors duration-200">
-          <p className="text-slate-400 dark:text-slate-400 text-[10px] uppercase font-bold tracking-wider">Liberações</p>
-          <p className="text-3xl font-serif italic text-[#0A1128] dark:text-white">{releases.length}</p>
-          <div className="mt-1 flex items-center gap-1 text-slate-400 dark:text-slate-400 text-[10px]">
-            <span>Total emitido</span>
-          </div>
-        </div>
-
-        {/* Subscription Status */}
-        <div className="bg-white dark:bg-slate-900/95 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-1 transition-colors duration-200">
-          <p className="text-slate-400 dark:text-slate-400 text-[10px] uppercase font-bold tracking-wider">Assinatura</p>
-          <p className={`text-xl font-serif italic ${subscriptionMeta.textClass}`}>
-            {subscription.status === 'active' ? 'Ativa' : subscription.status === 'pending' ? 'Pendente' : subscription.status === 'suspended' ? 'Suspensa' : 'Cancelada'}
-          </p>
-          <span className="text-[10px] text-slate-400 dark:text-slate-400 block truncate">
-            {subscriptionMeta.shortLabel}
-          </span>
-        </div>
-
+      <div className="order-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Músicas publicadas', value: songs.filter(song => song.status === 'published').length, detail: `${songs.length} no catálogo`, icon: Music2, color: 'text-blue-400' },
+          { label: 'Reproduções', value: totalPlays.toLocaleString('pt-BR'), detail: 'Prévias ouvidas', icon: Headphones, color: 'text-indigo-400' },
+          { label: 'Solicitações', value: requests.length, detail: `${pendingRequests.length} pendentes`, icon: MessageSquare, color: 'text-sky-400' },
+          { label: 'Liberações', value: releases.length, detail: 'Total emitido', icon: FileCheck, color: 'text-emerald-400' },
+        ].map(metric => { const Icon = metric.icon; return <div key={metric.label} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700/80 dark:bg-[#0d1a2d]"><span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-[#162945] ${metric.color}`}><Icon className="h-6 w-6" /></span><div><p className="text-xs font-medium text-slate-500 dark:text-slate-300">{metric.label}</p><strong className="mt-1 block text-3xl font-bold text-slate-950 dark:text-white">{metric.value}</strong><span className="text-[11px] text-slate-400">{metric.detail}</span></div></div>; })}
       </div>
 
       {/* GRID: RECENT TRACKS TABLE + EDITORIAL PREVIEW PANEL */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="order-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* RECENT TRACKS TABLE CONTAINER */}
         <DashboardCard className="flex flex-col overflow-hidden lg:col-span-8">
@@ -374,50 +316,26 @@ export const OverviewTab: React.FC = () => {
           </div>
         </DashboardCard>
 
-        {/* RIGHT PANEL: EDITORIAL PREVIEW CARD */}
-        <div className="lg:col-span-4 flex flex-col">
-          <div className="bg-[#0A1128] text-white p-6 rounded-3xl relative overflow-hidden flex flex-col justify-between shadow-2xl h-full border border-amber-500/20">
-            {/* Ambient Blur */}
-            <div className="absolute top-[-20px] right-[-20px] w-40 h-40 bg-amber-500/20 rounded-full blur-3xl" />
-            
-            <div>
-              <h4 className="text-[10px] uppercase tracking-widest text-amber-500 font-bold mb-6">
-                Visualização Pública
-              </h4>
-              
-              <div className="flex flex-col items-center justify-center text-center my-4">
-                {featuredSong?.coverUrl ? (
-                  <img src={featuredSong.coverUrl} alt={`Capa de ${featuredSong.title}`} className="mb-4 h-28 w-28 rounded-2xl object-cover shadow-xl" />
-                ) : (
-                  <div className="mb-4 flex h-28 w-28 items-center justify-center rounded-2xl bg-slate-800 text-slate-400">
-                    <Music2 className="h-9 w-9" aria-hidden="true" />
-                  </div>
-                )}
-                <h5 className="text-xl font-serif italic mb-1">{featuredSong?.title || 'Seu perfil público'}</h5>
-                <p className="text-slate-400 text-xs">{profile.stageName}{featuredSong ? ` • ${featuredSong.genre}` : ''}</p>
-                <div className="my-6 w-full rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-left">
-                  <p className="text-xs font-semibold text-white">{featuredSong?.previewAudioUrl ? 'Prévia pública disponível' : 'Nenhuma prévia pública disponível'}</p>
-                  <p className="mt-1 text-[11px] text-slate-400">{featuredSong?.previewAudioUrl ? 'O visitante poderá ouvir a prévia protegida desta música.' : 'Adicione uma prévia a uma música publicada para habilitar a audição.'}</p>
-                </div>
-
-                <div className="flex flex-col w-full gap-2.5">
-                  <button 
-                    onClick={() => navigate(`/compositor/${profile.username}`)}
-                    className="w-full py-3 bg-white hover:bg-slate-100 text-[#0A1128] font-bold rounded-xl text-xs transition shadow-md cursor-pointer"
-                  >
-                    Visualizar como visitante
-                  </button>
-                </div>
-              </div>
-            </div>
-
+        {/* RIGHT PANEL: TOP SONGS */}
+        <DashboardCard className="flex flex-col overflow-hidden lg:col-span-4">
+          <DashboardSectionHeader title="Músicas em destaque" description="Obras com mais reproduções" action={<button type="button" onClick={() => navigate('/dashboard/musicas')} className="min-h-11 px-2 text-xs font-bold text-amber-700 dark:text-amber-400">Ver todas →</button>} />
+          <div className="divide-y divide-slate-100 px-5 dark:divide-slate-800">
+            {topSongs.map((song, index) => (
+              <button key={song.id} type="button" onClick={() => navigate(`/dashboard/musicas/${song.id}/editar`)} className="flex min-h-[84px] w-full items-center gap-3 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                {song.coverUrl ? <img src={song.coverUrl} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800"><Music2 className="h-5 w-5 text-slate-400" /></div>}
+                <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold text-slate-900 dark:text-white">{song.title}</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{song.genre} · {song.playCount.toLocaleString('pt-BR')} reproduções</p></div>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-400/30 bg-amber-400/10 text-xs font-bold text-amber-600 dark:text-amber-400">{index + 1}</div>
+              </button>
+            ))}
+            {topSongs.length === 0 && <div className="py-12 text-center"><Music2 className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" /><p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Publique músicas para acompanhar os destaques.</p></div>}
           </div>
-        </div>
+          <button type="button" onClick={() => navigate(`/compositor/${profile.username}`)} className="mx-5 mb-5 mt-auto min-h-11 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Visualizar perfil público</button>
+        </DashboardCard>
 
       </div>
 
       {/* RECENT REQUESTS SECTION */}
-      <DashboardCard className="p-4 sm:p-6 space-y-4">
+      <DashboardCard className="order-7 p-4 sm:p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
             <h3 className="font-serif text-lg font-bold text-[#0A1128] dark:text-white">Solicitações Recentes de Intérpretes</h3>
@@ -475,9 +393,6 @@ export const OverviewTab: React.FC = () => {
           )}
         </div>
       </DashboardCard>
-
-      {/* Ferramenta secundária: fica após os dados comerciais do catálogo. */}
-      <MusicPlayer />
 
     </div>
   );

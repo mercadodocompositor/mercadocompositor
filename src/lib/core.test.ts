@@ -227,7 +227,9 @@ describe('Ocultação de perfis sem assinatura ativa', () => {
 
   it('não retorna o perfil público de uma assinatura inativa', () => {
     const rpc=schema.split('create or replace function public.get_public_composer')[1]?.split('grant execute on function public.get_public_composer')[0]||'';
-    expect(rpc).toContain("p.username=p_username and sub.status='active'");
+    // O perfil é localizado pelo endereço atual ou pelo histórico, mas só volta com assinatura ativa.
+    expect(rpc).toContain("where sub.status='active'");
+    expect(rpc).toContain('p.username = p_username');
   });
 
   it('bloqueia interesse e plays quando a assinatura não está ativa', () => {
@@ -503,10 +505,8 @@ describe('Perfil do Compositor', () => {
     expect(profileTab).toContain('noValidate');
   });
 
-  it('inclui termômetro de completude, campo de chave PIX e verificação prévia de slug', () => {
-    expect(profileTab).toContain('completionPercentage');
-    expect(profileTab).toContain('profileChecks');
-    expect(profileTab).toContain('Indicador de Força do Perfil');
+  it('inclui campo de chave PIX e verificação prévia de slug sem exibir o cartão de força do perfil', () => {
+    expect(profileTab).not.toContain('<ProfileStrengthCard checks=');
     expect(profileTab).toContain('field-pix');
     expect(profileTab).toContain('pixKey');
     expect(profileTab).toContain('pixKeyType');
@@ -515,6 +515,74 @@ describe('Perfil do Compositor', () => {
     expect(profileTab).toContain('checkUsernameAvailability');
     expect(database).toContain('checkUsernameAvailability');
     expect(database).toContain('pix_key');
+  });
+
+  it('verifica o endereço público por função segura, pois a RLS de profiles oculta os outros compositores', () => {
+    const schema = readFileSync('supabase/schema.sql', 'utf8');
+    const appContext = readFileSync('src/context/AppContext.tsx', 'utf8');
+    expect(database).toContain("rpc('is_username_available'");
+    expect(database).not.toMatch(/checkUsernameAvailability[\s\S]{0,400}\.from\('profiles'\)/);
+    expect(schema).toMatch(/function public\.is_username_available\(p_username text\)[\s\S]+security definer/);
+    expect(schema).toContain('grant execute on function public.is_username_available(text) to authenticated');
+    // Falha ao salvar o perfil não pode virar aviso global com texto técnico do banco.
+    expect(appContext).not.toMatch(/const updateProfile[\s\S]{0,400}setAuthError/);
+  });
+
+  it('sinaliza erros nas abas, tem um único botão de salvar e acompanha o perfil do servidor', () => {
+    const tab = readFileSync('src/pages/dashboard/ProfileTab.tsx', 'utf8');
+    expect(tab).toContain('errorCountBySection');
+    expect(tab).toContain('campos com erro');
+    // Salvar fica só na barra fixa (ProfileSaveBar), sempre visível.
+    expect(tab).not.toContain('form="profile-editor-form"');
+    // Sincroniza comparando com o perfil anterior, não com o novo.
+    expect(tab).toContain('lastSyncedProfile');
+    expect(tab).not.toMatch(/if \(!hasChanges\) \{\s*setForm\(\{ \.\.\.profile \}\)/);
+  });
+
+  it('mostra a visibilidade real do perfil em vez de um interruptor decorativo', () => {
+    const card = readFileSync('src/pages/dashboard/profile/ProfileVisibilityCard.tsx', 'utf8');
+    expect(profileTab).toContain('<ProfileVisibilityCard');
+    // Mesmas regras do banco: link exige assinatura ativa; catálogo exige música publicada.
+    expect(card).toContain("subscription.status !== 'active'");
+    expect(card).toContain("song.status === 'published'");
+    expect(card).toContain('APP_URL');
+    expect(profileTab).not.toContain('mercadodocompositor.com/compositor');
+    expect(profileTab).not.toContain('field-coverPhoto');
+    expect(profileTab).toMatch(/publicLinkWorks \?[\s\S]{0,1000}Ver perfil público[\s\S]{0,1500}\/dashboard\/assinatura/);
+  });
+
+  it('o caminho antigo de salvamento não confirma sem gravar nem esconde erro de permissão', () => {
+    const legacy = database.slice(database.indexOf('async function saveProfileLegacy'), database.indexOf('export const RESERVED_USERNAMES'));
+    expect(legacy).toContain("eq('user_id', userId).select('user_id')");
+    expect(legacy).toContain('ensureUpdated(resA.data)');
+    expect(legacy).toContain('ensureUpdated(resB.data)');
+    expect(legacy).not.toContain("'42501'");
+    expect(legacy).not.toMatch(/includes\('permission denied'\)/i);
+  });
+
+  it('mantém os links do endereço antigo por 180 dias e reserva o endereço para o titular', () => {
+    const schema = readFileSync('supabase/schema.sql', 'utf8');
+    const publicPage = readFileSync('src/pages/PublicProfilePage.tsx', 'utf8');
+    const interestPage = readFileSync('src/pages/InterestRequestPage.tsx', 'utf8');
+    expect(schema).toContain('create table if not exists public.username_history');
+    expect(schema).toContain('create trigger track_username_change before update of username on public.profiles');
+    expect(schema).toMatch(/function public\.get_public_composer[\s\S]{0,600}public\.username_history/);
+    expect(schema).toMatch(/function public\.is_username_available[\s\S]{0,900}public\.username_history/);
+    // Exclusão de conta não pode deixar o endereço antigo redirecionando.
+    expect(schema).toMatch(/track_username_change[\s\S]{0,600}app\.account_deletion[\s\S]{0,200}delete from public\.username_history/);
+    expect(publicPage).toMatch(/currentUsername !== requestedUsername[\s\S]{0,120}navigate\(/);
+    expect(interestPage).toMatch(/currentUsername !== username\.toLowerCase\(\)[\s\S]{0,120}navigate\(/);
+  });
+
+  it('salva o perfil numa transação só e mantém o e-mail de notificações igual ao da conta', () => {
+    const schema = readFileSync('supabase/schema.sql', 'utf8');
+    expect(database).toContain("rpc('save_my_profile'");
+    expect(database).not.toMatch(/const privPayload[^}]+email/);
+    expect(schema).toMatch(/function public\.save_my_profile\(p_profile jsonb, p_private jsonb\)/);
+    expect(schema).toContain('create trigger guard_private_profile_email before update of email on public.private_profiles');
+    expect(schema).toContain('create trigger on_auth_user_email_changed after update of email on auth.users');
+    // Papel administrativo só pelo e-mail verificado da conta.
+    expect(schema).not.toMatch(/admin_assign_user_role[\s\S]{0,1200}from public\.private_profiles where lower\(email\)/);
   });
 
   it('limpa fotos anteriores órfãs no bucket profile-media e faz rollback de uploads em caso de erro', () => {

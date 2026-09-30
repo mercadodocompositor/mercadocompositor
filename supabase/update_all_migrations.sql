@@ -71,15 +71,19 @@ create table if not exists public.subscription_plans (
   sort_order integer not null default 0,
   description text not null default '',
   features text[] not null default '{}',
+  archived_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
+-- Em bancos existentes, CREATE TABLE IF NOT EXISTS não acrescenta colunas.
+alter table public.subscription_plans
+  add column if not exists archived_at timestamptz;
+
 -- Inserção idempotente dos planos padrão
 insert into public.subscription_plans(name, monthly_price, max_songs, is_active, sort_order, description, features) values
-  ('Plano Inicial', 1.00, 1, true, 0, 'Plano de R$ 1,00 destinado exclusivamente a testes', array['Plano exclusivo para testes', 'Até 1 música publicada', 'Validação do fluxo de assinatura e cobrança']),
-  ('Plano Bronze', 24.90, 100, true, 1, 'Plano inicial ideal para compositores', array['Até 100 músicas publicadas', 'Liberação direta com termo PDF', 'Estatísticas de reprodução']),
-  ('Plano Prata', 34.90, 200, true, 2, 'Catálogo ampliado para compositores ativos', array['Até 200 músicas publicadas', 'Prioridade nas buscas', 'Liberação direta com termo PDF']),
-  ('Plano Ouro', 54.90, null, true, 3, 'Acesso total e ilimitado para profissionais da música', array['Catálogo ilimitado de músicas', 'Selo de compositor verificado', 'Destaque editorial', 'Suporte prioritário'])
+  ('Plano Bronze', 24.90, 100, true, 1, 'Plano inicial ideal para compositores', array['Até 100 músicas no catálogo', 'Perfil público do Compositor', 'Prévia protegida de 85 segundos com letra completa', 'Contato direto com artistas, com aviso por e-mail', 'Gestão de solicitações e negociações', 'Termo de liberação em PDF com validação de autenticidade', 'Entrega da obra completa por link seguro', 'Estatísticas completas']),
+  ('Plano Prata', 34.90, 200, true, 2, 'Catálogo ampliado para compositores ativos', array['Até 200 músicas no catálogo', 'Perfil público do Compositor', 'Prévia protegida de 85 segundos com letra completa', 'Contato direto com artistas, com aviso por e-mail', 'Gestão de solicitações e negociações', 'Termo de liberação em PDF com validação de autenticidade', 'Entrega da obra completa por link seguro', 'Estatísticas completas']),
+  ('Plano Ouro', 54.90, null, true, 3, 'Acesso total e ilimitado para profissionais da música', array['Músicas ilimitadas no catálogo', 'Perfil público do Compositor', 'Prévia protegida de 85 segundos com letra completa', 'Contato direto com artistas, com aviso por e-mail', 'Gestão de solicitações e negociações', 'Termo de liberação em PDF com validação de autenticidade', 'Entrega da obra completa por link seguro', 'Estatísticas completas e elegibilidade para destaque no catálogo público'])
 on conflict(name) do update set
   monthly_price = excluded.monthly_price,
   max_songs = excluded.max_songs,
@@ -814,7 +818,7 @@ begin
        or nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
       raise exception using
         errcode = '23514',
-        message = 'Para publicar, informe título, autores, letra e uma prévia pública de até 60 segundos.';
+        message = 'Para publicar, informe título, autores, letra e uma prévia pública de até 85 segundos.';
     end if;
 
     if not exists (
@@ -900,7 +904,7 @@ begin
     if nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
       raise exception using
         errcode = '23514',
-        message = 'Uma prévia pública de até 60 segundos é obrigatória para publicação.';
+        message = 'Uma prévia pública de até 85 segundos é obrigatória para publicação.';
     end if;
 
     if tg_op = 'INSERT'
@@ -918,7 +922,7 @@ begin
         and bucket_id = 'song-previews'
         and public_url = new.preview_audio_url
         and duration_seconds > 0
-        and duration_seconds <= 60
+        and duration_seconds <= 85
         and (consumed_by_song_id is null or consumed_by_song_id = new.id)
       for update;
 
@@ -2116,7 +2120,6 @@ begin
     if jwt_iat<extract(epoch from now()-interval '5 minutes')::bigint then raise exception using errcode='42501',message='Reautenticação recente necessária.'; end if;
   end if;
   select id into uid from auth.users where lower(email)=lower(btrim(p_email)) limit 1;
-  if uid is null then select user_id into uid from public.private_profiles where lower(email)=lower(btrim(p_email)) limit 1; end if;
   if uid is null then raise exception using errcode='P0002',message='Usuário não encontrado.'; end if;
   insert into public.user_roles(user_id,role) values(uid,r) on conflict do nothing;
   perform public.write_system_audit_log(gen_random_uuid()::text,'auth','Papel administrativo concedido',concat('Papel ',r,' concedido ao usuário ',uid),'warning');
@@ -2208,6 +2211,14 @@ begin
     banned_until=now()+interval '100 years', updated_at=clock_timestamp()
   where id=uid;
 
+  -- Trocar apenas auth.users.email não libera a identidade usada pelo GoTrue.
+  -- Sem esta limpeza, um novo cadastro (inclusive pelo Google) com o mesmo
+  -- e-mail pode continuar apontando para a conta anonimizada e banida.
+  delete from auth.identities where user_id=uid;
+  delete from auth.mfa_factors where user_id=uid;
+  delete from auth.sessions where user_id=uid;
+  delete from auth.refresh_tokens where user_id=uid::text;
+
   update public.account_deletion_requests set status='concluida',
     admin_notes=nullif(btrim(p_admin_notes),''), user_email=concat('removido-',tag,'@invalido.local'),
     user_name='Usuário removido', reason=null,
@@ -2222,5 +2233,409 @@ end; $$;
 revoke execute on function public.admin_finalize_account_deletion(uuid,text) from public,anon;
 grant execute on function public.admin_finalize_account_deletion(uuid,text) to authenticated;
 
+-- Limpa vínculos de autenticação deixados por versões antigas da exclusão.
+-- A linha anonimizada em auth.users e os históricos legais continuam retidos;
+-- somente as credenciais que reservavam o e-mail/provedor são removidas.
+delete from auth.identities
+where user_id in (select id from auth.users where email like 'removido-%@invalido.local');
+delete from auth.mfa_factors
+where user_id in (select id from auth.users where email like 'removido-%@invalido.local');
+delete from auth.sessions
+where user_id in (select id from auth.users where email like 'removido-%@invalido.local');
+delete from auth.refresh_tokens
+where user_id in (select id::text from auth.users where email like 'removido-%@invalido.local');
+
+-- ------------------------------------------------------------------------------
+-- PROVISIONAMENTO CANÔNICO DE NOVAS CONTAS
+-- ------------------------------------------------------------------------------
+-- O consolidado antigo não recriava este gatilho. Nesse estado o Auth criava o
+-- usuário, mas não existiam profile/subscription/preferences e o dashboard
+-- acabava exibindo, de forma genérica, que a estrutura estava desatualizada.
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare
+  p jsonb := coalesce(new.raw_user_meta_data->'profile', '{}'::jsonb);
+  base_username text;
+  candidate_username text;
+  counter integer := 1;
+  chosen_plan text;
+  chosen_price text;
+  reserved text[] := array[
+    'admin','administrador','dashboard','login','cadastro','termos',
+    'privacidade','autenticacao','validar-documento','validar','suporte','api',
+    'app','root','sistema','oficial','mercadodocompositor','compositores',
+    'compositor','recuperar-senha'
+  ];
+begin
+  base_username := coalesce(
+    nullif(p->>'username',''),
+    nullif(new.raw_user_meta_data->>'preferred_username',''),
+    'compositor-' || substr(new.id::text,1,8)
+  );
+  base_username := lower(regexp_replace(base_username,'[^a-zA-Z0-9_-]','-','g'));
+  base_username := btrim(regexp_replace(base_username,'-+','-','g'),'-');
+  if length(base_username)<3 or base_username=any(reserved) then
+    base_username := 'compositor-' || substr(new.id::text,1,8);
+  end if;
+
+  candidate_username := base_username;
+  while exists(select 1 from public.profiles where username=candidate_username) loop
+    candidate_username := base_username || '-' || substr(new.id::text,1,4) || counter::text;
+    counter := counter+1;
+  end loop;
+
+  insert into public.profiles(
+    user_id,username,name,stage_name,city,state,bio,experience_years,genres,
+    instagram,youtube,website,photo_url,cover_photo_url
+  ) values (
+    new.id,candidate_username,
+    coalesce(nullif(p->>'name',''),new.raw_user_meta_data->>'full_name',new.raw_user_meta_data->>'name',''),
+    coalesce(nullif(p->>'stageName',''),nullif(p->>'name',''),new.raw_user_meta_data->>'full_name',new.raw_user_meta_data->>'name',''),
+    coalesce(p->>'city',''),coalesce(p->>'state',''),coalesce(p->>'bio',''),coalesce(p->>'experienceYears',''),
+    coalesce(array(select jsonb_array_elements_text(coalesce(p->'genres','[]'::jsonb))),'{}'),
+    coalesce(p->>'instagram',''),coalesce(p->>'youtube',''),coalesce(p->>'website',''),
+    coalesce(nullif(p->>'photo',''),new.raw_user_meta_data->>'avatar_url',new.raw_user_meta_data->>'picture',''),
+    coalesce(p->>'coverPhoto','')
+  ) on conflict(user_id) do nothing;
+
+  insert into public.private_profiles(user_id,email,whatsapp,cpf)
+  values(new.id,coalesce(new.email,''),coalesce(p->>'whatsapp',''),coalesce(p->>'cpf',''))
+  on conflict(user_id) do nothing;
+
+  chosen_plan := nullif(new.raw_user_meta_data->>'selected_plan','');
+  if chosen_plan is null or not exists(
+    select 1 from public.subscription_plans where name=chosen_plan and is_active
+  ) then
+    select name into chosen_plan from public.subscription_plans
+    where is_active
+    order by sort_order,monthly_price limit 1;
+  end if;
+  chosen_plan := coalesce(chosen_plan,'Plano Bronze');
+  select replace(to_char(monthly_price,'FM999990.00'),'.',',') into chosen_price
+  from public.subscription_plans where name=chosen_plan;
+
+  insert into public.subscriptions(user_id,status,plan_name,monthly_price)
+  values(new.id,'pending',chosen_plan,coalesce(chosen_price,'0,00'))
+  on conflict(user_id) do nothing;
+  insert into public.user_roles(user_id,role) values(new.id,'composer') on conflict do nothing;
+  insert into public.user_preferences(user_id) values(new.id) on conflict(user_id) do nothing;
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created_data on auth.users;
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+for each row execute procedure public.handle_new_user();
+
+-- Repara apenas identidades ativas que ficaram sem dados públicos durante a
+-- ausência do gatilho. Contas já anonimizadas não voltam a receber dados.
+insert into public.profiles(user_id,username,name,stage_name)
+select u.id,'compositor-'||substr(u.id::text,1,8),
+  coalesce(u.raw_user_meta_data->'profile'->>'name',''),
+  coalesce(u.raw_user_meta_data->'profile'->>'stageName',u.raw_user_meta_data->'profile'->>'name','')
+from auth.users u
+where u.email not like 'removido-%@invalido.local'
+on conflict(user_id) do nothing;
+
+insert into public.private_profiles(user_id,email)
+select u.id,coalesce(u.email,'') from auth.users u
+where u.email not like 'removido-%@invalido.local'
+on conflict(user_id) do nothing;
+
+insert into public.subscriptions(user_id,status,plan_name,monthly_price)
+select u.id,'pending',p.name,replace(to_char(p.monthly_price,'FM999990.00'),'.',',')
+from auth.users u
+cross join lateral (
+  select name,monthly_price from public.subscription_plans
+  where is_active
+  order by sort_order,monthly_price limit 1
+) p
+where u.email not like 'removido-%@invalido.local'
+on conflict(user_id) do nothing;
+
+insert into public.user_roles(user_id,role)
+select id,'composer' from auth.users
+where email not like 'removido-%@invalido.local'
+on conflict do nothing;
+insert into public.user_preferences(user_id)
+select id from auth.users
+where email not like 'removido-%@invalido.local'
+on conflict(user_id) do nothing;
+
 notify pgrst,'reload schema';
 -- END ADMIN SETTINGS GOVERNANCE
+
+-- REMOÇÃO DO PLANO INICIAL DE TESTES (2026-09-28)
+update public.subscriptions
+set plan_name='Plano Bronze',monthly_price='24,90',updated_at=now()
+where plan_name='Plano Inicial';
+delete from public.subscription_plans where name='Plano Inicial';
+notify pgrst,'reload schema';
+-- END REMOÇÃO DO PLANO INICIAL
+
+-- DISPONIBILIDADE DO ENDEREÇO PÚBLICO (2026-09-28)
+-- Disponibilidade do endereço público. A tabela profiles só expõe a própria
+-- linha ao compositor (RLS), então uma consulta direta nunca enxerga o
+-- endereço de outra pessoa e sempre respondia "disponível". Esta função
+-- responde apenas sim/não, sem revelar dados de quem usa o endereço.
+create or replace function public.is_username_available(p_username text)
+returns boolean language sql stable security definer set search_path='' as $$
+  select case
+    when p_username is null or length(btrim(p_username)) not between 3 and 60 then false
+    else not exists(
+      select 1 from public.profiles p
+      where lower(p.username::text) = lower(btrim(p_username))
+        and p.user_id is distinct from auth.uid()
+    )
+  end
+$$;
+revoke execute on function public.is_username_available(text) from public, anon;
+grant execute on function public.is_username_available(text) to authenticated;
+notify pgrst,'reload schema';
+-- END DISPONIBILIDADE DO ENDEREÇO PÚBLICO
+
+-- PERFIL: SALVAMENTO ATÔMICO E E-MAIL VERIFICADO (2026-09-28)
+-- -----------------------------------------------------------------------------
+-- 1. Salvamento atômico
+-- -----------------------------------------------------------------------------
+-- SECURITY INVOKER (padrão): RLS, permissões por coluna e os gatilhos
+-- guard_composer_identity / validate_private_profile_pix continuam valendo.
+create or replace function public.save_my_profile(p_profile jsonb, p_private jsonb)
+returns void language plpgsql set search_path='' as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception using errcode='42501', message='Sua sessão expirou. Entre novamente.';
+  end if;
+
+  update public.profiles set
+    username = btrim(coalesce(p_profile->>'username','')),
+    name = btrim(coalesce(p_profile->>'name','')),
+    stage_name = btrim(coalesce(p_profile->>'stageName','')),
+    city = btrim(coalesce(p_profile->>'city','')),
+    state = btrim(coalesce(p_profile->>'state','')),
+    bio = btrim(coalesce(p_profile->>'bio','')),
+    experience_years = btrim(coalesce(p_profile->>'experienceYears','')),
+    genres = coalesce(array(select jsonb_array_elements_text(coalesce(p_profile->'genres','[]'::jsonb))), '{}'),
+    instagram = coalesce(p_profile->>'instagram',''),
+    youtube = coalesce(p_profile->>'youtube',''),
+    website = coalesce(p_profile->>'website',''),
+    photo_url = coalesce(p_profile->>'photo',''),
+    cover_photo_url = coalesce(p_profile->>'coverPhoto',''),
+    society = coalesce(p_profile->>'society',''),
+    spotify = coalesce(p_profile->>'spotify',''),
+    updated_at = now()
+  where user_id = uid;
+  if not found then
+    raise exception using errcode='P0001', message='Não foi possível localizar sua conta para salvar o perfil. Saia e entre novamente; se persistir, fale com o suporte.';
+  end if;
+
+  update public.private_profiles set
+    whatsapp = btrim(coalesce(p_private->>'whatsapp','')),
+    cpf = btrim(coalesce(p_private->>'cpf','')),
+    pix_key = coalesce(p_private->>'pixKey',''),
+    pix_key_type = coalesce(nullif(p_private->>'pixKeyType',''),'cpf')
+  where user_id = uid;
+  if not found then
+    raise exception using errcode='P0001', message='Não foi possível localizar sua conta para salvar os dados privados. Saia e entre novamente; se persistir, fale com o suporte.';
+  end if;
+end $$;
+revoke execute on function public.save_my_profile(jsonb, jsonb) from public, anon;
+grant execute on function public.save_my_profile(jsonb, jsonb) to authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 2. E-mail de notificações = e-mail da conta
+-- -----------------------------------------------------------------------------
+-- O próprio titular não altera o e-mail privado; administradores e processos
+-- internos (sincronização abaixo, exclusão de conta) continuam podendo.
+create or replace function public.guard_private_profile_email() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  if auth.uid() is not distinct from new.user_id and not public.is_admin() then
+    new.email := old.email;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.guard_private_profile_email() from public, anon, authenticated;
+drop trigger if exists guard_private_profile_email on public.private_profiles;
+create trigger guard_private_profile_email before update of email on public.private_profiles
+  for each row execute function public.guard_private_profile_email();
+
+-- Quando o e-mail da conta muda (confirmação feita pelo Supabase Auth), o e-mail
+-- de notificações acompanha.
+create or replace function public.sync_private_profile_email() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  if new.email is distinct from old.email and new.email is not null then
+    update public.private_profiles set email = new.email where user_id = new.id;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.sync_private_profile_email() from public, anon, authenticated;
+drop trigger if exists on_auth_user_email_changed on auth.users;
+create trigger on_auth_user_email_changed after update of email on auth.users
+  for each row execute function public.sync_private_profile_email();
+
+-- -----------------------------------------------------------------------------
+-- 3. Papel administrativo só pelo e-mail verificado da conta
+-- -----------------------------------------------------------------------------
+create or replace function public.admin_assign_user_role(p_email text,p_role text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare uid uuid; r text:=lower(btrim(p_role)); jwt_iat bigint;
+begin
+  if not public.is_admin() then raise exception using errcode='42501',message='Acesso restrito a administradores.'; end if;
+  if r not in ('admin','moderator','financial') then raise exception using errcode='23514',message='Papel inválido.'; end if;
+  if r='admin' then
+    jwt_iat:=coalesce((auth.jwt()->>'iat')::bigint,0);
+    if jwt_iat<extract(epoch from now()-interval '5 minutes')::bigint then raise exception using errcode='42501',message='Reautenticação recente necessária.'; end if;
+  end if;
+  -- Só o e-mail da conta (verificado). O e-mail do perfil é editável e não
+  -- serve para identificar quem recebe um papel administrativo.
+  select id into uid from auth.users where lower(email)=lower(btrim(p_email)) limit 1;
+  if uid is null then raise exception using errcode='P0002',message='Usuário não encontrado.'; end if;
+  insert into public.user_roles(user_id,role) values(uid,r) on conflict do nothing;
+  perform public.write_system_audit_log(gen_random_uuid()::text,'auth','Papel administrativo concedido',concat('Papel ',r,' concedido ao usuário ',uid),'warning');
+  return jsonb_build_object('success',true,'userId',uid,'role',r);
+end; $$;
+revoke execute on function public.admin_assign_user_role(text,text) from public,anon;
+grant execute on function public.admin_assign_user_role(text,text) to authenticated;
+
+notify pgrst,'reload schema';
+-- END PERFIL: SALVAMENTO ATÔMICO E E-MAIL VERIFICADO
+
+-- HISTÓRICO DE ENDEREÇOS PÚBLICOS (2026-09-28)
+create table if not exists public.username_history (
+  old_username citext primary key,
+  user_id uuid not null references public.profiles(user_id) on delete cascade,
+  changed_at timestamptz not null default now()
+);
+create index if not exists username_history_user_idx on public.username_history(user_id);
+alter table public.username_history enable row level security;
+-- Sem políticas: só as funções security definer abaixo leem ou escrevem.
+revoke all on table public.username_history from anon, authenticated;
+
+create or replace function public.track_username_change() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  if new.username is not distinct from old.username then
+    return new;
+  end if;
+
+  -- Exclusão de conta (pelo titular ou finalizada pelo admin): os endereços
+  -- antigos deixam de apontar para a pessoa e ficam livres.
+  if current_setting('app.account_deletion', true) = 'on'
+     or new.username::text like 'usuario-removido-%' then
+    delete from public.username_history where user_id = new.user_id;
+    return new;
+  end if;
+
+  if exists(
+    select 1 from public.username_history h
+    where lower(h.old_username::text) = lower(new.username::text)
+      and h.user_id <> new.user_id
+      and h.changed_at > now() - interval '180 days'
+  ) then
+    raise exception using errcode='23505',
+      message='O endereço público (username) foi usado recentemente por outro compositor e ainda está reservado. Escolha outro.';
+  end if;
+
+  -- Voltar a um endereço próprio antigo: ele deixa de ser histórico.
+  delete from public.username_history
+  where lower(old_username::text) = lower(new.username::text) and user_id = new.user_id;
+
+  insert into public.username_history(old_username, user_id, changed_at)
+  values (old.username, new.user_id, now())
+  on conflict (old_username) do update set user_id = excluded.user_id, changed_at = excluded.changed_at;
+
+  return new;
+end $$;
+revoke execute on function public.track_username_change() from public, anon, authenticated;
+drop trigger if exists track_username_change on public.profiles;
+create trigger track_username_change before update of username on public.profiles
+  for each row execute function public.track_username_change();
+
+-- Disponibilidade: também recusa endereços reservados por outro compositor.
+create or replace function public.is_username_available(p_username text)
+returns boolean language sql stable security definer set search_path='' as $$
+  select case
+    when p_username is null or length(btrim(p_username)) not between 3 and 60 then false
+    else not exists(
+      select 1 from public.profiles p
+      where lower(p.username::text) = lower(btrim(p_username))
+        and p.user_id is distinct from auth.uid()
+    ) and not exists(
+      select 1 from public.username_history h
+      where lower(h.old_username::text) = lower(btrim(p_username))
+        and h.user_id is distinct from auth.uid()
+        and h.changed_at > now() - interval '180 days'
+    )
+  end
+$$;
+revoke execute on function public.is_username_available(text) from public, anon;
+grant execute on function public.is_username_available(text) to authenticated;
+
+-- Perfil público: endereço atual ou, se não houver, o antigo dos últimos 180
+-- dias. O objeto devolvido traz sempre o endereço atual em profile.username;
+-- o site compara com o endereço pedido e redireciona.
+create or replace function public.get_public_composer(p_username text) returns jsonb language sql stable security definer set search_path='' as $$
+with target as (
+  select coalesce(
+    (select p.user_id from public.profiles p where p.username = p_username),
+    (select h.user_id from public.username_history h
+      where h.old_username = p_username and h.changed_at > now() - interval '180 days')
+  ) as user_id
+)
+select jsonb_build_object(
+ 'profile',jsonb_build_object('username',p.username,'stageName',p.stage_name,'city',p.city,'state',p.state,'bio',p.bio,'experienceYears',p.experience_years,'genres',p.genres,'society',p.society,'spotify',p.spotify,'instagram',p.instagram,'youtube',p.youtube,'website',p.website,'photo',p.photo_url,'coverPhoto',p.cover_photo_url,'viewsCount',p.views_count,'isVerified',p.is_verified),
+ 'subscriptionStatus',sub.status,
+ 'songs',coalesce((select jsonb_agg(jsonb_build_object('id',s.id,'title',s.title,'genre',s.genre,'subgenre',s.subgenre,'authors',s.authors,'dateComposed',s.date_composed,'dateRegistered',s.date_registered,'lyrics',s.lyrics,'coverUrl',s.cover_url,'registryCode',s.registry_code,'status',s.status,'isAvailableForRelease',s.is_available_for_release,'valueType',s.value_type,'suggestedValue',s.suggested_value,'playCount',s.play_count,'interestedCount',s.interested_count,'summary',s.summary,'previewAudioUrl',s.preview_audio_url)) from public.songs s where s.composer_id=p.user_id and s.status='published' and sub.status='active'),'[]'::jsonb)
+) from target t
+  join public.profiles p on p.user_id=t.user_id
+  join public.subscriptions sub on sub.user_id=p.user_id
+where sub.status='active' limit 1
+$$;
+grant execute on function public.get_public_composer(text) to anon,authenticated;
+
+notify pgrst,'reload schema';
+-- END HISTÓRICO DE ENDEREÇOS PÚBLICOS
+
+-- BOAS-VINDAS AO CONFIRMAR A CONTA (2026-09-28)
+create or replace function public.notify_account_welcome() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare
+  welcome_title constant text := 'Boas-vindas ao Mercado do Compositor';
+begin
+  if new.email_confirmed_at is null then return new; end if;
+  if tg_op = 'UPDATE' and old.email_confirmed_at is not null then return new; end if;
+
+  -- Uma única vez por conta, mesmo se a confirmação se repetir.
+  if exists (
+    select 1 from public.user_notifications
+    where user_id = new.id and type = 'system' and title = welcome_title
+  ) then return new; end if;
+
+  insert into public.user_notifications(user_id,title,message,type,is_read,link)
+  values(
+    new.id,
+    welcome_title,
+    E'Sua conta está ativa. Para começar a receber propostas de artistas:\n'
+    || E'1. Complete seu perfil público com foto, apresentação e redes sociais.\n'
+    || E'2. Cadastre suas músicas com a gravação completa e a letra.\n'
+    || E'3. Compartilhe o link do seu perfil e de cada obra.\n'
+    || 'Quando um artista pedir a liberação de uma música, você recebe o aviso por e-mail.',
+    'system',
+    false,
+    '/dashboard/perfil'
+  );
+  return new;
+end $$;
+revoke execute on function public.notify_account_welcome() from public, anon, authenticated;
+
+drop trigger if exists on_auth_user_welcome on auth.users;
+create trigger on_auth_user_welcome
+  after insert or update of email_confirmed_at on auth.users
+  for each row execute function public.notify_account_welcome();
+
+notify pgrst, 'reload schema';
+-- END BOAS-VINDAS AO CONFIRMAR A CONTA

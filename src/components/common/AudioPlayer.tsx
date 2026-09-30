@@ -180,7 +180,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         <div className="flex justify-between items-center text-[10px] sm:text-[11px] font-mono text-slate-400">
           <span>{formatTime(currentTime)}</span>
           <span className="text-slate-500">
-            {formatTime(maxDurationSeconds)} (Máximo de fábrica)
+            {formatTime(maxDurationSeconds)}
           </span>
         </div>
       </div>

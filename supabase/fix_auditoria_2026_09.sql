@@ -395,7 +395,7 @@ begin
        or nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
       raise exception using
         errcode = '23514',
-        message = 'Para publicar ou enviar para aprovação, informe título, autores, letra e uma prévia pública de até 60 segundos.';
+        message = 'Para publicar ou enviar para aprovação, informe título, autores, letra e uma prévia pública de até 85 segundos.';
     end if;
 
     if not exists (
@@ -481,7 +481,7 @@ begin
     if nullif(btrim(coalesce(new.preview_audio_url, '')), '') is null then
       raise exception using
         errcode = '23514',
-        message = 'Uma prévia pública de até 60 segundos é obrigatória para publicação.';
+        message = 'Uma prévia pública de até 85 segundos é obrigatória para publicação.';
     end if;
 
     if tg_op = 'INSERT'
@@ -499,7 +499,7 @@ begin
         and bucket_id = 'song-previews'
         and public_url = new.preview_audio_url
         and duration_seconds > 0
-        and duration_seconds <= 60
+        and duration_seconds <= 85
         and (consumed_by_song_id is null or consumed_by_song_id = new.id)
       for update;
 

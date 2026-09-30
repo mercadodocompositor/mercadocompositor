@@ -9,6 +9,7 @@ import { AdminBulkBar } from '../../components/admin/AdminBulkBar';
 import { AdminWaveformPlayer } from '../../components/admin/AdminWaveformPlayer';
 import { AdminDateRangeFilter, DateFilterPreset, filterByDatePreset } from '../../components/admin/AdminDateRangeFilter';
 import { useDebounce } from '../../hooks/useDebounce';
+import { PREVIEW_MAX_SECONDS } from '../../config/media';
 import { 
   Music, 
   Search, 
@@ -120,7 +121,7 @@ export const AdminSongsTab: React.FC = () => {
       if (activeUrl) {
         const audio = new Audio(activeUrl);
         const stopAtPreviewLimit = () => {
-          if (audio.currentTime >= 60) {
+          if (audio.currentTime >= PREVIEW_MAX_SECONDS) {
             audio.pause();
             audio.currentTime = 0;
             setPlayingSongId(null);

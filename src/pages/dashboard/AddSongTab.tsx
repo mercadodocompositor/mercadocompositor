@@ -618,6 +618,15 @@ export const AddSongTab: React.FC = () => {
       submissionLockRef.current = false;
     };
 
+    // O aviso de assinatura no topo já explica o bloqueio e oferece o atalho
+    // para contratar. Evita repetir a mesma informação em um alerta de erro.
+    if (requestedStatus !== 'draft' && subscription.status !== 'active') {
+      setFormError(null);
+      unlockSubmission();
+      window.setTimeout(() => document.getElementById('subscription-inactive-notice')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+      return;
+    }
+
     const validation = validateSongSubmission({
       title,
       authors,
@@ -902,7 +911,7 @@ export const AddSongTab: React.FC = () => {
           </p>
           {!isEditing && !successMessage && <p className="mt-2 text-xs text-amber-200">Este formulário ainda não é uma música cadastrada. Para aparecer em Minhas Músicas, use “Salvar rascunho privado” ou “Publicar no perfil”.</p>}
           {subscription.status !== 'active' && !successMessage && (
-            <div role="status" className="mt-3 flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+            <div id="subscription-inactive-notice" role="status" className="mt-3 flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <strong className="block">Sua assinatura não está ativa</strong>
                 <span className="text-xs text-amber-100/80">Você pode cadastrar e salvar como rascunho, mas só consegue publicar no perfil com uma assinatura ativa.</span>
@@ -1337,17 +1346,17 @@ export const AddSongTab: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Registro ou Identificação da Obra (ECAD / EDA / ISWC)
+                Sociedade onde a Obra foi cadastrada
               </label>
               <input
                 type="text"
                 value={registryCode}
                 maxLength={80}
                 onChange={e => setRegistryCode(e.target.value)}
-                placeholder="Ex: EDA-GO-2024-9982"
+                placeholder="Ex: UBC, ABRAMUS, AMAR"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
               />
-              <span className="text-[11px] text-slate-500 mt-1 block">Opcional. Se a obra for inédita e ainda não tiver código de registro, deixe em branco.</span>
+              <span className="text-[11px] text-slate-500 mt-1 block">Opcional. Se a obra ainda não foi cadastrada em nenhuma sociedade, deixe em branco.</span>
             </div>
 
             <div>

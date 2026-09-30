@@ -33,11 +33,12 @@ declare
   destination text;
   should_send boolean := true;
 begin
-  select coalesce(up.preferences,'{}'::jsonb), lower(btrim(pp.email))
+  select coalesce(up.preferences,'{}'::jsonb), lower(btrim(coalesce(nullif(btrim(au.email),''), nullif(btrim(pp.email),''))))
     into prefs,destination
-  from public.private_profiles pp
-  left join public.user_preferences up on up.user_id=pp.user_id
-  where pp.user_id=new.user_id;
+  from auth.users au
+  left join public.private_profiles pp on pp.user_id=au.id
+  left join public.user_preferences up on up.user_id=au.id
+  where au.id=new.user_id;
 
   if destination is null or destination !~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' then return new; end if;
   if new.type='request' then

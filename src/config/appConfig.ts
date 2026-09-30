@@ -20,11 +20,13 @@ export const APP_CONFIG = {
       highlight: false,
       features: [
         "Até 100 músicas no catálogo",
-        "Perfil público personalizado",
-        "Player com prévias protegidas de 85 segundos",
-        "Cadastro, edição e organização das composições",
-        "Recebimento de solicitações de intérpretes",
-        "Indicadores de visualizações e reproduções"
+        "Perfil público do Compositor",
+        "Prévia protegida de 85 segundos com letra completa",
+        "Contato direto com artistas, com aviso por e-mail",
+        "Gestão de solicitações e negociações",
+        "Termo de liberação em PDF com validação de autenticidade",
+        "Entrega da obra completa por link seguro",
+        "Estatísticas completas"
       ]
     },
     {
@@ -34,13 +36,14 @@ export const APP_CONFIG = {
       maxSongs: 200,
       highlight: true,
       features: [
-        "Todos os benefícios do Plano Bronze",
         "Até 200 músicas no catálogo",
-        "Gestão de negociações e pagamentos confirmados",
-        "Emissão de liberações digitais",
-        "Histórico organizado de solicitações e liberações",
-        "Links individuais para compartilhar cada música",
-        "Busca, filtros e ordenação avançada do catálogo"
+        "Perfil público do Compositor",
+        "Prévia protegida de 85 segundos com letra completa",
+        "Contato direto com artistas, com aviso por e-mail",
+        "Gestão de solicitações e negociações",
+        "Termo de liberação em PDF com validação de autenticidade",
+        "Entrega da obra completa por link seguro",
+        "Estatísticas completas"
       ]
     },
     {
@@ -50,24 +53,14 @@ export const APP_CONFIG = {
       maxSongs: null,
       highlight: false,
       features: [
-        "Todos os benefícios do Plano Prata",
         "Músicas ilimitadas no catálogo",
-        "Elegibilidade para destaque no catálogo público",
-        "Gestão completa de propostas e liberações",
-        "Painel completo de desempenho das composições",
-        "Perfil preparado para um catálogo profissional amplo"
-      ]
-    },
-    {
-      name: "Plano Inicial",
-      priceMonthly: "1,00",
-      priceValue: 1.00,
-      maxSongs: 1,
-      highlight: false,
-      features: [
-        "Plano exclusivo para testes",
-        "Publicação de até 1 música no catálogo",
-        "Validação do fluxo de assinatura e cobrança"
+        "Perfil público do Compositor",
+        "Prévia protegida de 85 segundos com letra completa",
+        "Contato direto com artistas, com aviso por e-mail",
+        "Gestão de solicitações e negociações",
+        "Termo de liberação em PDF com validação de autenticidade",
+        "Entrega da obra completa por link seguro",
+        "Estatísticas completas e elegibilidade para destaque no catálogo público"
       ]
     }
   ],

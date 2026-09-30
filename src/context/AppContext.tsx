@@ -26,7 +26,7 @@ import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { authErrorMessage, getFriendlyErrorMessage } from '../lib/apiErrors';
 import {
-  adminFeatureSong, adminSetComposerFeatured, adminSetSubscription, adminSetVerified, createInterest,
+  adminDeleteOrphanComposer, adminFeatureSong, adminSetComposerFeatured, adminSetSubscription, adminSetVerified, createInterest,
   incrementPlay, insertSong, insertSystemLog, issueReleaseRequest,
   loadAdminComposers, loadAdminSongs, loadAdminRequests, loadAdminReleases, verifyAdminPassword,
   loadDashboardMetrics, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadRequestById, loadRequestPage,
@@ -140,6 +140,7 @@ interface AppContextType {
   toggleComposerVerified: (composerId: string) => Promise<boolean>;
   toggleComposerFeatured: (composerId: string) => Promise<boolean>;
   suspendAdminComposer: (composerId: string) => Promise<boolean>;
+  deleteOrphanAdminComposer: (composerId: string) => Promise<boolean>;
 
   platformSettings: PlatformSettings;
   updatePlatformSettings: (settings: Partial<PlatformSettings>, newPixKey?: string) => Promise<SettingsSaveResult>;
@@ -420,14 +421,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateProfile = async (data: Partial<ComposerProfile>) => {
     if (!userId) throw new Error('Sua sessão expirou. Entre novamente.');
     const next={...profile,...data};
-    try {
-      await saveProfile(userId,next);
-      setProfile(next);
-    } catch (error) {
-      const message=error instanceof Error?error.message:'Não foi possível atualizar o perfil.';
-      setAuthError(message);
-      throw new Error(message);
-    }
+    // O erro original segue para a tela do perfil, que traduz a mensagem e destaca
+    // o campo (ex.: endereço já em uso). Não vai para o aviso global: ele mostraria
+    // o texto técnico do banco e duplicaria o erro já exibido no formulário.
+    await saveProfile(userId,next);
+    setProfile(next);
   };
 
   const addSong = async (songData: Omit<Song, 'id' | 'playCount' | 'interestedCount' | 'dateRegistered'>): Promise<Song> => {
@@ -884,6 +882,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return success;
   };
 
+  const deleteOrphanAdminComposer = async (composerId: string): Promise<boolean> => {
+    try {
+      await adminDeleteOrphanComposer(composerId);
+      setAdminComposers(prev => prev.filter(composer => composer.id !== composerId));
+      return true;
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Falha ao excluir o registro do compositor.');
+      return false;
+    }
+  };
+
 
   /**
    * O servidor faz controle otimista de concorrência: `admin_update_platform_settings`
@@ -1034,14 +1043,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await deleteSubscriptionPlan(planId);
       setSubscriptionPlans(prev => prev.filter(p => p.id !== planId));
-      await addSystemLog({
-        category: 'financial',
-        title: 'Plano de Assinatura Excluído',
-        description: `Plano id #${planId} foi excluído do catálogo de assinaturas.`,
-        user: profile.email || 'Admin',
-        ip: '',
-        status: 'warning'
-      });
       return true;
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Falha ao excluir plano.');
@@ -1191,6 +1192,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       toggleComposerVerified,
       toggleComposerFeatured,
       suspendAdminComposer,
+      deleteOrphanAdminComposer,
       platformSettings,
       updatePlatformSettings,
       resetPlatformSettings,

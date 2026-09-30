@@ -43,7 +43,7 @@ begin
       and user_id = new.composer_id
       and bucket_id = 'song-previews'
       and public_url = new.preview_audio_url
-      and duration_seconds > 0 and duration_seconds <= 60
+      and duration_seconds > 0 and duration_seconds <= 85
       and (consumed_by_song_id is null or consumed_by_song_id = new.id)
     for update;
 

@@ -28,7 +28,7 @@ const PIX_PLACEHOLDERS: Record<PixKeyType, string> = {
   random: '1a2b3c4d-1a2b-1a2b-1a2b-1a2b3c4d5e6f'
 };
 
-const quickPixButtonClass = 'rounded-md px-1.5 py-0.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500';
+const quickPixButtonClass = 'rounded-md px-1.5 py-0.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:text-amber-300 dark:hover:bg-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500';
 
 export const ProfileLegalSection: React.FC<ProfileLegalSectionProps> = ({ form, set, errors, identityLocked }) => {
   const pixType = (form.pixKeyType || 'cpf') as PixKeyType;
@@ -40,20 +40,20 @@ export const ProfileLegalSection: React.FC<ProfileLegalSectionProps> = ({ form, 
   };
 
   return (
-    <section id="section-legal" aria-labelledby="section-legal-title" className="space-y-4 border-t border-slate-800 pt-6 scroll-mt-28">
+    <section id="section-legal" aria-labelledby="section-legal-title" className="space-y-5 scroll-mt-28">
       <SectionHeader
         titleId="section-legal-title"
-        title="Identificação Civil & Contato"
+        title="Dados pessoais e contato"
         description="Nada desta seção aparece na sua vitrine. Nome civil e CPF identificam você como titular nos termos de liberação que você emite; e-mail e WhatsApp são usados para avisar você sobre pedidos e negociações."
         visibility="private"
         icon={<ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />}
       />
 
       {identityLocked && (
-        <div role="note" id="identity-locked-note" className="flex items-start gap-2.5 rounded-2xl border border-slate-700 bg-slate-950/80 p-3.5 text-xs text-slate-300">
+        <div role="note" id="identity-locked-note" className="flex items-start gap-3 rounded-2xl border border-slate-300 bg-slate-50 p-3.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-300">
           <Lock className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" aria-hidden="true" />
           <p>
-            <strong className="text-white">Nome civil e CPF estão bloqueados para edição.</strong>{' '}
+            <strong className="text-slate-950 dark:text-white">Nome civil e CPF estão bloqueados para edição.</strong>{' '}
             Você já emitiu termos de liberação com esses dados. Para corrigir alguma informação, fale com o suporte. Assim os documentos emitidos continuam válidos.
           </p>
         </div>
@@ -101,19 +101,17 @@ export const ProfileLegalSection: React.FC<ProfileLegalSectionProps> = ({ form, 
         </div>
 
         <div id="field-email">
-          <FieldLabel htmlFor="input-email" required>E-mail para notificações e negociações</FieldLabel>
+          <FieldLabel htmlFor="input-email" icon={<Lock className="w-3 h-3 text-slate-500" aria-hidden="true" />}>E-mail para notificações e negociações</FieldLabel>
+          {/* É o e-mail da conta, verificado no cadastro; o banco não aceita trocá-lo por aqui. */}
           <input
             id="input-email"
             type="email"
             value={form.email}
-            onChange={e => set('email', e.target.value)}
-            placeholder="seuemail@exemplo.com.br"
-            autoComplete="email"
-            aria-required="true"
-            {...fieldA11y(errors, 'email')}
-            className={getInputClass(errors, 'email')}
+            readOnly
+            aria-describedby="email-hint"
+            className={getInputClass(errors, 'email', 'opacity-70 cursor-not-allowed')}
           />
-          <FieldError errors={errors} name="email" />
+          <FieldHint id="email-hint">É o e-mail da sua conta. Os avisos de pedidos e negociações chegam nele. Para trocá-lo, fale com o suporte.</FieldHint>
         </div>
 
         <div id="field-whatsapp">
@@ -133,14 +131,14 @@ export const ProfileLegalSection: React.FC<ProfileLegalSectionProps> = ({ form, 
         </div>
 
         {/* Chave PIX para negociações comerciais */}
-        <div id="field-pix" role="group" aria-labelledby="pix-title" className="sm:col-span-2 bg-slate-950/80 border border-slate-800 p-5 rounded-2xl space-y-4">
+        <div id="field-pix" role="group" aria-labelledby="pix-title" className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/80 sm:col-span-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <div className="flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-amber-400" aria-hidden="true" />
-                <h3 id="pix-title" className="text-sm font-bold text-white">Chave PIX para negociações</h3>
+                <h3 id="pix-title" className="text-sm font-extrabold text-slate-950 dark:text-white">Chave PIX para negociações</h3>
               </div>
-              <p id="pix-description" className="text-xs text-slate-400 mt-0.5">
+              <p id="pix-description" className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
                 Fica guardada no seu cadastro para agilizar as negociações. Não aparece na vitrine; você decide quando compartilhá-la com o intérprete. Opcional.
               </p>
             </div>

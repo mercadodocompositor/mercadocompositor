@@ -39,298 +39,278 @@ export function generateReleasePdf(data: AnyReleaseData): jsPDF {
     unit: 'mm',
     format: 'a4',
   });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const contentWidth = pageWidth - margin * 2;
+  const footerTop = pageHeight - 20;
+  const navy: [number, number, number] = [15, 23, 42];
+  const slate: [number, number, number] = [51, 65, 85];
+  const muted: [number, number, number] = [100, 116, 139];
+  const line: [number, number, number] = [203, 213, 225];
+  const gold: [number, number, number] = [180, 131, 36];
+  let cursorY = 18;
 
-  const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
-  const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
-  const margin = 18;
-  const contentWidth = pageWidth - margin * 2; // 174mm
-  let cursorY = margin;
-  const footerTop = pageHeight - 18;
-
-  // Condições especiais longas podem passar de uma página.
-  const ensureSpace = (height: number) => {
-    if (cursorY + height <= footerTop) return;
-    doc.addPage();
-    cursorY = margin;
-  };
-
-  // 1. Header Banner
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(margin, cursorY, contentWidth, 24, 'F');
-
-  // Accent line
-  doc.setFillColor(245, 158, 11); // amber-500
-  doc.rect(margin, cursorY + 23, contentWidth, 1.5, 'F');
-
-  // Header Text
-  doc.setTextColor(245, 158, 11);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.text(APP_CONFIG.name.toUpperCase() + ' — GESTÃO E SEGURANÇA FONOGRÁFICA', margin + 6, cursorY + 8);
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(13);
-  doc.text('TERMO DE LIBERAÇÃO E AUTORIZAÇÃO DE GRAVAÇÃO', margin + 6, cursorY + 16);
-
-  cursorY += 30;
-
-  // 2. Authenticity & Registration Box
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://mercadodocompositor.com.br';
   const validationUrl = `${origin}/validar-documento?codigo=${data.documentCode}`;
 
-  doc.setFillColor(240, 253, 244); // emerald-50
-  doc.setDrawColor(187, 247, 208); // emerald-200
-  doc.roundedRect(margin, cursorY, contentWidth, 20, 2, 2, 'FD');
+  const drawHeader = () => {
+    doc.setFillColor(...navy);
+    doc.rect(0, 0, pageWidth, 4, 'F');
+    doc.setFillColor(...gold);
+    doc.rect(0, 4, pageWidth, 0.8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...navy);
+    doc.text(APP_CONFIG.name.toUpperCase(), margin, 16);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...muted);
+    doc.text('Gestão e segurança de direitos fonográficos', margin, 21);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...navy);
+    doc.text(`Registro nº ${data.documentCode}`, pageWidth - margin, 16, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...muted);
+    doc.text(`Emitido em ${formatDate(data.issueDate)}`, pageWidth - margin, 21, { align: 'right' });
+    doc.setDrawColor(...line);
+    doc.line(margin, 26, pageWidth - margin, 26);
+  };
 
-  doc.setTextColor(22, 101, 52); // emerald-800
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.text('REGISTRO ELETRÔNICO COM AUTENTICIDADE VERIFICÁVEL', margin + 5, cursorY + 6);
+  const startPage = () => {
+    if (doc.getNumberOfPages() > 1 || cursorY > 18) doc.addPage();
+    drawHeader();
+    cursorY = 34;
+  };
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(21, 128, 61);
-  // Em uma linha só, o código + URL passava da borda direita da página.
-  doc.text(`Código de Registro: ${data.documentCode}`, margin + 5, cursorY + 11.5);
-  doc.text(`Validação Pública: ${validationUrl}`, margin + 5, cursorY + 15.5);
+  const ensureSpace = (height: number) => {
+    if (cursorY + height <= footerTop) return;
+    startPage();
+  };
 
-  cursorY += 25;
+  const sectionHeader = (number: string, title: string) => {
+    ensureSpace(14);
+    doc.setFillColor(...gold);
+    doc.rect(margin, cursorY - 4.5, 1.4, 6.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...navy);
+    doc.text(`${number}.  ${title.toUpperCase()}`, margin + 5, cursorY);
+    doc.setDrawColor(...line);
+    doc.line(margin, cursorY + 4, pageWidth - margin, cursorY + 4);
+    cursorY += 11;
+  };
 
-  // 3. Parties Box (Outorgante & Outorgado)
-  // Documento completo: CPF/CNPJ por extenso. A validação pública só recebe os
-  // quatro últimos dígitos, então o PDF gerado a partir dela segue mascarado.
+  const field = (x: number, y: number, label: string, value: string, width: number) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.4);
+    doc.setTextColor(...muted);
+    doc.text(label.toUpperCase(), x, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...navy);
+    const lines = doc.splitTextToSize(value || 'Não informado', width) as string[];
+    doc.text(lines, x, y + 4.3);
+    return lines.length;
+  };
+
+  const tableRow = (label: string, value: string) => {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.6);
+    const valueLines = doc.splitTextToSize(value || 'Não informado', contentWidth - 52) as string[];
+    const height = Math.max(11.5, valueLines.length * 4.8 + 4.5);
+    ensureSpace(height);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(margin, cursorY, 46, height, 'F');
+    doc.setDrawColor(...line);
+    doc.line(margin, cursorY, pageWidth - margin, cursorY);
+    doc.line(margin, cursorY + height, pageWidth - margin, cursorY + height);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.8);
+    doc.setTextColor(...muted);
+    doc.text(label.toUpperCase(), margin + 4, cursorY + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.6);
+    doc.setTextColor(...navy);
+    doc.text(valueLines, margin + 51, cursorY + 7);
+    cursorY += height;
+  };
+
+  drawHeader();
+  cursorY = 35;
+  doc.setFont('times', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(...navy);
+  doc.text('TERMO DE LIBERAÇÃO E AUTORIZAÇÃO DE GRAVAÇÃO', pageWidth / 2, cursorY, { align: 'center' });
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(0.5);
+  doc.line(pageWidth / 2 - 14, cursorY + 7, pageWidth / 2 + 14, cursorY + 7);
+  cursorY += 17;
+
   const composerDoc = 'composerCpf' in data && data.composerCpf
     ? formatCpfCnpj(data.composerCpf)
-    : ('composerDocumentLast4' in data && data.composerDocumentLast4 ? `••••${data.composerDocumentLast4}` : '••••');
+    : ('composerDocumentLast4' in data && data.composerDocumentLast4 ? `****${data.composerDocumentLast4}` : '****');
 
   const buyerDoc = 'buyerDocument' in data && data.buyerDocument
     ? formatCpfCnpj(data.buyerDocument)
-    : ('buyerDocumentLast4' in data && data.buyerDocumentLast4 ? `••••${data.buyerDocumentLast4}` : '••••');
+    : ('buyerDocumentLast4' in data && data.buyerDocumentLast4 ? `****${data.buyerDocumentLast4}` : '****');
 
   const interpreterName = data.interpreterName?.trim() || data.buyerName;
   const iswc = data.iswc?.trim() || 'Não informado';
-
+  sectionHeader('I', 'Qualificação das partes');
   const colWidth = (contentWidth - 6) / 2;
-  const colTextWidth = colWidth - 8;
-  const lineHeight = 3.8;
-
+  const rightX = margin + colWidth + 6;
+  doc.setDrawColor(...navy);
+  doc.setLineWidth(1);
+  doc.line(margin, cursorY, margin + colWidth, cursorY);
+  doc.line(rightX, cursorY, pageWidth - margin, cursorY);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  const composerLines: string[] = doc.splitTextToSize(data.composerName, colTextWidth);
   doc.setFontSize(8);
-  const responsibleLines: string[] = doc.splitTextToSize(`Nome do Responsável: ${data.buyerName}`, colTextWidth);
-  const interpreterLines: string[] = doc.splitTextToSize(`Intérprete: ${interpreterName}`, colTextWidth);
-
-  const composerBodyHeight = composerLines.length * 4.2 + 2 * lineHeight + 3;
-  const buyerBodyHeight = (responsibleLines.length + interpreterLines.length + 2) * lineHeight + 3;
-  const partiesHeight = 12 + Math.max(composerBodyHeight, buyerBodyHeight);
-
-  // Outorgante
-  doc.setFillColor(248, 250, 252); // slate-50
-  doc.setDrawColor(226, 232, 240); // slate-200
-  doc.roundedRect(margin, cursorY, colWidth, partiesHeight, 2, 2, 'FD');
-
-  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...navy);
+  doc.text('OUTORGANTE', margin, cursorY + 7);
+  doc.text('OUTORGADO', rightX, cursorY + 7);
+  doc.setFont('times', 'italic');
   doc.setFontSize(7.5);
-  doc.setTextColor(180, 83, 9); // amber-700
-  doc.text('OUTORGANTE (COMPOSITOR TITULAR):', margin + 4, cursorY + 6);
+  doc.setTextColor(...muted);
+  doc.text('Compositor titular', margin, cursorY + 12);
+  doc.text('Intérprete / Produtor', rightX, cursorY + 12);
+  const partyY = cursorY + 20;
+  field(margin, partyY, 'Nome', data.composerName, colWidth - 4);
+  field(margin, partyY + 14, 'CPF', composerDoc, colWidth - 4);
+  field(margin, partyY + 28, 'Cidade / UF', data.composerCityState || 'Não informado', colWidth - 4);
+  field(rightX, partyY, 'Nome do responsável', data.buyerName, colWidth - 4);
+  field(rightX, partyY + 14, 'Intérprete', interpreterName, colWidth - 4);
+  field(rightX, partyY + 28, 'CPF / CNPJ', buyerDoc, colWidth - 4);
+  field(rightX, partyY + 42, 'Cidade / UF', data.buyerCityState || 'Não informado', colWidth - 4);
+  cursorY = partyY + 54;
 
-  doc.setFontSize(9.5);
-  doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(composerLines, margin + 4, cursorY + 12);
-  let leftY = cursorY + 12 + composerLines.length * 4.2 + 1.5;
+  sectionHeader('II', 'Obra musical objeto da autorização');
+  cursorY -= 7;
+  tableRow('Título', data.songTitle);
+  tableRow('Autoria / Compositores', data.authors);
+  tableRow('Código ISWC', iswc);
+  tableRow('Intérprete', interpreterName);
+  cursorY += 5;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`CPF: ${composerDoc}`, margin + 4, leftY);
-  leftY += lineHeight;
-  doc.text(`Cidade / UF: ${data.composerCityState || 'Não informado'}`, margin + 4, leftY);
-
-  // Outorgado: a liberação sai em nome do responsável (CPF/CNPJ), mas quem
-  // grava pode ser uma banda ou dupla.
-  const rightX = margin + colWidth + 10;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(margin + colWidth + 6, cursorY, colWidth, partiesHeight, 2, 2, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(180, 83, 9);
-  doc.text('OUTORGADO (INTÉRPRETE / PRODUTOR):', rightX, cursorY + 6);
-
-  let rightY = cursorY + 12;
-  doc.setFontSize(8);
-  doc.setTextColor(15, 23, 42);
-  doc.text(responsibleLines, rightX, rightY);
-  rightY += responsibleLines.length * lineHeight;
-  doc.text(interpreterLines, rightX, rightY);
-  rightY += interpreterLines.length * lineHeight;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text(`CPF / CNPJ: ${buyerDoc}`, rightX, rightY);
-  rightY += lineHeight;
-  doc.text(`Cidade / UF: ${data.buyerCityState || 'Não informado'}`, rightX, rightY);
-
-  cursorY += partiesHeight + 6;
-
-  // 4. Obra Musical Section
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  const titleLines: string[] = doc.splitTextToSize(`"${data.songTitle}"`, contentWidth - 12);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  const authorLines: string[] = doc.splitTextToSize(`Autoria / Compositores: ${data.authors}`, contentWidth - 12);
-  const songInterpreterLines: string[] = doc.splitTextToSize(`Intérprete: ${interpreterName}`, contentWidth - 12);
-  // Espelha o avanço de linhas abaixo (título, autoria, ISWC, intérprete, modalidade) + margem inferior.
-  const songBoxHeight = 13 + titleLines.length * 5 + 1 + (authorLines.length + 1 + songInterpreterLines.length) * 4 + 3 + 5;
-
-  ensureSpace(songBoxHeight + 5);
-  doc.setFillColor(241, 245, 249); // slate-100
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(margin, cursorY, contentWidth, songBoxHeight, 2, 2, 'FD');
-
-  // Left Amber indicator bar
-  doc.setFillColor(245, 158, 11);
-  doc.rect(margin, cursorY, 2.5, songBoxHeight, 'F');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('OBRA MUSICAL OBJETO DA AUTORIZAÇÃO:', margin + 6, cursorY + 6);
-
-  let songY = cursorY + 13;
-  doc.setFontSize(12);
-  doc.setTextColor(15, 23, 42);
-  doc.text(titleLines, margin + 6, songY);
-  songY += titleLines.length * 5 + 1;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(51, 65, 85);
-  doc.text(authorLines, margin + 6, songY);
-  songY += authorLines.length * 4;
-  doc.text(`Código ISWC: ${iswc}`, margin + 6, songY);
-  songY += 4;
-  doc.text(songInterpreterLines, margin + 6, songY);
-  songY += songInterpreterLines.length * 4 + 3;
-
-  // Split details row: Modalidade & Valor
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(180, 83, 9);
-  doc.text(`Modalidade de Licença: ${data.releaseType}`, margin + 6, songY);
-
+  sectionHeader('III', 'Condições da autorização');
+  cursorY -= 7;
+  tableRow('Modalidade de licença', data.releaseType);
   const valueText = typeof data.agreedValue === 'number'
-    ? `Valor Acordado: R$ ${data.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-    : 'Valor Acordado: Conforme Termo de Negociação';
+    ? `R$ ${data.agreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+    : 'Conforme Termo de Negociação';
+  tableRow('Valor acordado', valueText);
+  tableRow('Finalidade autorizada', data.authorizedPurpose || 'Gravação, fixação e distribuição fonográfica comercial e promocional.');
+  cursorY += 5;
 
-  doc.setTextColor(22, 101, 52);
-  doc.text(valueText, margin + 95, songY);
-
-  cursorY += songBoxHeight + 5;
-
-  // 5. Finalidade e Condições
-  const writeSection = (title: string, paragraphs: string[], fontSize = 8, paragraphLineHeight = 3.8) => {
-    ensureSpace(4.5 + paragraphLineHeight * 2);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text(title, margin, cursorY);
-    cursorY += 4.5;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(fontSize);
-    doc.setTextColor(51, 65, 85);
-    paragraphs.forEach(paragraph => {
-      const lines: string[] = doc.splitTextToSize(paragraph, contentWidth - 4);
-      lines.forEach(line => {
-        ensureSpace(paragraphLineHeight);
-        doc.text(line, margin, cursorY);
-        cursorY += paragraphLineHeight;
-      });
-      cursorY += 1.5;
-    });
-    cursorY += 2.5;
-  };
-
-  writeSection('1. FINALIDADE DECLARADA E AUTORIZADA', [
-    data.authorizedPurpose || 'Gravação, fixação e distribuição fonográfica comercial e promocional.'
-  ]);
-
+  let legalSection = 'IV';
   if (data.additionalConditions) {
-    writeSection('2. CLÁUSULAS E CONDIÇÕES ESPECIAIS', [data.additionalConditions]);
+    sectionHeader('IV', 'Cláusulas e condições especiais');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.6);
+    doc.setTextColor(...navy);
+    doc.text('4.1', margin, cursorY);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...slate);
+    const specialLines = doc.splitTextToSize(data.additionalConditions, contentWidth - 11) as string[];
+    doc.text(specialLines, margin + 9, cursorY);
+    cursorY += specialLines.length * 4.8 + 7;
+    legalSection = 'V';
   }
 
-  // 6. Base Legal
-  writeSection(`${data.additionalConditions ? '3' : '2'}. DECLARAÇÃO DE EFICÁCIA E VALIDADE JURÍDICA`, [
+  const legalClauses = [
     ...RELEASE_LEGAL_CLAUSES,
     'O presente instrumento é emitido por via eletrônica nos termos da Lei Federal nº 9.610/1998 (Lei de Direitos Autorais) e em conformidade com o art. 10, § 2º da Medida Provisória nº 2.200-2/2001, constituindo título hábil para fins de registro fonográfico, liberação em produtoras, distribuidoras digitais e órgãos arrecadadores de direitos autorais.'
-  ], 7.5, 3.6);
-  cursorY += 2;
+  ];
 
-  // 7. Signature & Electronic Verification Box
-  // A URL fica em linha própria, quebrada antes do selo de assinatura (à direita).
-  const sigBoxWidth = 65;
-  const sigBoxX = margin + contentWidth - sigBoxWidth - 4;
+  // Mantém o título junto da primeira cláusula. Antes ele podia ficar
+  // isolado no final da página anterior, prejudicando a leitura do documento.
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  const urlLines: string[] = doc.splitTextToSize(validationUrl, sigBoxX - (margin + 6) - 3);
-  const verificationBoxHeight = Math.max(28, 23 + urlLines.length * 3 + 2);
+  doc.setFontSize(9.8);
+  const firstLegalLines = doc.splitTextToSize(legalClauses[0], contentWidth - 11) as string[];
+  ensureSpace(11 + firstLegalLines.length * 4.1 + 4);
+  sectionHeader(legalSection, 'Declaração de eficácia e validade jurídica');
 
-  ensureSpace(verificationBoxHeight + 2);
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(margin, cursorY, contentWidth, verificationBoxHeight, 2, 2, 'FD');
+  legalClauses.forEach((clause, index) => {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.8);
+    const clauseX = margin + 10;
+    const lines = doc.splitTextToSize(clause, pageWidth - margin - clauseX) as string[];
+    const clauseLineHeight = 5.05;
+    ensureSpace(lines.length * clauseLineHeight + 5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...navy);
+    doc.text(`${legalSection}.${index + 1}`, margin, cursorY);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...slate);
+    lines.forEach((lineText, lineIndex) => {
+      doc.text(lineText, clauseX, cursorY + lineIndex * clauseLineHeight);
+    });
+    cursorY += lines.length * clauseLineHeight + 4;
+  });
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`Data de Emissão: ${formatDate(data.issueDate)}`, margin + 6, cursorY + 7);
-
+  ensureSpace(54);
+  cursorY += 4;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`Código do Registro: ${data.documentCode}`, margin + 6, cursorY + 13);
-  doc.text('Endereço de Consulta:', margin + 6, cursorY + 19);
-  doc.setFontSize(6.5);
-  doc.text(urlLines, margin + 6, cursorY + 23);
-
-  // Digital Signature seal box
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(sigBoxX, cursorY + 3, sigBoxWidth, 22, 1.5, 1.5, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(180, 83, 9);
-  doc.text('ASSINATURA DIGITAL REGISTRADA', sigBoxX + 4, cursorY + 8);
-
+  doc.setFontSize(10.2);
+  doc.setTextColor(...slate);
+  doc.text(`${data.composerCityState || 'Local não informado'}, ${formatDate(data.issueDate)}.`, margin, cursorY);
+  cursorY += 10;
+  const sigWidth = 88;
+  const authX = margin + 98;
   doc.setFont('times', 'italic');
+  doc.setFontSize(14.4);
+  doc.setTextColor(...navy);
+  doc.text(data.composerName, margin + sigWidth / 2, cursorY + 8, { align: 'center' });
+  doc.setDrawColor(...navy);
+  doc.line(margin, cursorY + 11, margin + sigWidth, cursorY + 11);
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.setTextColor(15, 23, 42);
-  doc.text(data.composerName, sigBoxX + 4, cursorY + 14);
+  doc.text(data.composerName.toUpperCase(), margin + sigWidth / 2, cursorY + 17, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.8);
+  doc.setTextColor(...muted);
+  doc.text(`CPF ${composerDoc}  -  Outorgante`, margin + sigWidth / 2, cursorY + 22, { align: 'center' });
+  doc.setFontSize(7.3);
+  const signatureText = `Assinado eletronicamente - ${data.digitalSignature || 'Assinatura Eletrônica Autenticada'}`;
+  const signatureLines = doc.splitTextToSize(signatureText, sigWidth - 8) as string[];
+  doc.text(signatureLines.slice(0, 2), margin + sigWidth / 2, cursorY + 27, { align: 'center' });
 
-  doc.setFont('courier', 'normal');
-  doc.setFontSize(6);
-  doc.setTextColor(100, 116, 139);
-  const sigSnippet = data.digitalSignature ? (data.digitalSignature.length > 38 ? `${data.digitalSignature.slice(0, 38)}...` : data.digitalSignature) : 'Assinatura Eletrônica Autenticada';
-  doc.text(sigSnippet, sigBoxX + 4, cursorY + 20);
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(...line);
+  doc.roundedRect(authX, cursorY - 2, pageWidth - margin - authX, 36, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.4);
+  doc.setTextColor(...gold);
+  doc.text('AUTENTICIDADE VERIFICÁVEL', authX + 5, cursorY + 5);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.8);
+  doc.setTextColor(...slate);
+  doc.text('Consulte a autenticidade deste documento', authX + 5, cursorY + 11);
+  doc.text('pelo código ou pelo endereço abaixo.', authX + 5, cursorY + 15);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...navy);
+  doc.text(data.documentCode, authX + 5, cursorY + 21);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.4);
+  doc.setTextColor(...muted);
+  doc.textWithLink('mercadodocompositor.com.br/validar-documento', authX + 5, cursorY + 28, { url: validationUrl });
+  doc.setFontSize(6.7);
+  doc.text('Clique no endereço ou informe o código acima.', authX + 5, cursorY + 32);
 
-  // 8. Footer
   const totalPages = doc.getNumberOfPages();
-  const footerY = pageHeight - 12;
+  const footerY = pageHeight - 10;
   for (let page = 1; page <= totalPages; page += 1) {
     doc.setPage(page);
-    doc.setDrawColor(226, 232, 240);
-    doc.line(margin, footerY - 4, margin + contentWidth, footerY - 4);
-
+    doc.setDrawColor(...line);
+    doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`${APP_CONFIG.name} • Plataforma de conexão fonográfica e gestão de registros`, margin, footerY);
-    doc.text(`Página ${page} de ${totalPages}  •  Emitido em ${new Date().toLocaleDateString('pt-BR')}`, margin + contentWidth - 45, footerY);
+    doc.setFontSize(6);
+    doc.setTextColor(...muted);
+    doc.text(`${APP_CONFIG.name} - Documento emitido e registrado eletronicamente - ${data.documentCode}`, margin, footerY);
+    doc.text(`Página ${page} de ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
   }
 
   return doc;

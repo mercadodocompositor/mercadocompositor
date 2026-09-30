@@ -27,6 +27,7 @@ Pré-requisito: Node.js 20+.
 
    O último script falha explicitamente se consentimento, validação de CPF/CNPJ, entrega automática ou sincronização do outbox tiverem sido sobrescritos.
 2. Configure os secrets listados em [`supabase/functions/.env.example`](supabase/functions/.env.example), inclusive `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET`.
+   Para usar o template HTML de entrega do termo no Resend, siga [`supabase/resend/README.md`](supabase/resend/README.md) antes de configurar `RESEND_RELEASE_DELIVERY_TEMPLATE_ID`.
 3. Publique as Edge Functions em uso:
 
    ```text

@@ -27,34 +27,34 @@ const FAQ_ITEMS: FAQItem[] = [
   {
     id: 'protecao-audio',
     category: 'protecao',
-    question: 'Como funciona a proteção da minha música contra cópias não autorizadas?',
+    question: 'Minhas músicas estão protegidas?',
     answer: 'O Mercado do Compositor foi projetado com foco absoluto na segurança do autor. Na sua página pública, os ouvintes têm acesso apenas a prévias de áudio de no máximo 85 segundos, com trava automática no player. O arquivo de áudio original completo permanece criptografado e restrito ao seu painel administrativo.',
     highlight: true
   },
   {
     id: 'comissao-negociacoes',
     category: 'pagamentos',
-    question: 'A plataforma retém alguma porcentagem ou comissão sobre os valores que eu negociar?',
+    question: 'Como funciona a prévia protegida de 85 segundos?',
     answer: 'Não! Cobramos zero comissão sobre suas negociações. O Mercado do Compositor opera sob o modelo de assinatura mensal fixa. Isso significa que 100% do valor acordado pela liberação ou gravação da sua música é pago diretamente pelo interessado para a sua conta (via chave PIX ou transferência bancária), sem intermediários.',
     highlight: true
   },
   {
     id: 'ecad-direitos',
     category: 'direitos',
-    question: 'Como funcionam os Direitos Autorais e a arrecadação pelo ECAD?',
+    question: 'Como entro em contato com os artistas?',
     answer: 'A liberação emitida pela plataforma concede autorização para fixação e gravação fonográfica da obra. Seus direitos autorais morais e patrimoniais de execução pública continuam 100% resguardados pela Lei Federal nº 9.610/98. Sempre que a música tocar em rádios, shows, televisão ou plataformas digitais, os direitos de execução pública continuam sendo recolhidos pelo ECAD através da sua sociedade autoral (UBC, ABRAMUS, etc.).',
     highlight: true
   },
   {
     id: 'validacao-documento',
     category: 'direitos',
-    question: 'Como é gerado e validado o termo de autorização de gravação?',
+    question: 'Preciso liberar a gravação da minha música?',
     answer: 'Quando você aceitar uma proposta, o sistema gera com 1 clique um Termo de Autorização de Gravação em PDF estruturado profissionalmente. O documento inclui os dados do autor, intérprete, obra e um Código Validador Único. Qualquer pessoa pode conferir a autenticidade do documento em nossa página pública de validação oficial.',
   },
   {
     id: 'cnpj-sociedade',
     category: 'plataforma',
-    question: 'Preciso ter CNPJ ou ser associado a alguma entidade para usar a plataforma?',
+    question: 'Como funciona o cancelamento?',
     answer: 'Não é obrigatório. Qualquer compositor brasileiro com CPF pode criar seu catálogo, organizar letras e disponibilizar suas prévias. Se você já for cadastrado em alguma sociedade de gestão coletiva (UBC, ABRAMUS, SOCINPRO, AMAR, etc.), poderá informar sua filiação no seu perfil para transmitir ainda mais credibilidade aos produtores.',
   },
   {
@@ -91,30 +91,33 @@ export const FAQSection: React.FC = () => {
   };
 
   return (
-    <section id="faq" className="scroll-mt-24 py-20 md:py-28 bg-[#060B18] text-white relative border-t border-amber-500/20 overflow-hidden">
+    <section id="faq" className="relative scroll-mt-24 overflow-hidden border-t border-amber-500/20 bg-[#061326] py-16 text-white md:py-20">
+      <img src="/faq-studio.webp" alt="" aria-hidden="true" className="absolute inset-y-0 left-0 h-full w-full object-cover object-left opacity-90 lg:w-[36%]" />
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#061326] via-35% to-[#061326]" />
       {/* Glow de ambientação */}
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-amber-500/10 blur-[150px] rounded-full pointer-events-none" />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 space-y-12">
+      <div className="relative z-10 mx-auto grid max-w-[1536px] gap-10 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.25fr] lg:gap-14 lg:pl-[29%] xl:pr-16">
         
         {/* Header da Seção */}
-        <div className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold">
-            <HelpCircle className="w-4 h-4 text-amber-400" />
-            <span>Tire Todas as Suas Dúvidas</span>
-          </div>
-
-          <h2 className="text-3xl sm:text-5xl font-serif italic text-white tracking-tight leading-tight">
-            Perguntas <span className="text-amber-400 font-serif">Frequentes</span>
+        <div className="max-w-md space-y-5 text-left">
+          <h2 className="font-serif text-4xl leading-tight tracking-tight text-white sm:text-5xl">
+            Dúvidas frequentes
           </h2>
 
-          <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
-            Entenda como funciona a segurança das suas obras, arrecadação autoral, emissão de termos jurídicos e pagamentos diretos.
+          <p className="text-lg leading-relaxed text-slate-200">
+            Transparência para você compor com ainda mais tranquilidade.
           </p>
+
+          <div className="grid grid-cols-3 gap-4 pt-5">
+            <div><ShieldCheck className="mb-3 h-9 w-9 text-amber-400" /><strong className="font-serif text-sm">Seguro</strong><p className="mt-1 text-xs leading-relaxed text-slate-400">Seus direitos sempre respeitados</p></div>
+            <div><MessageCircle className="mb-3 h-9 w-9 text-amber-400" /><strong className="font-serif text-sm">Conexões reais</strong><p className="mt-1 text-xs leading-relaxed text-slate-400">Com artistas, produtores e selos</p></div>
+            <div><HelpCircle className="mb-3 h-9 w-9 text-amber-400" /><strong className="font-serif text-sm">Do seu lado</strong><p className="mt-1 text-xs leading-relaxed text-slate-400">Em todas as fases da sua jornada</p></div>
+          </div>
         </div>
 
         {/* Filtros rápidos por categoria */}
-        <div className="flex items-center justify-center gap-2 overflow-x-auto pb-2 no-scrollbar text-xs">
+        <div className="hidden items-center justify-center gap-2 overflow-x-auto pb-2 no-scrollbar text-xs">
           {[
             { id: 'todos', label: 'Todas as Dúvidas' },
             { id: 'protecao', label: 'Proteção & Áudio' },
@@ -140,40 +143,34 @@ export const FAQSection: React.FC = () => {
         </div>
 
         {/* Lista Accordion */}
-        <div className="space-y-4 max-w-3xl mx-auto">
-          {filteredItems.map(item => {
+        <div className="space-y-0 self-start border-y border-slate-600/80">
+          {filteredItems.slice(0, 5).map(item => {
             const isOpen = openId === item.id;
             return (
               <div
                 key={item.id}
-                className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
+                className={`border-b border-slate-600/80 transition-all duration-300 last:border-b-0 ${
                   isOpen
-                    ? 'bg-slate-900/90 border-amber-500/50 shadow-xl shadow-amber-500/5 ring-1 ring-amber-500/20'
-                    : 'bg-slate-900/50 border-slate-800/80 hover:border-slate-700'
+                    ? 'bg-[#0d1b30]/95'
+                    : 'bg-transparent hover:bg-white/[0.03]'
                 }`}
               >
                 <button
                   type="button"
                   onClick={() => toggleItem(item.id)}
-                  className="w-full text-left p-5 sm:p-6 flex items-center justify-between gap-4 transition cursor-pointer"
+                  className="flex w-full cursor-pointer items-center justify-between gap-4 p-4 text-left transition sm:px-5"
                   aria-expanded={isOpen}
                 >
                   <span className="font-serif font-bold text-base sm:text-lg text-white flex items-center gap-3">
-                    {item.highlight && (
-                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                    )}
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-400 text-lg leading-none text-[#071426]">{isOpen ? '−' : '+'}</span>
                     <span>{item.question}</span>
                   </span>
 
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-300 ${
-                    isOpen ? 'bg-amber-500 text-slate-950 rotate-180' : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    <ChevronDown className="w-4 h-4" />
-                  </div>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {isOpen && (
-                  <div className="px-5 pb-6 sm:px-6 sm:pb-6 text-slate-300 text-sm leading-relaxed border-t border-slate-800/60 pt-4 animate-fadeIn">
+                  <div className="animate-fadeIn px-5 pb-5 pl-14 text-sm leading-relaxed text-slate-300">
                     <p>{item.answer}</p>
                   </div>
                 )}
@@ -183,7 +180,7 @@ export const FAQSection: React.FC = () => {
         </div>
 
         {/* Box de Contato e Ajuda Adicional */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-4 max-w-2xl mx-auto">
+        <div className="hidden p-6 sm:p-8 rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-4 max-w-2xl mx-auto">
           <h3 className="text-lg font-bold text-white font-serif">Não encontrou a resposta que procurava?</h3>
           <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
             Nossa equipe de suporte está pronta para esclarecer qualquer dúvida sobre seu catálogo, direitos e termos de autorização.

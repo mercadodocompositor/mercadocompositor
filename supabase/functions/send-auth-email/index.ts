@@ -1,4 +1,6 @@
 import { Webhook } from 'npm:standardwebhooks@1.0.0'
+import { renderBrandedEmail } from '../_shared/email-template.ts'
+import { authTemplateAlias, templatesEnabled, templateVariables } from '../_shared/notification-templates.ts'
 
 type EmailAction = 'signup' | 'recovery' | 'invite' | 'magiclink' | 'email_change' | 'reauthentication'
 type HookPayload = {
@@ -18,10 +20,6 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { 'content-type': 'application/json; charset=utf-8' },
 })
 
-const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
-}[char] as string))
-
 const content: Record<EmailAction, { subject: string; title: string; message: string; button: string }> = {
   signup: { subject: 'Confirme sua conta', title: 'Confirme seu cadastro', message: 'Clique no botão para confirmar seu e-mail e ativar sua conta de compositor.', button: 'Confirmar minha conta' },
   recovery: { subject: 'Recuperação de senha', title: 'Crie uma nova senha', message: 'Recebemos uma solicitação para redefinir a senha da sua conta.', button: 'Redefinir minha senha' },
@@ -33,11 +31,9 @@ const content: Record<EmailAction, { subject: string; title: string; message: st
 
 const renderEmail = (action: EmailAction, verificationUrl: string, token: string) => {
   const copy = content[action] ?? content.magiclink
-  const safeUrl = escapeHtml(verificationUrl)
-  const code = escapeHtml(token)
   return {
     subject: copy.subject,
-    html: `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;background:#060b18;font-family:Arial,sans-serif;color:#e2e8f0"><div style="display:none;max-height:0;overflow:hidden">${copy.subject}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#060b18;padding:32px 16px"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#0a1128;border:1px solid #263147;border-radius:20px"><tr><td style="padding:34px"><p style="margin:0 0 10px;color:#fbbf24;font-size:12px;font-weight:bold;letter-spacing:2px;text-transform:uppercase">Mercado do Compositor</p><h1 style="margin:0 0 18px;color:#fff;font-size:28px">${copy.title}</h1><p style="margin:0 0 26px;color:#cbd5e1;font-size:15px;line-height:1.6">${copy.message}</p><a href="${safeUrl}" style="display:inline-block;background:#f59e0b;color:#111827;text-decoration:none;font-weight:bold;padding:14px 22px;border-radius:12px">${copy.button}</a><p style="margin:26px 0 8px;color:#94a3b8;font-size:12px">Se o botão não funcionar, use este código:</p><div style="background:#020617;border:1px solid #263147;border-radius:10px;padding:12px;color:#fbbf24;font-family:monospace;font-size:18px;letter-spacing:3px;text-align:center">${code}</div><p style="margin:26px 0 0;color:#64748b;font-size:12px;line-height:1.5">Se você não solicitou esta mensagem, ignore este e-mail. Nunca compartilhe este código.</p></td></tr></table></td></tr></table></body></html>`,
+    html: renderBrandedEmail({ preheader: copy.subject, eyebrow: 'Acesso seguro', title: copy.title, body: copy.message, actionUrl: verificationUrl, actionLabel: copy.button, code: token, footer: 'Se você não solicitou esta mensagem, ignore este e-mail. Nunca compartilhe seu código de segurança.' }),
   }
 }
 
@@ -49,6 +45,7 @@ Deno.serve(async request => {
   const sender = Deno.env.get('AUTH_EMAIL_FROM')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   if (!resendKey || !rawHookSecret || !sender || !supabaseUrl) return json({ error: 'missing_server_configuration' }, 500)
+  const useTemplates = templatesEnabled(Deno.env.get('RESEND_USE_TEMPLATES'))
 
   try {
     const body = await request.text()
@@ -66,10 +63,16 @@ Deno.serve(async request => {
     for (const delivery of deliveries) {
       const verificationUrl = `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(delivery.tokenHash)}&type=${encodeURIComponent(email.email_action_type)}&redirect_to=${encodeURIComponent(email.redirect_to)}`
       const rendered = renderEmail(email.email_action_type, verificationUrl, delivery.token)
+      const payload = useTemplates
+        ? { from: sender, to: [delivery.recipient], subject: rendered.subject, template: {
+            id: authTemplateAlias(email.email_action_type),
+            variables: templateVariables({ TOKEN: delivery.token }, verificationUrl),
+          } }
+        : { from: sender, to: [delivery.recipient], subject: rendered.subject, html: rendered.html }
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { authorization: `Bearer ${resendKey}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ from: sender, to: [delivery.recipient], subject: rendered.subject, html: rendered.html }),
+        body: JSON.stringify(payload),
       })
       if (!response.ok) {
         console.error('Resend error', response.status, await response.text())

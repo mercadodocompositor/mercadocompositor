@@ -108,11 +108,6 @@ begin
 
   select id into v_target_user_id from auth.users where lower(email) = lower(trim(p_email)) limit 1;
   if v_target_user_id is null then
-    -- Tenta busca alternativa em private_profiles
-    select user_id into v_target_user_id from public.private_profiles where lower(email) = lower(trim(p_email)) limit 1;
-  end if;
-
-  if v_target_user_id is null then
     raise exception using errcode = 'P0002', message = 'Usuário com este e-mail não foi encontrado.';
   end if;
 

@@ -100,10 +100,10 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
   return (
     <ModalPortal>
     <div className="release-print-root fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:p-0 print:static print:bg-white">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="release-document-title" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-4 sm:p-8 shadow-2xl relative my-6 text-slate-100 print:border-none print:shadow-none print:bg-white print:text-slate-900 print:my-0 print:max-w-none max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="release-document-title" className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-4xl w-full shadow-2xl relative my-6 text-slate-100 print:border-none print:shadow-none print:bg-white print:text-slate-900 print:my-0 print:max-w-none max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col">
         
         {/* Header Actions (Hidden when printing) */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6 print:hidden">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 sm:px-7 py-4 shrink-0 print:hidden">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
               <FileCheck className="w-5 h-5" />
@@ -127,6 +127,8 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           </div>
         </div>
 
+        <div className="flex-1 overflow-y-auto touch-scroll px-4 py-5 sm:px-7 sm:py-6">
+
         {!document.documentPath && onRetryArchive && (
           <div role={archiveError ? 'alert' : 'status'} className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200 print:hidden">
             <p>Termo emitido. {archiving ? 'Arquivando PDF...' : archiveError ? `Falha ao arquivar o PDF: ${archiveError}` : 'O PDF ainda precisa ser arquivado.'}</p>
@@ -134,19 +136,20 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           </div>
         )}
 
-        {document.documentPath && (
-          <div role="status" className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200 print:hidden">
-            PDF arquivado. O download utiliza a versão armazenada.
-          </div>
-        )}
-
         {/* Authenticity Banner */}
-        <div className="mb-6 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-300 print:bg-emerald-50 print:border-emerald-400 print:text-emerald-900">
-          <div className="flex items-center gap-2">
+        <div className="mb-5 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs text-emerald-300 print:bg-emerald-50 print:border-emerald-400 print:text-emerald-900">
+          <div className="flex items-start sm:items-center gap-2.5">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="font-bold uppercase tracking-wider text-[10px] sm:text-xs">
-              Registro eletrônico com autenticidade verificável
-            </span>
+            <div>
+              <span className="font-bold uppercase tracking-wider text-[10px] sm:text-xs block">
+                Registro eletrônico com autenticidade verificável
+              </span>
+              {document.documentPath && (
+                <span className="mt-0.5 block text-[11px] text-emerald-200/80 normal-case tracking-normal">
+                  PDF arquivado com segurança. O download utiliza a versão armazenada.
+                </span>
+              )}
+            </div>
           </div>
           <a
             href={validationUrl}
@@ -160,23 +163,23 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
         </div>
 
         {/* Printable Official Document Box */}
-        <div className="bg-slate-950 border border-slate-800 p-5 sm:p-8 rounded-2xl shadow-inner space-y-6 text-slate-200 print:bg-white print:text-slate-900 print:border-none print:p-0">
+        <div className="bg-slate-950 border border-slate-700/80 p-5 sm:p-8 rounded-2xl shadow-inner space-y-6 text-slate-200 print:bg-white print:text-slate-900 print:border-none print:p-0">
           
           {/* Header Document */}
           <div className="text-center border-b border-slate-800 print:border-slate-300 pb-6 space-y-2">
             <p className="text-[11px] uppercase tracking-widest text-amber-400 font-bold print:text-amber-700">
               {APP_CONFIG.name} — AUTORIZAÇÃO E CESSÃO FONOGRÁFICA
             </p>
-            <h2 className="text-xl sm:text-2xl font-serif font-bold text-white print:text-black tracking-tight uppercase">
+            <h2 className="text-2xl sm:text-[1.7rem] font-serif font-bold text-white print:text-black tracking-tight uppercase leading-tight">
               Termo de Liberação e Autorização de Gravação
             </h2>
-            <p className="text-xs text-slate-400 print:text-slate-600">
+            <p className="text-sm text-slate-300 print:text-slate-600">
               Autorização Expressa de Direitos Patrimoniais de Autor para Fixação e Exploração Fonográfica
             </p>
           </div>
 
           {/* Parties Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-900/60 print:bg-slate-100 p-4 rounded-xl border border-slate-800/80 print:border-slate-300 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-900/60 print:bg-slate-100 p-4 rounded-xl border border-slate-800/80 print:border-slate-300 text-[13px] leading-relaxed">
             <div className="space-y-1">
               <span className="font-bold uppercase text-amber-400 print:text-amber-700 block text-[10px]">
                 OUTORGANTE (COMPOSITOR TITULAR):
@@ -200,7 +203,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           </div>
 
           {/* Song Info */}
-          <div className="space-y-3 text-xs leading-relaxed">
+          <div className="space-y-4 text-[13px] leading-relaxed">
             <div className="border-l-2 border-amber-500 pl-3 py-1 space-y-1">
               <span className="text-slate-400 block text-[10px] uppercase font-bold">OBRA MUSICAL OBJETO DA AUTORIZAÇÃO:</span>
               <p className="text-base font-bold text-white print:text-slate-900">“{document.songTitle}”</p>
@@ -250,7 +253,7 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
           </div>
 
           {/* Signature and Digital Validation Box */}
-          <div className="pt-6 border-t border-slate-800 print:border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+          <div className="pt-6 border-t border-slate-800 print:border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 text-[13px]">
             <div className="space-y-1 text-center sm:text-left">
               <p className="text-slate-400">Data de Emissão: <strong className="text-white print:text-slate-900">{formatDate(document.issueDate)}</strong></p>
               <p className="text-slate-500 font-mono text-[11px]">Código de Autenticidade: <strong className="text-amber-400">{document.documentCode}</strong></p>
@@ -281,8 +284,10 @@ export const LiberacaoDocumentModal: React.FC<LiberacaoDocumentModalProps> = ({
         {downloadError && <div role="alert" className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">{downloadError}</div>}
         {downloadNotice && <div role="status" className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{downloadNotice}</div>}
 
+        </div>
+
         {/* Action Buttons */}
-        <div className="mt-6 pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+        <div className="shrink-0 border-t border-slate-700/80 bg-slate-900/95 backdrop-blur px-4 py-4 sm:px-7 flex flex-col lg:flex-row lg:items-center justify-between gap-3 print:hidden">
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"

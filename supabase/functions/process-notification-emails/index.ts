@@ -1,10 +1,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { escapeHtml, renderBrandedEmail } from '../_shared/email-template.ts'
+import { releaseTemplateVariables } from '../_shared/release-email.ts'
+import { resolveNotificationTemplate, templatesEnabled, templateVariables } from '../_shared/notification-templates.ts'
+
+const escapeVariables = (variables: Record<string, string>) =>
+  Object.fromEntries(Object.entries(variables).map(([key, value]) => [key, escapeHtml(value)]))
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'content-type': 'application/json; charset=utf-8' },
 })
-const escapeHtml = (value: string) => value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]!))
-
 Deno.serve(async request => {
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
   const cronSecret = Deno.env.get('NOTIFICATION_CRON_SECRET')
@@ -12,6 +16,8 @@ Deno.serve(async request => {
   const url = Deno.env.get('SUPABASE_URL'), key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const resendKey = Deno.env.get('RESEND_API_KEY'), sender = Deno.env.get('NOTIFICATION_EMAIL_FROM') || Deno.env.get('AUTH_EMAIL_FROM')
   const appUrl = (Deno.env.get('APP_URL') || 'https://mercadodocompositor.com.br').replace(/\/$/, '')
+  const releaseTemplateId = Deno.env.get('RESEND_RELEASE_DELIVERY_TEMPLATE_ID')?.trim()
+  const useTemplates = templatesEnabled(Deno.env.get('RESEND_USE_TEMPLATES'))
   if (!url || !key || !resendKey || !sender) return json({ error: 'missing_server_configuration' }, 500)
   const admin = createClient(url, key)
   const { data: jobs, error } = await admin.rpc('claim_notification_email_jobs', { p_limit: 25 })
@@ -27,10 +33,28 @@ Deno.serve(async request => {
       const footer = job.audience === 'buyer'
         ? 'Você recebeu este e-mail porque solicitou a liberação desta obra pelo Mercado do Compositor.'
         : 'Mensagem transacional da sua conta. Preferências de propostas podem ser alteradas no painel.'
+      let email: Record<string, unknown> = { from: sender, to: [job.recipient], subject: job.subject,
+        html: renderBrandedEmail({ preheader: job.subject, eyebrow: job.audience === 'buyer' ? 'Sua solicitação' : 'Atualização da sua conta', title: job.subject, body: job.body, actionUrl, actionLabel, footer }) }
+      if (releaseTemplateId && job.delivery_id && job.action_url?.startsWith('/entrega/')) {
+        const { data: delivery, error: deliveryError } = await admin.from('release_deliveries')
+          .select('release_id').eq('id', job.delivery_id).single()
+        if (deliveryError || !delivery) throw deliveryError || new Error('Entrega não encontrada')
+        const { data: release, error: releaseError } = await admin.from('releases')
+          .select('buyer_name,composer_name,song_title,document_code,agreed_value')
+          .eq('id', delivery.release_id).single()
+        if (releaseError || !release) throw releaseError || new Error('Termo não encontrado')
+        email = { from: sender, to: [job.recipient], subject: job.subject, template: {
+          id: releaseTemplateId, variables: escapeVariables(releaseTemplateVariables(release, actionUrl)),
+        } }
+      } else if (useTemplates) {
+        const resolved = resolveNotificationTemplate(job.subject, job.body)
+        if (resolved) email = { from: sender, to: [job.recipient], subject: job.subject, template: {
+          id: resolved.alias, variables: templateVariables(resolved.variables, actionUrl),
+        } }
+      }
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST', headers: { authorization: `Bearer ${resendKey}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ from: sender, to: [job.recipient], subject: job.subject,
-          html: `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#060b18;font-family:Arial,sans-serif;color:#e2e8f0"><table width="100%" role="presentation" style="padding:32px 16px"><tr><td align="center"><table width="100%" role="presentation" style="max-width:560px;background:#0a1128;border:1px solid #263147;border-radius:20px"><tr><td style="padding:34px"><p style="color:#fbbf24;font-size:12px;font-weight:bold;letter-spacing:2px">MERCADO DO COMPOSITOR</p><h1 style="color:#fff;font-size:24px">${escapeHtml(job.subject)}</h1><p style="color:#cbd5e1;line-height:1.6">${escapeHtml(job.body)}</p><a href="${escapeHtml(actionUrl)}" style="display:inline-block;background:#f59e0b;color:#111827;text-decoration:none;font-weight:bold;padding:14px 22px;border-radius:12px">${actionLabel}</a><p style="margin-top:26px;color:#64748b;font-size:12px">${footer}</p></td></tr></table></td></tr></table></body></html>` }),
+        body: JSON.stringify(email),
       })
       if (!response.ok) throw new Error(`Resend ${response.status}: ${(await response.text()).slice(0,300)}`)
       const provider = await response.json().catch(() => ({}))

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Volume2, VolumeX, RotateCcw, Sparkles } from 'lucide-react';
+import { PREVIEW_MAX_SECONDS } from '../../config/media';
 
 export interface AdminWaveformPlayerProps {
   audioUrl?: string | null;
@@ -12,7 +13,7 @@ export interface AdminWaveformPlayerProps {
 export const AdminWaveformPlayer: React.FC<AdminWaveformPlayerProps> = ({
   audioUrl,
   title,
-  maxPreviewSeconds = 60,
+  maxPreviewSeconds = PREVIEW_MAX_SECONDS,
   onPlayStateChange,
   externalStopTrigger
 }) => {

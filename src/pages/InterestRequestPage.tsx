@@ -104,9 +104,17 @@ export const InterestRequestPage: React.FC = () => {
   useEffect(() => {
     let active = true;
     if (!username || !songRef) { setLoading(false); return; }
+    let redirecting = false;
     getPublicComposer(username.toLowerCase())
       .then(catalog => {
         if (!active) return;
+        // Endereço antigo do compositor: segue para o atual mantendo a música.
+        const currentUsername = catalog?.profile.username?.toLowerCase();
+        if (currentUsername && currentUsername !== username.toLowerCase()) {
+          redirecting = true;
+          navigate(`/compositor/${currentUsername}/musica/${songRef}/interesse`, { replace: true });
+          return;
+        }
         const found = catalog?.songs?.find(item =>
           (item.id === songRef || getSongUrlKey(item) === songRef.toLowerCase())
           && item.status === 'published'
@@ -118,7 +126,7 @@ export const InterestRequestPage: React.FC = () => {
         }
       })
       .catch(() => active && setSong(null))
-      .finally(() => active && setLoading(false));
+      .finally(() => active && !redirecting && setLoading(false));
     return () => { active = false; };
   }, [navigate, songRef, username]);
 

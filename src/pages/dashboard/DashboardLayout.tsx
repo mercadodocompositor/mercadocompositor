@@ -135,6 +135,7 @@ export const DashboardLayout: React.FC = () => {
   const songUsagePercent = currentPlan.maxSongs ? Math.min(100, (songs.length / currentPlan.maxSongs) * 100) : 100;
   const publicProfilePath = `/compositor/${profile.username}`;
   const subscriptionMeta = SUBSCRIPTION_STATUS_META[subscription.status];
+  const isOverviewRoute = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
 
   const menuItems = [
     { path: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard },
@@ -383,10 +384,10 @@ export const DashboardLayout: React.FC = () => {
       </header>
 
       {/* Main Container with Sidebar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full grid grid-cols-1 md:grid-cols-12 gap-8">
+      <div className={`${isOverviewRoute ? 'max-w-[1680px] md:gap-5 lg:px-6' : 'max-w-7xl md:gap-8 lg:px-8'} mx-auto grid w-full flex-grow grid-cols-1 gap-6 px-4 py-6 sm:px-6 md:grid-cols-12`}>
 
         {/* DESKTOP SIDEBAR MENU - Editorial Navy Theme */}
-        <aside className="hidden md:block md:col-span-3 space-y-6">
+        <aside className={`hidden space-y-6 md:block ${isOverviewRoute ? 'md:col-span-2' : 'md:col-span-3'}`}>
           <div className="bg-[#0A1128] text-white rounded-3xl p-5 shadow-xl border border-amber-500/20 sticky top-28 space-y-4">
 
             <div className="px-3 pt-2 text-[10px] uppercase font-bold text-slate-400 tracking-widest">
@@ -506,7 +507,7 @@ export const DashboardLayout: React.FC = () => {
         )}
 
         {/* MAIN DASHBOARD CONTENT ROUTE VIEW */}
-        <main id="dashboard-main" tabIndex={-1} className="dashboard-safe-bottom min-w-0 md:col-span-9 md:pb-12">
+        <main id="dashboard-main" tabIndex={-1} className={`dashboard-safe-bottom min-w-0 md:pb-12 ${isOverviewRoute ? 'md:col-span-10' : 'md:col-span-9'}`}>
           {authError && (
             <div role="alert" className="mb-6 flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 sm:flex-row sm:items-center">
               <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" aria-hidden="true" />
