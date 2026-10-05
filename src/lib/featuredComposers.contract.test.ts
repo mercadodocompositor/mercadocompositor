@@ -25,8 +25,9 @@ describe('compositores em destaque', () => {
     }
   });
 
-  it('mostra a seção de destaque só sem filtros e tira os destacados da grade geral', () => {
+  it('mostra a seção de destaque só sem filtros e mantém os destacados na grade geral', () => {
     expect(page).toContain('const showFeaturedSection = !loading && !hasActiveFilters && featuredComposers.length > 0');
-    expect(page).toContain('filteredComposers.filter(comp => !comp.featured)');
+    expect(page).toContain('const gridComposers = filteredComposers;');
+    expect(page).not.toContain('filteredComposers.filter(comp => !comp.featured)');
   });
 });
