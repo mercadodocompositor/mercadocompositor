@@ -5,7 +5,6 @@ import {
   Users, 
   Music, 
   FileCheck2, 
-  TrendingUp, 
   ShieldCheck, 
   CheckCircle2, 
   Clock, 
@@ -16,65 +15,63 @@ import {
   BarChart3,
   PieChart,
   Layers,
-  ArrowRight,
-  TrendingDown
 } from 'lucide-react';
-import { APP_CONFIG } from '../../config/appConfig';
+import { isRemovedComposer } from '../../lib/adminComposerVisibility';
+import { useNavigate } from 'react-router-dom';
 
 interface AdminOverviewTabProps {
   onNavigateTab: (tab: string) => void;
 }
 
 export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTab }) => {
+  const navigate = useNavigate();
   const { 
     adminComposers, 
     adminSongs,
-    songs, 
-    requests, 
-    releases, 
     adminRequests,
     adminReleases,
-    platformSettings, 
-    systemLogs 
+    subscriptionPlans,
+    systemLogs,
+    adminRole
   } = useApp();
 
   const [activePeriod, setActivePeriod] = useState<'6m' | '12m'>('6m');
-  const [hoveredDataPoint, setHoveredDataPoint] = useState<{ month: string; mrr: number; gmv: number; deals: number } | null>(null);
+  const [hoveredDataPoint, setHoveredDataPoint] = useState<{ month: string; year: number; gmv: number; deals: number } | null>(null);
 
-  // Platform Datasets (Prioritize platform-wide admin collections over personal user collections)
-  const effectiveSongs = adminSongs && adminSongs.length > 0 ? adminSongs : songs;
-  const effectiveRequests = adminRequests && adminRequests.length > 0 ? adminRequests : requests;
-  const effectiveReleases = adminReleases && adminReleases.length > 0 ? adminReleases : releases;
+  // O moderador não recebe dados financeiros globais. Sua visão usa apenas o acervo.
+  if (adminRole === 'moderator') {
+    const published = adminSongs.filter(song => song.status === 'published');
+    const pending = adminSongs.filter(song => song.status === 'pending_approval');
+    return <div className="space-y-6 animate-fadeIn pb-12">
+      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 md:p-8">
+        <h1 className="text-2xl font-bold text-white">Visão Geral da Moderação</h1>
+        <p className="mt-2 text-sm text-slate-400">Acompanhe o acervo e as obras aguardando análise.</p>
+      </div>
+      <div className="grid gap-5 sm:grid-cols-3">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6"><p className="text-xs text-slate-400">Obras cadastradas</p><strong className="mt-2 block text-2xl text-white">{adminSongs.length}</strong></div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6"><p className="text-xs text-slate-400">Publicadas</p><strong className="mt-2 block text-2xl text-emerald-400">{published.length}</strong></div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6"><p className="text-xs text-slate-400">Aguardando análise</p><strong className="mt-2 block text-2xl text-amber-400">{pending.length}</strong></div>
+      </div>
+      <button type="button" onClick={() => onNavigateTab('musicas')} className="rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400">Abrir acervo e moderação</button>
+    </div>;
+  }
 
   // Metrics Calculations
-  const activeComposers = adminComposers.filter(c => c.subscriptionStatus === 'active');
-  const pendingComposers = adminComposers.filter(c => c.subscriptionStatus === 'pending');
-  const suspendedComposers = adminComposers.filter(c => c.subscriptionStatus === 'suspended');
-
+  const visibleComposers = adminComposers.filter(c => !isRemovedComposer(c));
+  const activeComposers = visibleComposers.filter(c => c.subscriptionStatus === 'active');
+  const pendingComposers = visibleComposers.filter(c => c.subscriptionStatus === 'pending');
+  const operationalReleases = adminReleases.filter(release => !release.isDemonstrative);
+  const demoRequestIds = new Set(adminReleases.filter(release => release.isDemonstrative).map(release => release.requestId));
+  const operationalRequests = adminRequests.filter(request => !demoRequestIds.has(request.id));
   const mrr = activeComposers.reduce((acc, c) => acc + (c.monthlyValue || 0), 0);
-  const arr = mrr * 12;
+  const publishedSongs = adminSongs.filter(song => song.status === 'published');
+  const totalPlays = adminSongs.reduce((acc, song) => acc + (song.playCount || 0), 0);
+  const totalDealsValue = operationalReleases.reduce((acc, release) => acc + (release.agreedValue || 0), 0);
+  const totalReleasesCount = operationalReleases.length;
+  const paidWithoutRelease = operationalRequests.filter(request => request.status === 'pagamento_confirmado' && !request.releaseId);
+  const pendingAgreedValue = paidWithoutRelease.reduce((acc, request) => acc + (request.agreedValue || 0), 0);
 
-  const totalSongs = effectiveSongs.length > 0 
-    ? effectiveSongs.length 
-    : adminComposers.reduce((acc, c) => acc + c.songCount, 0);
-
-  const totalPlays = effectiveSongs.reduce((acc, s) => acc + (s.playCount || 0), 0) || 
-    adminComposers.reduce((acc, c) => acc + c.totalPlays, 0);
-
-  const releasesGmv = effectiveReleases.reduce((acc, r) => acc + (r.agreedValue || 0), 0);
-  const requestsGmv = effectiveRequests
-    .filter(r => r.status === 'pagamento_confirmado' || r.status === 'liberacao_enviada')
-    .reduce((acc, r) => acc + (r.agreedValue || 0), 0);
-  const composersGmv = adminComposers.reduce((acc, c) => acc + (c.revenueGenerated || 0), 0);
-  const totalDealsValue = Math.max(releasesGmv, requestsGmv, composersGmv);
-
-  const totalReleasesCount = Math.max(
-    effectiveReleases.length,
-    effectiveRequests.filter(r => r.status === 'liberacao_enviada').length,
-    adminComposers.reduce((acc, c) => acc + c.totalReleases, 0)
-  );
-
-  // Dynamic Chart 1: Revenue Evolution Data (computed dynamically from real transactions & active subscriptions)
+  // Série de termos emitidos. Não reconstrói cobranças passadas a partir do status atual.
   const generateRevenueHistory = (monthCount: number) => {
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const now = new Date();
@@ -85,79 +82,33 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
       const year = d.getFullYear();
       const monthIndex = d.getMonth();
       const monthLabel = monthNames[monthIndex];
-      const isCurrentMonth = i === 0;
-
-      // Filter releases/requests for this specific month & year
-      const matchingReleases = effectiveReleases.filter(r => {
-        // ReleaseDocument não tem createdAt/signedAt: a data de emissão é issueDate.
-        const dateStr = r.issueDate || r.documentArchivedAt;
-        if (!dateStr) return false;
-        const relDate = new Date(dateStr);
-        return !isNaN(relDate.getTime()) && relDate.getFullYear() === year && relDate.getMonth() === monthIndex;
-      });
-
-      const matchingRequests = effectiveRequests.filter(r => {
-        if (r.status !== 'pagamento_confirmado' && r.status !== 'liberacao_enviada') return false;
-        const dateStr = r.paymentReceivedAt || r.createdAt;
-        if (!dateStr) return false;
-        const reqDate = new Date(dateStr);
-        return !isNaN(reqDate.getTime()) && reqDate.getFullYear() === year && reqDate.getMonth() === monthIndex;
-      });
-
+      // issueDate é uma data civil (AAAA-MM-DD); new Date() a deslocaria pelo fuso.
+      const matchingReleases = operationalReleases.filter(release => release.issueDate?.slice(0, 7) === `${year}-${String(monthIndex + 1).padStart(2, '0')}`);
       const releaseGmv = matchingReleases.reduce((sum, r) => sum + (r.agreedValue || 0), 0);
-      const requestGmv = matchingRequests.reduce((sum, r) => sum + (r.agreedValue || 0), 0);
-      const gmv = Math.max(releaseGmv, requestGmv);
-      const deals = Math.max(matchingReleases.length, matchingRequests.length);
-
-      // MRR: current month uses real active MRR; previous months calculate from composers registered on or before that month
-      let monthMrr = 0;
-      if (isCurrentMonth) {
-        monthMrr = mrr;
-      } else {
-        const endOfMonth = new Date(year, monthIndex + 1, 0, 23, 59, 59);
-        monthMrr = adminComposers
-          .filter(c => {
-            if (c.subscriptionStatus !== 'active') return false;
-            if (!c.registeredAt) return true;
-            const regDate = new Date(c.registeredAt);
-            return isNaN(regDate.getTime()) || regDate <= endOfMonth;
-          })
-          .reduce((sum, c) => sum + (c.monthlyValue || 0), 0);
-      }
 
       result.push({
         month: monthLabel,
         year,
-        mrr: monthMrr,
-        gmv,
-        deals
+        gmv: releaseGmv,
+        deals: matchingReleases.length
       });
     }
 
     return result;
   };
 
-  const revenueHistory6m = React.useMemo(() => generateRevenueHistory(6), [effectiveReleases, effectiveRequests, adminComposers, mrr]);
-  const revenueHistory12m = React.useMemo(() => generateRevenueHistory(12), [effectiveReleases, effectiveRequests, adminComposers, mrr]);
-  const revenueHistory = activePeriod === '6m' ? revenueHistory6m : revenueHistory12m;
-  const maxRevenue = Math.max(...revenueHistory.map(r => r.gmv), ...revenueHistory.map(r => r.mrr), 1);
-  const hasAnyRevenueData = revenueHistory.some(r => r.gmv > 0 || r.mrr > 0);
-
-  // Month-over-month MRR growth calculation
-  const currentMonthMrr = revenueHistory6m[revenueHistory6m.length - 1]?.mrr || 0;
-  const prevMonthMrr = revenueHistory6m[revenueHistory6m.length - 2]?.mrr || 0;
-  const mrrGrowth = prevMonthMrr > 0 
-    ? ((currentMonthMrr - prevMonthMrr) / prevMonthMrr) * 100 
-    : (currentMonthMrr > 0 ? 100 : 0);
+  const revenueHistory = generateRevenueHistory(activePeriod === '6m' ? 6 : 12);
+  const maxRevenue = Math.max(...revenueHistory.map(r => r.gmv), 1);
+  const hasAnyRevenueData = revenueHistory.some(r => r.gmv > 0);
 
   // Chart 2: Songs by Genre Distribution
-  const genreCounts = effectiveSongs.reduce<Record<string, number>>((acc, s) => {
+  const genreCounts = publishedSongs.reduce<Record<string, number>>((acc, s) => {
     const genre = s.genre || 'Outros';
     acc[genre] = (acc[genre] || 0) + 1;
     return acc;
   }, {});
 
-  const totalSongsInDb = effectiveSongs.length > 0 ? effectiveSongs.length : 1;
+  const totalSongsInDb = publishedSongs.length || 1;
   const genreData = (Object.entries(genreCounts) as [string, number][])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
@@ -167,19 +118,31 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
       percent: Math.round((count / totalSongsInDb) * 100)
     }));
 
-  // Chart 4: Funnel Metrics with Real Platform Data
-  const totalRequestsCount = effectiveRequests.length;
-  const inNegotiationCount = effectiveRequests.filter(r => r.status === 'em_negociacao').length;
-  const confirmedPaymentCount = effectiveRequests.filter(r => r.status === 'pagamento_confirmado' || r.status === 'liberacao_enviada').length;
-  const releasedTermsCount = effectiveReleases.length;
-  const funnelBase = totalRequestsCount > 0 ? totalRequestsCount : 1;
-
-  const funnelSteps = [
-    { label: 'Propostas Recebidas', count: totalRequestsCount, percent: totalRequestsCount > 0 ? 100 : 0, color: 'from-amber-500 to-amber-600', badge: totalRequestsCount > 0 ? '100%' : '0%' },
-    { label: 'Em Negociação', count: inNegotiationCount, percent: totalRequestsCount > 0 ? Math.round((inNegotiationCount / funnelBase) * 100) : 0, color: 'from-blue-500 to-blue-600', badge: `${totalRequestsCount > 0 ? Math.round((inNegotiationCount / funnelBase) * 100) : 0}%` },
-    { label: 'Pagamentos Confirmados', count: confirmedPaymentCount, percent: totalRequestsCount > 0 ? Math.round((confirmedPaymentCount / funnelBase) * 100) : 0, color: 'from-emerald-500 to-emerald-600', badge: `${totalRequestsCount > 0 ? Math.round((confirmedPaymentCount / funnelBase) * 100) : 0}%` },
-    { label: 'Termos Emitidos', count: releasedTermsCount, percent: totalRequestsCount > 0 ? Math.round((releasedTermsCount / funnelBase) * 100) : 0, color: 'from-purple-500 to-purple-600', badge: `${totalRequestsCount > 0 ? Math.round((releasedTermsCount / funnelBase) * 100) : 0}%` }
-  ];
+  const totalRequestsCount = operationalRequests.length;
+  const requestStates = [
+    { status: 'nova', label: 'Novas', color: 'from-amber-500 to-amber-600' },
+    { status: 'em_negociacao', label: 'Em negociação', color: 'from-blue-500 to-blue-600' },
+    { status: 'pagamento_pendente', label: 'Pagamento pendente', color: 'from-orange-500 to-orange-600' },
+    { status: 'pagamento_confirmado', label: 'Pagamento confirmado, sem termo', color: 'from-emerald-500 to-emerald-600' },
+    { status: 'liberacao_enviada', label: 'Liberação enviada', color: 'from-purple-500 to-purple-600' },
+    { status: 'arquivada', label: 'Arquivadas', color: 'from-slate-500 to-slate-600' }
+  ] as const;
+  const funnelSteps = requestStates.map(step => {
+    const count = operationalRequests.filter(request => request.status === step.status).length;
+    const percent = totalRequestsCount ? Math.round(count / totalRequestsCount * 100) : 0;
+    return { ...step, count, percent, badge: `${percent}%` };
+  });
+  const featuredComposers = activeComposers.filter(composer => composer.isFeatured || composer.planIncludesFeatured)
+    .sort((a, b) => b.revenueGenerated - a.revenueGenerated || b.totalPlays - a.totalPlays).slice(0, 5);
+  const planGroups = activeComposers.reduce<Record<string, { count: number; value: number }>>((groups, composer) => {
+    const name = composer.planName || 'Plano não informado';
+    const group = groups[name] || { count: 0, value: 0 };
+    group.count += 1;
+    group.value += composer.monthlyValue || 0;
+    groups[name] = group;
+    return groups;
+  }, {});
+  const planNames = [...subscriptionPlans.map(plan => plan.name), ...Object.keys(planGroups).filter(name => !subscriptionPlans.some(plan => plan.name === name))];
 
   return (
     <div className="space-y-8 animate-fadeIn pb-12">
@@ -192,7 +155,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" /> Painel Executivo do Dono
+                <ShieldCheck className="w-3.5 h-3.5" /> {adminRole === 'master' ? 'Painel Executivo do Dono' : 'Painel Financeiro'}
               </span>
               <span className="text-slate-400 text-xs hidden sm:inline">• Visão Geral da Plataforma SaaS</span>
             </div>
@@ -204,17 +167,17 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <button
+          <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
+            {adminRole === 'master' && <button
               onClick={() => onNavigateTab('configuracoes')}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition"
+              className="min-h-11 flex-1 sm:flex-none justify-center whitespace-nowrap px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition"
             >
               <Settings className="w-4 h-4 text-amber-400" />
               <span>Configurações</span>
-            </button>
+            </button>}
             <button
               onClick={() => onNavigateTab('compositores')}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
+              className="min-h-11 flex-1 sm:flex-none justify-center whitespace-nowrap px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition"
             >
               <Users className="w-4 h-4" />
               <span>Gerenciar Base</span>
@@ -238,19 +201,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
             <h3 className="text-2xl font-black text-white font-mono">
               R$ {mrr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </h3>
-            <div className="flex items-center gap-2 mt-2">
-              {prevMonthMrr > 0 || currentMonthMrr > 0 ? (
-                <span className={`${mrrGrowth >= 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10'} font-bold text-xs flex items-center px-2 py-0.5 rounded-md`}>
-                  {mrrGrowth >= 0 ? <TrendingUp className="w-3.5 h-3.5 mr-1" /> : <TrendingDown className="w-3.5 h-3.5 mr-1" />}
-                  {mrrGrowth > 0 ? `+${mrrGrowth.toFixed(1)}%` : `${mrrGrowth.toFixed(1)}%`}
-                </span>
-              ) : (
-                <span className="text-slate-400 text-xs bg-slate-800 px-2 py-0.5 rounded-md">
-                  {activeComposers.length} assinante(s) ativo(s)
-                </span>
-              )}
-              <span className="text-slate-400 text-xs">ARR: R$ {arr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-            </div>
+            <p className="mt-2 text-xs text-slate-400">Valor nominal dos planos ativos hoje; inclui testes e cortesias. Cobranças efetivas: Stripe.</p>
           </div>
         </div>
 
@@ -264,7 +215,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-black text-white">
-              {activeComposers.length} <span className="text-sm font-normal text-slate-400">/ {adminComposers.length} total</span>
+              {activeComposers.length} <span className="text-sm font-normal text-slate-400">/ {visibleComposers.length} total</span>
             </h3>
             <div className="flex items-center gap-3 mt-2 text-xs">
               <span className="text-emerald-400 font-medium flex items-center gap-1">
@@ -279,31 +230,32 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
           </div>
         </div>
 
-        {/* Metric 3: Total Songs & Audições */}
+        {/* Metric 3: Published songs (master only) */}
+        {adminRole === 'master' &&
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative group hover:border-amber-500/30 transition shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Acervo Musical Protegido</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Obras publicadas</span>
             <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
               <Music className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-black text-white">
-              {totalSongs} <span className="text-sm font-normal text-slate-400">faixas</span>
+              {publishedSongs.length} <span className="text-sm font-normal text-slate-400">faixas</span>
             </h3>
             <div className="flex items-center gap-2 mt-2">
               <span className="text-purple-400 font-bold text-xs">
-                {totalPlays.toLocaleString('pt-BR')} audições
+                {totalPlays.toLocaleString('pt-BR')} audições no acervo total
               </span>
               <span className="text-slate-400 text-xs">• Prévia 85s</span>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Metric 4: Volume de Negociações */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative group hover:border-amber-500/30 transition shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Volume Transacionado (GMV)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Valor acordado em termos</span>
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
               <FileCheck2 className="w-5 h-5" />
             </div>
@@ -317,6 +269,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                 {totalReleasesCount} autorizações emitidas
               </span>
             </div>
+            <p className="mt-2 text-xs text-slate-400">Inclui termos históricos e exclui simulações marcadas. Valores acordados não comprovam repasse ou receita da plataforma.</p>
           </div>
         </div>
 
@@ -332,16 +285,18 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-amber-400" />
                 <h3 className="text-base font-bold text-white tracking-tight">
-                  Evolução Financeira (GMV & MRR estimado)
+                  Valor dos termos emitidos por mês
                 </h3>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Crescimento das autorizações fonográficas e assinaturas SaaS.
+                Soma dos valores acordados nos termos, pela data de emissão.
               </p>
             </div>
 
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto text-xs">
               <button
+                type="button"
+                aria-pressed={activePeriod === '6m'}
                 onClick={() => setActivePeriod('6m')}
                 className={`px-3 py-1 rounded-lg font-semibold transition ${
                   activePeriod === '6m'
@@ -352,6 +307,8 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                 6 Meses
               </button>
               <button
+                type="button"
+                aria-pressed={activePeriod === '12m'}
                 onClick={() => setActivePeriod('12m')}
                 className={`px-3 py-1 rounded-lg font-semibold transition ${
                   activePeriod === '12m'
@@ -372,11 +329,10 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               {hoveredDataPoint && (
                 <div className="absolute top-3 left-4 right-4 bg-slate-900/95 border border-amber-500/40 px-4 py-2 rounded-xl text-xs flex items-center justify-between shadow-2xl backdrop-blur-md z-30 animate-fadeIn">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-amber-400">{hoveredDataPoint.month}:</span>
-                    <span className="text-slate-200">Volume GMV: <strong className="text-white font-mono">R$ {hoveredDataPoint.gmv.toLocaleString('pt-BR')}</strong></span>
+                    <span className="font-bold text-amber-400">{hoveredDataPoint.month}/{hoveredDataPoint.year}:</span>
+                    <span className="text-slate-200">Valor dos termos: <strong className="text-white font-mono">R$ {hoveredDataPoint.gmv.toLocaleString('pt-BR')}</strong></span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-emerald-400 font-mono font-semibold">MRR: R$ {hoveredDataPoint.mrr.toLocaleString('pt-BR')}</span>
                     <span className="text-slate-400 font-mono text-[11px]">{hoveredDataPoint.deals} autorizações</span>
                   </div>
                 </div>
@@ -386,8 +342,8 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               {!hasAnyRevenueData && (
                 <div className="absolute inset-x-4 top-14 bottom-8 flex flex-col items-center justify-center pointer-events-none z-20">
                   <div className="bg-slate-900/95 border border-slate-700/60 rounded-xl px-4 py-2.5 text-center shadow-lg max-w-sm">
-                    <p className="text-xs text-slate-200 font-medium">Nenhuma transação ou renovação no período</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Os dados serão refletidos automaticamente conforme os pagamentos forem confirmados.</p>
+                    <p className="text-xs text-slate-200 font-medium">Nenhum termo emitido no período</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Os valores aparecem quando um termo é emitido.</p>
                   </div>
                 </div>
               )}
@@ -402,26 +358,24 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
 
               {revenueHistory.map((item) => {
                 const barHeightPercent = maxRevenue > 0 && item.gmv > 0 ? Math.max(8, Math.round((item.gmv / maxRevenue) * 100)) : 0;
-                const mrrPercent = maxRevenue > 0 && item.mrr > 0 ? Math.max(6, Math.round((item.mrr / maxRevenue) * 100)) : 0;
 
                 return (
                   <div 
-                    key={item.month} 
+                    key={`${item.year}-${item.month}`}
+                    role="img"
+                    tabIndex={0}
+                    aria-label={`${item.month} de ${item.year}: R$ ${item.gmv.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em ${item.deals} termos emitidos`}
                     onMouseEnter={() => setHoveredDataPoint(item)}
                     onMouseLeave={() => setHoveredDataPoint(null)}
+                    onFocus={() => setHoveredDataPoint(item)}
+                    onBlur={() => setHoveredDataPoint(null)}
                     className="flex-1 flex flex-col items-center gap-2 z-10 h-full justify-end group cursor-pointer"
                   >
-                    {/* Dual Columns (GMV in Amber, MRR in Emerald) */}
+                    {/* Valor dos termos emitidos */}
                     <div className="w-full max-w-[34px] flex items-end justify-center gap-1 h-full">
-                      {/* GMV Column */}
                       <div 
                         className={`w-full bg-gradient-to-t from-amber-500/40 via-amber-500/80 to-amber-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom ${barHeightPercent > 0 ? 'min-h-[4px]' : 'h-0'}`}
                         style={{ height: `${barHeightPercent}%` }}
-                      />
-                      {/* MRR Column */}
-                      <div 
-                        className={`w-full bg-gradient-to-t from-emerald-500/40 to-emerald-400 rounded-t-lg transition-all duration-300 group-hover:scale-y-105 group-hover:brightness-125 origin-bottom ${mrrPercent > 0 ? 'min-h-[4px]' : 'h-0'}`}
-                        style={{ height: `${mrrPercent}%` }}
                       />
                     </div>
 
@@ -433,21 +387,12 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               })}
             </div>
 
-            {/* Legend */}
-            <div className="flex items-center justify-center gap-6 text-xs text-slate-400 pt-1">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50" />
-                <span className="text-slate-300 font-medium">Volume de Negociações (GMV)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-slate-300 font-medium">Assinaturas Recorrentes (MRR estimado pela data de cadastro)</span>
-              </div>
-            </div>
+            <p className="text-center text-xs text-slate-400">Passe o mouse ou use Tab para consultar cada mês. O valor é acordado, não uma cobrança da plataforma.</p>
           </div>
         </div>
 
         {/* CHART 2: GENRE DISTRIBUTION BARS (5 Cols) */}
+        {adminRole === 'master' &&
         <div className="lg:col-span-5 bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl space-y-6 shadow-xl">
           <div className="border-b border-slate-800 pb-4">
             <div className="flex items-center gap-2">
@@ -457,7 +402,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               </h3>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Proporção das faixas cadastradas no catálogo público.
+              Proporção das obras com status publicado.
             </p>
           </div>
 
@@ -498,9 +443,9 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
 
           <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
             <span>Total de Obras no Catálogo:</span>
-            <strong className="text-white font-mono">{effectiveSongs.length} faixas</strong>
+            <strong className="text-white font-mono">{publishedSongs.length} faixas</strong>
           </div>
-        </div>
+        </div>}
 
       </div>
 
@@ -514,25 +459,25 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               <div className="flex items-center gap-2">
                 <Layers className="w-5 h-5 text-amber-400" />
                 <h3 className="text-base font-bold text-white tracking-tight">
-                  Funil de Conversão de Propostas
+                  Situação atual das propostas
                 </h3>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Taxas de avanço do formulário até a liberação final emitida.
+                Distribuição das propostas por status atual; cada proposta aparece uma vez.
               </p>
             </div>
             <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
-              Conversão: {totalRequestsCount > 0 ? `~${funnelSteps[3].percent}%` : '0%'}
+              {totalRequestsCount} propostas
             </span>
           </div>
 
           <div className="space-y-3">
-            {funnelSteps.map((step, idx) => (
+            {funnelSteps.map((step) => (
               <div key={step.label} className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-2 hover:border-slate-700 transition">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-white flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 font-mono text-[11px] flex items-center justify-center border border-slate-700">
-                      {idx + 1}
+                      {step.count}
                     </span>
                     {step.label}
                   </span>
@@ -549,6 +494,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               </div>
             ))}
           </div>
+          <p className="text-xs text-slate-400">Pagamentos confirmados sem termo: <strong className="text-white">{paidWithoutRelease.length}</strong> · Valor acordado: <strong className="text-white">R$ {pendingAgreedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>
         </div>
 
         {/* PLANS DISTRIBUTION (5 Cols) */}
@@ -559,37 +505,29 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               <span>Assinantes por Plano</span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Participação de cada plano na receita recorrente.
+              Participação no valor nominal mensal dos planos ativos.
             </p>
           </div>
 
           <div className="space-y-4">
-            {APP_CONFIG.plans.map(plan => {
-              const count = adminComposers.filter(c => {
-                const compPlan = (c.planName || '').toLowerCase();
-                const targetPlan = plan.name.toLowerCase();
-                const planKeyword = plan.name.split(' ')[1]?.toLowerCase() || '';
-                return compPlan === targetPlan || (planKeyword && compPlan.includes(planKeyword));
-              }).length;
-              const totalComposersCount = adminComposers.length;
-              const percent = totalComposersCount > 0 ? Math.round((count / totalComposersCount) * 100) : 0;
+            {planNames.map(name => {
+              const group = planGroups[name] || { count: 0, value: 0 };
+              const percent = mrr > 0 ? Math.round((group.value / mrr) * 100) : 0;
 
               return (
-                <div key={plan.name} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 hover:border-slate-700 transition">
+                <div key={name} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 hover:border-slate-700 transition">
                   <div className="flex items-center justify-between text-xs">
                     <div>
-                      <strong className="text-white block">{plan.name}</strong>
-                      <span className="text-[11px] text-amber-400 font-mono">R$ {plan.priceMonthly}/mês</span>
+                      <strong className="text-white block">{name}</strong>
+                      <span className="text-[11px] text-amber-400 font-mono">R$ {group.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês no grupo</span>
                     </div>
                     <span className="font-mono text-slate-300 font-bold">
-                      {count} assinantes ({percent}%)
+                      {group.count} assinantes ({percent}% do valor)
                     </span>
                   </div>
                   <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
                     <div 
-                      className={`h-full transition-all duration-500 rounded-full ${
-                        plan.name.includes('Ouro') ? 'bg-amber-400' : plan.name.includes('Prata') ? 'bg-blue-400' : 'bg-purple-400'
-                      }`}
+                      className="h-full rounded-full bg-amber-400 transition-all duration-500"
                       style={{ width: `${percent}%` }}
                     />
                   </div>
@@ -620,19 +558,19 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
               onClick={() => onNavigateTab('compositores')}
               className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
             >
-              <span>Ver todos ({adminComposers.length})</span>
+              <span>Ver todos ({visibleComposers.length})</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           <div className="divide-y divide-slate-800/80">
-            {adminComposers.length === 0 ? (
+            {featuredComposers.length === 0 ? (
               <div className="py-8 text-center text-slate-500 text-xs">
-                Nenhum compositor cadastrado até o momento.
+                Nenhum compositor ativo em destaque no momento.
               </div>
             ) : (
-              adminComposers.slice(0, 5).map(composer => (
-                <div key={composer.id} className="py-3.5 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
+              featuredComposers.map(composer => (
+                <button type="button" key={composer.id} onClick={() => navigate(`/admin/compositores?composer=${encodeURIComponent(composer.id)}`)} className="w-full py-3.5 flex items-center justify-between gap-4 text-left hover:bg-slate-800/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400 first:pt-0 last:pb-0">
                   <div className="flex items-center gap-3 min-w-0">
                     {composer.photo ? (
                       <img 
@@ -653,7 +591,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                           <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 truncate">{composer.email} • {composer.cityState}</p>
+                      <p className="text-[11px] text-slate-400 truncate">{composer.cityState || 'Local não informado'}</p>
                     </div>
                   </div>
 
@@ -670,10 +608,10 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({ onNavigateTa
                         ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                         : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                     }`}>
-                      {composer.subscriptionStatus === 'active' ? 'Ativo' : composer.subscriptionStatus === 'pending' ? 'Pendente' : 'Suspenso'}
+                      {composer.subscriptionStatus === 'active' ? 'Ativo' : composer.subscriptionStatus === 'pending' ? 'Pendente' : composer.subscriptionStatus === 'cancelled' ? 'Cancelado' : 'Suspenso'}
                     </span>
                   </div>
-                </div>
+                </button>
               ))
             )}
           </div>

@@ -66,13 +66,13 @@ begin
   insert into public.user_notifications(user_id,title,message,type,is_read,link)
   select distinct ur.user_id,
     'Conta excluída pelo titular',
-    format('Um compositor excluiu a própria conta (marca %s). Os dados pessoais foram eliminados, as obras saíram do ar e %s pedido(s) em aberto foram encerrados com aviso aos intérpretes.',
+    format('Um compositor excluiu a própria conta (marca %s). Os dados cadastrais foram removidos, as obras saíram do ar e %s pedido(s) em aberto foram encerrados com aviso aos intérpretes.',
       tag, done->>'archived_requests'),
     'system', false, '/admin/configuracoes?lgpd=' || req_id
   from public.user_roles ur where ur.role='admin';
 
   perform public.write_system_audit_log(gen_random_uuid()::text,'system','Exclusão de conta pelo titular (LGPD)',
-    concat('Solicitação ',req_id,': dados pessoais eliminados e perfil pseudonimizado sob a marca ',tag,
+    concat('Solicitação ',req_id,': dados cadastrais removidos e perfil pseudonimizado sob a marca ',tag,
            '. ',done->>'archived_requests',' pedido(s) em aberto encerrado(s).',
            ' Termos de liberação e histórico financeiro retidos por obrigação legal.'),'warning');
   return jsonb_build_object('request_id',req_id,'tag',tag,'archived_requests',(done->>'archived_requests')::int);

@@ -1022,7 +1022,7 @@ export const RequestsTab: React.FC = () => {
 
         {showPaymentConfirmation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !isConfirmingPayment) setShowPaymentConfirmation(false); }}>
-            <div ref={paymentDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-payment-title" className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <div ref={paymentDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-payment-title" className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-5 sm:p-6 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
               <h2 id="confirm-payment-title" className="text-lg font-bold text-white">Confirmar recebimento</h2>
               <dl className="mt-4 grid grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm">
                 <div><dt className="text-xs text-slate-500">Valor recebido</dt><dd className="font-mono font-bold text-emerald-400">R$ {formatBrlAmount(Number(agreedValueInput || 0))}</dd></div>
@@ -1043,7 +1043,7 @@ export const RequestsTab: React.FC = () => {
 
         {showArchiveConfirmation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !isSaving) setShowArchiveConfirmation(false); }}>
-            <div ref={archiveDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-archive-title" className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <div ref={archiveDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-archive-title" className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-5 sm:p-6 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
               <div className="flex items-start gap-3">
                 <div className="rounded-xl bg-amber-500/10 p-2 text-amber-400">
                   <AlertCircle className="h-5 w-5" />
@@ -1051,7 +1051,7 @@ export const RequestsTab: React.FC = () => {
                 <div>
                   <h2 id="confirm-archive-title" className="text-lg font-bold text-white">Arquivar solicitação?</h2>
                   <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                    A negociação da música <strong className="text-amber-400">“{activeRequest.songTitle}”</strong> com <strong className="text-white break-all text-right">{activeRequest.buyerName}</strong> será arquivada. Você poderá reativá-la depois se necessário.
+                    A negociação da música <strong className="text-amber-400">“{activeRequest.songTitle}”</strong> com <strong className="text-white break-words">{activeRequest.buyerName}</strong> será arquivada. Você poderá reativá-la depois se necessário.
                   </p>
                   <p className={`mt-2 text-xs ${archiveReason && archiveReason !== 'Outro motivo' ? 'text-slate-400' : 'text-amber-300'}`}>
                     {archiveReason && archiveReason !== 'Outro motivo' ? `Motivo: ${archiveReason}.` : 'Nenhum motivo informado. Recomendamos escolher um antes de arquivar.'}
@@ -1085,7 +1085,7 @@ export const RequestsTab: React.FC = () => {
 
         {showReleaseReview && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) closeReviewModal(); }}>
-            <div ref={reviewDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="release-review-title" className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-amber-500/30 bg-slate-900 p-6 shadow-2xl">
+            <div ref={reviewDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="release-review-title" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl border border-amber-500/30 bg-slate-900 p-6 shadow-2xl">
               <h2 id="release-review-title" className="text-lg font-bold text-white">Revisão final antes da emissão</h2>
               <p className="mt-1 text-xs text-slate-400">Confira os dados. A emissão cria um documento definitivo.</p>
               <dl className="mt-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm sm:grid-cols-2">
@@ -1117,13 +1117,13 @@ export const RequestsTab: React.FC = () => {
         )}
 
         {/* Top Breadcrumb / Back Button */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <Link
             to={`/dashboard/solicitacoes${searchParams.toString() ? `?${searchParams.toString()}` : ''}`}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition"
+            className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition"
           >
             <ArrowLeft className="w-4 h-4 text-amber-400" />
-            <span>Voltar para todas as solicitações</span>
+            <span>Voltar<span className="hidden sm:inline"> para todas as solicitações</span></span>
           </Link>
 
           <div className="flex items-center gap-2">
@@ -1167,7 +1167,7 @@ export const RequestsTab: React.FC = () => {
                 className="flex-1 sm:flex-none justify-center px-4 sm:px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"
               >
                 <Phone className="w-4 h-4" />
-                <span>Conversar no WhatsApp</span>
+                <span className="whitespace-nowrap"><span className="hidden sm:inline">Conversar no </span>WhatsApp</span>
               </button>
 
               <button
@@ -1346,13 +1346,13 @@ export const RequestsTab: React.FC = () => {
               <div className="space-y-3 text-xs">
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                   <span className="text-slate-400">Nome Completo:</span>
-                  <strong className="text-white break-all text-right">{activeRequest.buyerName}</strong>
+                  <strong className="text-white [word-break:normal] break-words text-right">{activeRequest.buyerName}</strong>
                 </div>
 
                 {activeRequest.buyerStageName && (
                   <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/90 flex flex-wrap justify-between items-center gap-2 break-all">
                     <span className="text-slate-400">Nome Artístico:</span>
-                    <strong className="text-amber-300 break-all text-right">{activeRequest.buyerStageName}</strong>
+                    <strong className="text-amber-300 [word-break:normal] break-words text-right">{activeRequest.buyerStageName}</strong>
                   </div>
                 )}
 
@@ -1988,7 +1988,7 @@ export const RequestsTab: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between md:justify-end gap-3 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-slate-800">
+                <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-slate-800">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                     req.status === 'pagamento_confirmado' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
                     req.status === 'em_negociacao' ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40' :
@@ -2004,7 +2004,8 @@ export const RequestsTab: React.FC = () => {
                     type="button"
                     onClick={() => handleSimulateWhatsApp(req.buyerWhatsapp, req.songTitle, req.buyerName)}
                     title="Chamar no WhatsApp agora"
-                    className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition flex items-center gap-1 shadow-md shadow-emerald-600/20"
+                    aria-label="Chamar no WhatsApp agora"
+                    className="ml-auto md:ml-0 min-h-11 min-w-11 justify-center p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition flex items-center gap-1 shadow-md shadow-emerald-600/20"
                   >
                     <Phone className="w-4 h-4" />
                     <span className="hidden sm:inline text-xs">WhatsApp</span>
@@ -2020,7 +2021,7 @@ export const RequestsTab: React.FC = () => {
                           if ('release' in action && action.release) { void handleResendDelivery(action.release); return; }
                           openRequest(req);
                         }}
-                        className={`px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1 disabled:opacity-50 ${action.urgent ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-slate-800 text-amber-400 hover:bg-amber-500 hover:text-slate-950'}`}
+                        className={`min-h-11 px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1 disabled:opacity-50 ${action.urgent ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-slate-800 text-amber-400 hover:bg-amber-500 hover:text-slate-950'}`}
                       >
                         <span>{action.label}</span>
                         <ChevronRight className="w-4 h-4" />

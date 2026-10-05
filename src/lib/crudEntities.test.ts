@@ -89,7 +89,7 @@ describe('CRUD de Entidades do Sistema: Equipe e Funções Administrativas', () 
     const team = await loadTeamRoles();
     expect(Array.isArray(team)).toBe(true);
     for (const member of team) {
-      expect(['admin', 'moderator', 'financial', 'composer']).toContain(member.role);
+      expect(['admin', 'moderator', 'financial']).toContain(member.role);
       expect(member.userId).toBeTruthy();
     }
   });

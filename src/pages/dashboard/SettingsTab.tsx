@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
 import { supabase } from '../../lib/supabase';
-import { beginMfaEnrollment, deleteMyAccount, disableMfa, verifyAdminPassword as verifyCurrentPassword, exportPersonalData, listMfaFactors, loadPreferences, loadSettingsSecurityMetadata, revokeOtherSessions, savePreferences, verifyMfaEnrollment } from '../../lib/database';
+import { deleteMyAccount, verifyAdminPassword as verifyCurrentPassword, exportPersonalData, loadPreferences, loadSettingsSecurityMetadata, revokeOtherSessions, savePreferences } from '../../lib/database';
 import { useTheme } from '../../context/ThemeContext';
 import { useModalFocus } from '../../hooks/useModalFocus';
 import { maskEmail } from './settingsUtils';
@@ -75,6 +75,7 @@ export const SettingsTab: React.FC = () => {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [accountDeleted, setAccountDeleted] = useState(false);
+  const [deletionCleanupPending, setDeletionCleanupPending] = useState(false);
   const [isExportingData, setIsExportingData] = useState(false);
   const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
   const [preferencesMessage, setPreferencesMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -82,10 +83,6 @@ export const SettingsTab: React.FC = () => {
   const [preferencesUpdatedAt, setPreferencesUpdatedAt] = useState<string | null>(null);
   const [passwordChangedAt, setPasswordChangedAt] = useState<string | null>(null);
   const [isRevokingSessions, setIsRevokingSessions] = useState(false);
-  const [mfaEnabled, setMfaEnabled] = useState(false);
-  const [mfaEnrollment, setMfaEnrollment] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
-  const [mfaCode, setMfaCode] = useState('');
-  const [isConfiguringMfa, setIsConfiguringMfa] = useState(false);
   const closeDeleteModal = () => {
     if (isDeletingAccount || accountDeleted) return;
     setDeleteModalOpen(false);
@@ -111,11 +108,10 @@ export const SettingsTab: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadSettingsSecurityMetadata(), listMfaFactors()])
-      .then(([metadata, factors]) => {
+    loadSettingsSecurityMetadata()
+      .then(metadata => {
         setPreferencesUpdatedAt(metadata.preferencesUpdatedAt);
         setPasswordChangedAt(metadata.passwordChangedAt);
-        setMfaEnabled(factors.some(factor => factor.status === 'verified'));
       })
       .catch(() => undefined);
   }, []);
@@ -233,47 +229,6 @@ export const SettingsTab: React.FC = () => {
     }
   };
 
-  const handleStartMfa = async () => {
-    setIsConfiguringMfa(true);
-    try {
-      setMfaEnrollment(await beginMfaEnrollment());
-    } catch {
-      setMessage({ type: 'error', text: 'Não foi possível iniciar a autenticação em duas etapas.' });
-    } finally {
-      setIsConfiguringMfa(false);
-    }
-  };
-
-  const handleDisableMfa = async () => {
-    if (isConfiguringMfa) return;
-    setIsConfiguringMfa(true);
-    try {
-      await disableMfa();
-      setMfaEnabled(false);
-      setMessage({ type: 'success', text: 'Autenticação em duas etapas desativada.' });
-    } catch {
-      setMessage({ type: 'error', text: 'Não foi possível desativar. Saia, entre de novo com o código do aplicativo e tente novamente.' });
-    } finally {
-      setIsConfiguringMfa(false);
-    }
-  };
-
-  const handleVerifyMfa = async () => {
-    if (!mfaEnrollment || !/^\d{6}$/.test(mfaCode)) return;
-    setIsConfiguringMfa(true);
-    try {
-      await verifyMfaEnrollment(mfaEnrollment.factorId, mfaCode);
-      setMfaEnabled(true);
-      setMfaEnrollment(null);
-      setMfaCode('');
-      setMessage({ type: 'success', text: 'Autenticação em duas etapas ativada com sucesso.' });
-    } catch {
-      setMessage({ type: 'error', text: 'Código inválido ou expirado. Gere um novo código e tente novamente.' });
-    } finally {
-      setIsConfiguringMfa(false);
-    }
-  };
-
   const formatUpdatedAt = (value: string | null) => value
     ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
     : 'Ainda não registrado';
@@ -312,7 +267,8 @@ export const SettingsTab: React.FC = () => {
       return;
     }
     try {
-      await deleteMyAccount();
+      const result = await deleteMyAccount();
+      setDeletionCleanupPending(!result.leftoversErased);
       setAccountDeleted(true);
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Não foi possível excluir sua conta. Tente novamente.');
@@ -870,42 +826,6 @@ export const SettingsTab: React.FC = () => {
             </button>
           </article>
 
-          <article className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-white">Autenticação em duas etapas</h3>
-                <p className="mt-1 text-xs text-slate-400">Use um aplicativo autenticador para adicionar uma segunda verificação ao login.</p>
-              </div>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${mfaEnabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
-                {mfaEnabled ? 'Ativada' : 'Desativada'}
-              </span>
-            </div>
-            {!mfaEnabled && !mfaEnrollment && (
-              <button type="button" onClick={handleStartMfa} disabled={isConfiguringMfa} className="min-h-11 w-full rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50">
-                {isConfiguringMfa ? 'Preparando…' : 'Configurar aplicativo autenticador'}
-              </button>
-            )}
-            {mfaEnabled && (
-              <div className="space-y-2">
-                <p className="text-xs text-slate-400">O código do aplicativo é pedido a cada novo login.</p>
-                <button type="button" onClick={handleDisableMfa} disabled={isConfiguringMfa} className="min-h-11 w-full rounded-xl border border-slate-700 px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-white disabled:opacity-50">
-                  {isConfiguringMfa ? 'Desativando…' : 'Desativar verificação em duas etapas'}
-                </button>
-              </div>
-            )}
-            {mfaEnrollment && (
-              <div className="space-y-3 rounded-xl border border-amber-500/30 bg-slate-900 p-3">
-                <img src={mfaEnrollment.qrCode} alt="QR Code para configurar autenticação em duas etapas" className="mx-auto h-40 w-40 rounded-lg bg-white p-2" />
-                <p className="break-all text-center font-mono text-[10px] text-slate-400">Chave manual: {mfaEnrollment.secret}</p>
-                <label htmlFor="mfa-code" className="block text-xs font-semibold text-slate-300">Código de 6 dígitos</label>
-                <input id="mfa-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={mfaCode} onChange={event => setMfaCode(event.target.value.replace(/\D/g, ''))} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-center font-mono text-base tracking-[0.35em] text-white" />
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => { setMfaEnrollment(null); setMfaCode(''); }} className="min-h-11 flex-1 rounded-xl border border-slate-700 px-3 text-xs font-bold text-slate-300">Cancelar</button>
-                  <button type="button" onClick={handleVerifyMfa} disabled={isConfiguringMfa || mfaCode.length !== 6} className="min-h-11 flex-1 rounded-xl bg-amber-500 px-3 text-xs font-bold text-slate-950 disabled:opacity-50">Confirmar</button>
-                </div>
-              </div>
-            )}
-          </article>
         </div>
 
       </section>
@@ -970,7 +890,7 @@ export const SettingsTab: React.FC = () => {
               Excluir Minha Conta
             </strong>
             <p className="text-xs text-slate-400">
-              Exclusão imediata e definitiva: seus dados pessoais são eliminados, suas obras saem do catálogo e a assinatura é cancelada. Termos já emitidos são preservados sem identificação pessoal.
+              A exclusão encerra o acesso, remove os dados do cadastro, retira as obras do catálogo e cancela a assinatura. Termos já emitidos permanecem e podem conter dados de identificação.
             </p>
           </div>
 
@@ -989,7 +909,7 @@ export const SettingsTab: React.FC = () => {
       {/* Delete Account Modal Dialog */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (event.target === event.currentTarget) closeDeleteModal(); }}>
-          <div ref={deleteModalRef} role="dialog" aria-modal="true" aria-labelledby="delete-account-title" aria-describedby="delete-account-description" tabIndex={-1} className="bg-slate-900 border border-red-500/30 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-fadeIn">
+          <div ref={deleteModalRef} role="dialog" aria-modal="true" aria-labelledby="delete-account-title" aria-describedby="delete-account-description" tabIndex={-1} className="bg-slate-900 border border-red-500/30 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-5 animate-fadeIn max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
             
             {accountDeleted ? (
               <>
@@ -1000,8 +920,9 @@ export const SettingsTab: React.FC = () => {
                   <h3 id="delete-account-title" className="font-bold text-white text-lg">Conta excluída</h3>
                 </div>
                 <p id="delete-account-description" className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  Seus dados pessoais foram eliminados, suas obras saíram do catálogo e a assinatura foi cancelada. Enviamos uma confirmação para o seu e-mail.
+                  Seu acesso foi encerrado, suas obras saíram do catálogo e a assinatura foi cancelada. Dados necessários aos termos já emitidos permanecem nesses documentos. A confirmação por e-mail será enviada se o serviço de mensagens estiver disponível.
                 </p>
+                {deletionCleanupPending && <p role="alert" className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">A conta foi encerrada, mas a limpeza complementar de arquivos ou dados do Stripe ficou pendente e precisa ser verificada pela administração.</p>}
                 <div className="flex justify-end pt-2">
                   <button
                     type="button"
@@ -1026,11 +947,11 @@ export const SettingsTab: React.FC = () => {
                 </div>
 
                 <ul id="delete-account-description" className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1.5 list-disc pl-8">
-                  <li>Seus dados pessoais (e-mail, WhatsApp, CPF, chave Pix) são eliminados e o login deixa de funcionar.</li>
-                  <li>Suas obras saem do catálogo e o perfil público passa a aparecer como “Usuário removido”.</li>
+                  <li>Dados do cadastro (e-mail, WhatsApp, CPF e chave Pix) são removidos e o login deixa de funcionar. Dados presentes em termos já emitidos permanecem nesses documentos.</li>
+                  <li>Suas obras saem do catálogo e a vitrine pública deixa de funcionar. O registro interno do perfil é pseudonimizado.</li>
                   <li>A assinatura é cancelada agora, sem reembolso do período restante.</li>
                   <li>Negociações em aberto são encerradas e os intérpretes, avisados por e-mail.</li>
-                  <li>Termos de liberação já emitidos e o histórico financeiro são mantidos sem identificação pessoal, por obrigação legal.</li>
+                  <li>Termos de liberação já emitidos e registros financeiros são preservados; os termos podem conter seu nome e CPF.</li>
                 </ul>
 
                 <div className="space-y-1.5">

@@ -5,7 +5,8 @@ import { ValueType, SongStatus, type Song } from '../../types';
 import { resolvePlan } from '../../lib/plans';
 import { MUSIC_GENRES, getSubgenresForGenre } from '../../config/musicGenres';
 import { DEFAULT_SONG_COVER_URL, PREVIEW_MAX_SECONDS } from '../../config/media';
-import { deleteSongDraft, loadSongById, loadSongDraft, removeCurrentUserStorageFiles, saveSongDraft, uploadCurrentUserFileDetailed, checkUserPlanCapacity, cleanupUserQuarantine, type MediaUploadStage, type SongDraftPayload, type PlanCapacityInfo } from '../../lib/database';
+import { deleteSongDraft, loadSongById, loadSongDraft, removeCurrentUserStorageFiles, saveSongDraft, uploadCurrentUserFileDetailed, checkUserPlanCapacity, checkUsernameAvailability, RESERVED_USERNAMES, cleanupUserQuarantine, type MediaUploadStage, type SongDraftPayload, type PlanCapacityInfo } from '../../lib/database';
+import { sanitizeSlug, USERNAME_MIN_LENGTH, USERNAME_TAKEN_MESSAGE, validateProfileForm } from './profile/profileFormUtils';
 import { getSongSaveStatus, validateSongSubmission } from '../../lib/songWorkflow';
 import { getFriendlyErrorMessage } from '../../lib/apiErrors';
 import { createAudioPreview } from '../../lib/audioPreview';
@@ -65,7 +66,7 @@ export const AddSongTab: React.FC = () => {
   const { songId: routeSongId } = useParams();
   const [searchParams] = useSearchParams();
   const songId = routeSongId || searchParams.get('id') || undefined;
-  const { currentUserId, profile, songs, subscription, addSong, updateSong, platformSettings, isAdminAuthenticated, subscriptionPlans } = useApp();
+  const { currentUserId, profile, songs, releases, subscription, addSong, updateSong, updateProfile, platformSettings, isAdminAuthenticated, subscriptionPlans } = useApp();
   const contextualSong = songId ? songs.find(song => song.id === songId) : undefined;
   const [loadedSong, setLoadedSong] = useState<typeof contextualSong>();
   const [songLookupComplete, setSongLookupComplete] = useState(!songId || Boolean(contextualSong));
@@ -73,9 +74,15 @@ export const AddSongTab: React.FC = () => {
   const [planCapacity, setPlanCapacity] = useState<PlanCapacityInfo | null>(null);
   const existingSong = contextualSong || loadedSong;
   const isEditing = Boolean(songId);
+  const hasIncompleteProfile = !isEditing && Object.keys(validateProfileForm(profile, {
+    identityLocked: releases.length > 0,
+    usernameStatus: 'current',
+  })).length > 0;
   const appliedSongIdRef = useRef<string | null>(null);
 
   const [title, setTitle] = useState(existingSong?.title || '');
+  const [publicUsername, setPublicUsername] = useState(profile.username || '');
+  const [usernameError, setUsernameError] = useState<string | null>(null);
   const [genre, setGenre] = useState(existingSong?.genre || 'Sertanejo');
   const [subgenre, setSubgenre] = useState(existingSong?.subgenre || 'Sertanejo Universitário');
   const suggestedSubgenres = useMemo(() => getSubgenresForGenre(genre), [genre]);
@@ -579,6 +586,8 @@ export const AddSongTab: React.FC = () => {
       void draftSaveQueueRef.current.catch(() => setFormError('Não foi possível excluir o rascunho sincronizado.'));
     }
     setTitle('');
+    setPublicUsername(profile.username || '');
+    setUsernameError(null);
     setGenre('Sertanejo');
     setSubgenre('Sertanejo Universitário');
     setAuthors(profile.stageName || '');
@@ -615,10 +624,35 @@ export const AddSongTab: React.FC = () => {
     submissionLockRef.current = true;
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const requestedStatus: SongStatus = submitter?.value === 'draft' ? 'draft' : 'published';
+    const normalizedUsername = sanitizeSlug(publicUsername);
 
     const unlockSubmission = () => {
       submissionLockRef.current = false;
     };
+
+    if (!isEditing && normalizedUsername !== profile.username) {
+      let error: string | null = null;
+      if (normalizedUsername.length < USERNAME_MIN_LENGTH) error = `O endereço público deve ter pelo menos ${USERNAME_MIN_LENGTH} caracteres.`;
+      else if (RESERVED_USERNAMES.includes(normalizedUsername)) error = 'Este endereço é reservado pelo sistema. Escolha outro.';
+      else {
+        try {
+          if (!(await checkUsernameAvailability(normalizedUsername))) error = USERNAME_TAKEN_MESSAGE;
+        } catch {
+          error = 'Não foi possível verificar o endereço público. Tente novamente.';
+        }
+      }
+      if (error) {
+        setUsernameError(error);
+        document.getElementById('song-public-username')?.focus();
+        unlockSubmission();
+        return;
+      }
+      if (songs.length > 0 && !window.confirm(`Alterar o endereço público para /compositor/${normalizedUsername}? Os links antigos redirecionam por 180 dias; atualize os links já divulgados.`)) {
+        unlockSubmission();
+        return;
+      }
+    }
+    setUsernameError(null);
 
     // O aviso de assinatura no topo já explica o bloqueio e oferece o atalho
     // para contratar. Evita repetir a mesma informação em um alerta de erro.
@@ -699,6 +733,9 @@ export const AddSongTab: React.FC = () => {
 
     const newUploads: Array<{ bucket: string; value: string; mediaId: string }> = [];
     try {
+      if (!isEditing && normalizedUsername !== profile.username) {
+        await updateProfile({ username: normalizedUsername });
+      }
       const uploadMedia = async (kind: UploadKind, bucket: string, file: File) => {
         try {
           const onStage = (stage: MediaUploadStage) => {
@@ -870,17 +907,17 @@ export const AddSongTab: React.FC = () => {
     <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
 
       {/* Top Bar */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <button
           type="button"
           onClick={() => navigate('/dashboard/musicas')}
-          className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 transition"
+          className="min-h-10 shrink-0 text-xs text-slate-400 hover:text-white flex items-center gap-1.5 whitespace-nowrap transition"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Voltar para Minhas Músicas</span>
+          <span>Voltar<span className="hidden sm:inline"> para Minhas Músicas</span></span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {draftSaveState !== 'idle' && (
             <span className="rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-[10px] uppercase tracking-wide text-slate-300">
               {draftSaveState === 'saving' && 'Sincronizando rascunho...'}
@@ -897,6 +934,19 @@ export const AddSongTab: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {hasIncompleteProfile && (
+        <div role="status" className="flex flex-col gap-4 rounded-2xl border border-amber-400 bg-[#fff8e7] p-4 text-slate-900 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-extrabold text-slate-950">Complete seu perfil antes de adicionar a música</p>
+              <p className="mt-1 text-xs leading-5 text-slate-700">Preencha e salve os dados obrigatórios do seu perfil para apresentar sua vitrine aos artistas e produtores.</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => navigate('/dashboard/perfil')} className="min-h-10 shrink-0 rounded-xl bg-amber-400 px-4 py-2 text-center text-xs font-bold text-slate-950 shadow-sm transition hover:bg-amber-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700">Preencher meu perfil</button>
+        </div>
+      )}
 
       {/* Main Form Container */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
@@ -1019,6 +1069,19 @@ export const AddSongTab: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+
+          {!isEditing && (
+            <section className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 sm:p-5" aria-labelledby="public-link-heading">
+              <h2 id="public-link-heading" className="text-sm font-bold text-white">Link da sua vitrine pública</h2>
+              <p className="mt-1 text-xs text-slate-300">Escolha o endereço que será compartilhado com artistas e produtores quando sua música estiver publicada.</p>
+              <label htmlFor="song-public-username" className="mt-4 block text-xs font-semibold text-slate-200">Endereço público</label>
+              <div className="mt-1.5 flex overflow-hidden rounded-xl border border-slate-600 bg-slate-950 focus-within:border-amber-400">
+                <span className="border-r border-slate-700 px-3 py-2.5 text-xs text-slate-400">/compositor/</span>
+                <input id="song-public-username" value={publicUsername} onChange={event => { setPublicUsername(sanitizeSlug(event.target.value)); setUsernameError(null); }} minLength={USERNAME_MIN_LENGTH} maxLength={60} autoComplete="off" spellCheck={false} aria-invalid={Boolean(usernameError)} aria-describedby={usernameError ? 'song-public-username-error' : 'song-public-username-hint'} className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm font-medium text-white outline-none" />
+              </div>
+              {usernameError ? <p id="song-public-username-error" role="alert" className="mt-2 text-xs text-red-300">{usernameError}</p> : <p id="song-public-username-hint" className="mt-2 text-xs text-slate-400">Use letras minúsculas, números e hífens. O endereço atual é /compositor/{profile.username}.</p>}
+            </section>
+          )}
 
           <nav aria-label="Etapas do cadastro da composição" className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-4">

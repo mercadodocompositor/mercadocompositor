@@ -467,7 +467,7 @@ export const ReleasesTab: React.FC = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           
           {/* Total Documents */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm space-y-1">
+          <div className="min-w-0 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
             <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
               {hasActiveFilters && kpiScope === 'filtered' ? 'Emitido no Filtro' : 'Total Emitido'}
             </span>
@@ -482,11 +482,11 @@ export const ReleasesTab: React.FC = () => {
           </div>
 
           {/* Total Value */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm space-y-1">
+          <div className="min-w-0 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
             <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
               {hasActiveFilters && kpiScope === 'filtered' ? 'Valor Acordado no Filtro' : 'Total Acordado nos Termos'}
             </span>
-            <strong className="text-2xl font-bold text-amber-400 font-mono block">
+            <strong className="text-lg sm:text-2xl font-bold text-amber-400 font-mono block break-words">
               R$ {activeMetrics?.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) ?? '…'}
             </strong>
             <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
@@ -498,11 +498,11 @@ export const ReleasesTab: React.FC = () => {
           </div>
 
           {/* Average Ticket */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm space-y-1">
+          <div className="min-w-0 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
             <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
               {hasActiveFilters && kpiScope === 'filtered' ? 'Ticket Médio (Filtro)' : 'Ticket Médio'}
             </span>
-            <strong className="text-2xl font-bold text-white font-mono block">
+            <strong className="text-lg sm:text-2xl font-bold text-white font-mono block break-words">
               R$ {activeMetrics?.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) ?? '…'}
             </strong>
             <span className="text-[11px] text-slate-500 block">
@@ -511,11 +511,11 @@ export const ReleasesTab: React.FC = () => {
           </div>
 
           {/* Exclusivity Split */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm space-y-1">
+          <div className="min-w-0 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
             <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
               {hasActiveFilters && kpiScope === 'filtered' ? 'Modalidades (Filtro)' : 'Modalidades'}
             </span>
-            <strong className="text-2xl font-bold text-white block">
+            <strong className="text-lg sm:text-2xl font-bold text-white block">
               {activeMetrics?.exclusiveCount ?? '…'} Excl. / {activeMetrics?.nonExclusiveCount ?? '…'} Não
             </strong>
             <span className="text-[11px] text-slate-500 block">
@@ -728,8 +728,8 @@ export const ReleasesTab: React.FC = () => {
           </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl" aria-busy="true" aria-label="Carregando liberações em tabela">
-            <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full text-left text-xs text-slate-300">
+            <div className="overflow-x-auto touch-scroll [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+              <table className="w-full min-w-[760px] text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                   <tr>
                     <th className="p-4">Código / Obra</th>
@@ -822,21 +822,21 @@ export const ReleasesTab: React.FC = () => {
             return (
               <div 
                 key={doc.id}
-                className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5 hover:border-slate-700 transition flex flex-col justify-between"
+                className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-5 hover:border-slate-700 transition flex flex-col justify-between"
               >
                 <div className="space-y-4">
                   
                   {/* Top Bar: Code and Badges */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex flex-wrap-reverse items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1 basis-56">
                       <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold shrink-0 shadow-sm">
                         <FileText className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[11px] text-amber-400 font-mono font-bold block">
+                        <span className="text-[11px] text-amber-400 font-mono font-bold block break-all">
                           {doc.documentCode}
                         </span>
-                        <h3 className="font-bold text-white text-lg truncate">
+                        <h3 className="font-bold text-white text-base sm:text-lg line-clamp-2 break-words">
                           “{doc.songTitle}”
                         </h3>
                       </div>
@@ -853,9 +853,9 @@ export const ReleasesTab: React.FC = () => {
 
                   {/* Summary Box */}
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/90 text-xs space-y-2 text-slate-300">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Intérprete / Outorgado:</span>
-                      <strong className="text-white">{doc.buyerName}</strong>
+                    <div className="flex justify-between items-start gap-3">
+                      <span className="text-slate-400 shrink-0">Intérprete / Outorgado:</span>
+                      <strong className="text-white text-right min-w-0 break-words">{doc.buyerName}</strong>
                     </div>
 
                     <div className="flex justify-between items-center">
@@ -999,8 +999,8 @@ export const ReleasesTab: React.FC = () => {
       ) : (
         /* TABLE CORPORATE VIEW */
         <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left text-xs text-slate-300">
+          <div className="overflow-x-auto touch-scroll [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+            <table className="w-full min-w-[760px] text-left text-xs text-slate-300">
               <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                 <tr>
                   <th className="p-4">Código / Obra</th>
@@ -1165,7 +1165,7 @@ export const ReleasesTab: React.FC = () => {
         <div
           className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
         >
-          <div ref={whatsappDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="whatsapp-modal-title" aria-describedby="whatsapp-modal-explanation" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 text-slate-100 relative animate-fadeIn">
+          <div ref={whatsappDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="whatsapp-modal-title" aria-describedby="whatsapp-modal-explanation" className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-5 text-slate-100 relative animate-fadeIn max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
             {/* Header */}
             <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3 min-w-0">

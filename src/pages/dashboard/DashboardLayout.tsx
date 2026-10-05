@@ -204,19 +204,19 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Top Navigation Header */}
       <header className="bg-white dark:bg-[#0A1128] border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30 shadow-xs transition-colors duration-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2">
 
           {/* Logo & Brand */}
-          <div className="flex items-center gap-4">
-            <Link to="/dashboard" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center group-hover:scale-105 transition">
+          <div className="flex min-w-0 items-center gap-4">
+            <Link to="/dashboard" className="flex min-w-0 items-center gap-2 sm:gap-3 group">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl overflow-hidden flex items-center justify-center group-hover:scale-105 transition">
                 <img src="/logo.webp" alt="Mercado do Compositor" className="w-full h-full object-contain" />
               </div>
               <div>
-                <span className="text-amber-600 dark:text-amber-400 font-serif text-xl italic tracking-tighter block leading-none">
+                <span className="text-amber-600 dark:text-amber-400 font-serif text-base sm:text-xl italic tracking-tighter block leading-none whitespace-nowrap">
                   Mercado do
                 </span>
-                <span className="text-[#0A1128] dark:text-white font-serif text-xl font-bold tracking-tight block leading-none">
+                <span className="text-[#0A1128] dark:text-white font-serif text-base sm:text-xl font-bold tracking-tight block leading-none whitespace-nowrap">
                   Compositor
                 </span>
               </div>
@@ -228,7 +228,7 @@ export const DashboardLayout: React.FC = () => {
           </div>
 
           {/* Right Header Controls */}
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-4">
 
             {/* Quick Add Song CTA */}
             <Link
@@ -250,8 +250,10 @@ export const DashboardLayout: React.FC = () => {
               <ExternalLink className="w-3.5 h-3.5" />
             </Link>
 
-            {/* Theme Toggle Button */}
-            <ThemeToggle />
+            {/* Theme Toggle Button — no celular o tema fica no menu, liberando espaço para a marca */}
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
 
             {/* Notification Bell */}
             <div className="relative" ref={notifRef}>
@@ -263,7 +265,7 @@ export const DashboardLayout: React.FC = () => {
                 aria-expanded={isNotifOpen}
                 aria-controls="dashboard-notifications"
                 aria-haspopup="dialog"
-                className="relative p-2 rounded-full text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 <Bell className="w-5 h-5" />
                 {unreadNotificationCount > 0 && (
@@ -275,7 +277,7 @@ export const DashboardLayout: React.FC = () => {
 
               {/* Notification Popover Dropdown */}
               {isNotifOpen && (
-                <div id="dashboard-notifications" role="dialog" aria-label="Central de notificações" className="absolute right-0 sm:-right-12 mt-2 w-[calc(100vw-2rem)] sm:w-96 max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 overflow-hidden animate-scaleUp text-slate-800 dark:text-slate-200">
+                <div id="dashboard-notifications" role="dialog" aria-label="Central de notificações" className="fixed inset-x-3 top-[4.25rem] sm:absolute sm:inset-x-auto sm:top-auto sm:right-0 sm:-right-12 mt-2 sm:w-96 sm:max-w-sm max-h-[calc(100dvh-6rem)] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 overflow-hidden animate-scaleUp text-slate-800 dark:text-slate-200">
                   <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -340,7 +342,7 @@ export const DashboardLayout: React.FC = () => {
             </div>
 
             {/* Profile Avatar */}
-            <div className="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-3 pl-2 sm:pl-3 border-l border-slate-200 dark:border-slate-800">
               <div className="relative">
                 {profile.photo && !avatarFailed ? (
                   <img
@@ -373,7 +375,7 @@ export const DashboardLayout: React.FC = () => {
               aria-label={mobileMenuOpen ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
               aria-expanded={mobileMenuOpen}
               aria-controls="dashboard-mobile-menu"
-              className="md:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              className="md:hidden ml-1 flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -471,9 +473,9 @@ export const DashboardLayout: React.FC = () => {
           <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 backdrop-blur-sm md:hidden" onMouseDown={event => { if (event.target === event.currentTarget) setMobileMenuOpen(false); }}>
           <div ref={mobileMenuRef} id="dashboard-mobile-menu" role="dialog" aria-modal="true" aria-label="Navegação do dashboard" className="ml-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl border border-amber-500/20 bg-[#0A1128] p-4 text-white shadow-2xl">
             <div className="mb-3 flex items-center justify-between border-b border-slate-800 pb-3"><span className="text-sm font-bold">Menu</span><button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar menu" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800"><X className="h-5 w-5" /></button></div>
-            <div className="mb-3 py-2 px-1 flex items-center justify-between border-b border-slate-800">
+            <div className="mb-3 py-2 px-1 flex flex-col gap-2 border-b border-slate-800">
               <span className="text-xs text-slate-400 font-medium">Tema da interface</span>
-              <ThemeToggle variant="segmented" />
+              <ThemeToggle variant="segmented" className="w-full [&>button]:flex-1 [&>button]:justify-center [&>button]:px-2" />
             </div>
             {menuItems.map(item => {
               const Icon = item.icon;

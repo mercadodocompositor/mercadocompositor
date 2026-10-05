@@ -26,7 +26,7 @@ import { APP_CONFIG, APP_URL } from '../config/appConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { authErrorMessage, getFriendlyErrorMessage } from '../lib/apiErrors';
 import {
-  adminDeleteOrphanComposer, adminFeatureSong, adminSetComposerFeatured, adminSetSubscription, adminSetVerified, createInterest,
+  adminDeleteOrphanComposer, adminFeatureSong, adminSetComposerFeatured, adminSetSubscriptions, adminSetVerified, adminVerifyComposers, createInterest,
   incrementPlay, insertSong, insertSystemLog, issueReleaseRequest,
   loadAdminComposers, loadAdminSongs, loadAdminRequests, loadAdminReleases, verifyAdminPassword,
   loadDashboardMetrics, loadMySongsPage, loadPlatformSettings, loadPrivateData, loadRequestById, loadRequestPage,
@@ -137,7 +137,9 @@ interface AppContextType {
   refreshAdminTransactions: () => Promise<boolean>;
   moderateSong: (songId: string, status: Extract<SongStatus, 'published' | 'rejected' | 'draft'>, notes?: string) => Promise<{ ok: boolean; error?: string }>;
   updateAdminComposerStatus: (composerId: string, status: SubscriptionStatus) => Promise<boolean>;
+  updateAdminComposerStatuses: (composerIds: string[], status: SubscriptionStatus) => Promise<boolean>;
   toggleComposerVerified: (composerId: string) => Promise<boolean>;
+  verifyAdminComposers: (composerIds: string[]) => Promise<boolean>;
   toggleComposerFeatured: (composerId: string) => Promise<boolean>;
   suspendAdminComposer: (composerId: string) => Promise<boolean>;
   deleteOrphanAdminComposer: (composerId: string) => Promise<boolean>;
@@ -166,7 +168,7 @@ interface AppContextType {
   deletionRequests: AccountDeletionRequest[];
   deletionRequestsError: string | null;
   updateDeletionRequestStatus: (id: string, status: DeletionRequestStatus, adminNotes?: string) => Promise<boolean>;
-  finalizeAccountDeletion: (id: string, adminNotes?: string) => Promise<boolean>;
+  finalizeAccountDeletion: (id: string, adminNotes?: string) => Promise<{ success: boolean; cleanupPending: boolean }>;
 
   // USER NOTIFICATIONS
   notifications: UserNotification[];
@@ -847,21 +849,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     resetPrivateState();
   };
 
-  const updateAdminComposerStatus = async (composerId: string, status: SubscriptionStatus) => {
-    try { await adminSetSubscription(composerId,status); }
+  const updateAdminComposerStatuses = async (composerIds: string[], status: SubscriptionStatus) => {
+    try { await adminSetSubscriptions(composerIds,status); }
     catch(error){setAuthError(error instanceof Error?error.message:'Falha ao atualizar assinatura.');return false;}
-    setAdminComposers(prev => prev.map(c => c.id===composerId?{...c,subscriptionStatus:status}:c));
-
-    addSystemLog({
-      category: 'financial',
-      title: 'Status de Assinatura Modificado',
-      description: `Status do compositor #${composerId} alterado para "${status}" pelo administrador.`,
-      user: profile.email || 'Admin Master',
-      ip: '',
-      status: 'warning'
-    });
+    const ids = new Set(composerIds);
+    setAdminComposers(prev => prev.map(c => ids.has(c.id)?{...c,subscriptionStatus:status}:c));
     return true;
   };
+  const updateAdminComposerStatus = (composerId: string, status: SubscriptionStatus) =>
+    updateAdminComposerStatuses([composerId], status);
 
   const toggleComposerVerified = async (composerId: string) => {
     const target=adminComposers.find(c=>c.id===composerId);
@@ -869,6 +865,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try{await adminSetVerified(composerId,!target.isVerified);}
     catch(error){setAuthError(error instanceof Error?error.message:'Falha ao alterar verificação.');return false;}
     setAdminComposers(prev=>prev.map(c=>c.id===composerId?{...c,isVerified:!target.isVerified}:c));
+    return true;
+  };
+
+  const verifyAdminComposers = async (composerIds: string[]) => {
+    try { await adminVerifyComposers(composerIds); }
+    catch(error){setAuthError(error instanceof Error?error.message:'Falha ao verificar perfis.');return false;}
+    const ids = new Set(composerIds);
+    setAdminComposers(prev=>prev.map(c=>ids.has(c.id)?{...c,isVerified:true}:c));
     return true;
   };
 
@@ -882,18 +886,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const suspendAdminComposer = async (composerId: string): Promise<boolean> => {
-    const success = await updateAdminComposerStatus(composerId, 'suspended');
-    if (success) {
-      addSystemLog({
-        category: 'moderation',
-        title: 'Conta de Compositor Suspensa',
-        description: `A conta #${composerId} foi suspensa pelo administrador para impedir novas publicações.`,
-        user: profile.email || 'Admin Master',
-        ip: '',
-        status: 'warning'
-      });
-    }
-    return success;
+    return updateAdminComposerStatus(composerId, 'suspended');
   };
 
   const deleteOrphanAdminComposer = async (composerId: string): Promise<boolean> => {
@@ -1108,16 +1101,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const finalizeAccountDeletion = async (id: string, adminNotes?: string): Promise<boolean> => {
+  const finalizeAccountDeletion = async (id: string, adminNotes?: string): Promise<{ success: boolean; cleanupPending: boolean }> => {
     try {
-      await adminFinalizeAccountDeletion(id, adminNotes);
+      const result = await adminFinalizeAccountDeletion(id, adminNotes);
       // Recarrega do servidor: a conclusão também pseudonimiza nome e e-mail
       // na própria solicitação, então o estado local ficaria desatualizado.
       setDeletionRequests(await loadAccountDeletionRequests());
-      return true;
+      return { success: true, cleanupPending: !result.leftoversErased };
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Falha ao concluir a exclusão da conta.');
-      return false;
+      return { success: false, cleanupPending: false };
     }
   };
 
@@ -1203,7 +1196,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       refreshAdminTransactions,
       moderateSong,
       updateAdminComposerStatus,
+      updateAdminComposerStatuses,
       toggleComposerVerified,
+      verifyAdminComposers,
       toggleComposerFeatured,
       suspendAdminComposer,
       deleteOrphanAdminComposer,

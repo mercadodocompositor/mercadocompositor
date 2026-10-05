@@ -24,6 +24,8 @@ const samples: Array<[string, string, string]> = [
   ['compositor-musica-retirada', 'Música retirada do catálogo', 'A obra "Canção" foi retirada do catálogo pela moderação. Motivo: plágio'],
   ['compositor-musica-em-analise', 'Música em análise', 'A obra "Canção" voltou para a fila de análise.'],
   ['compositor-assinatura-ativada', 'Assinatura ativada',
+    'Seu Plano Prata está ativo em período de teste até 08/10/2026. O catálogo e os recursos do plano já estão liberados; a primeira cobrança de R$ 34,90 será feita no cartão ao fim do teste.'],
+  ['compositor-assinatura-ativada', 'Assinatura ativada',
     'Sua assinatura do Plano Ouro (R$ 49,90 por mês) foi confirmada. O catálogo e os recursos do plano já estão liberados; a próxima cobrança será em 10/11/2026.'],
   ['compositor-assinatura-ativada', 'Assinatura ativada',
     'Seu pagamento de R$ 49,90 do Plano Ouro foi aprovado (fatura #123). O catálogo e os recursos do plano já estão liberados até 10/11/2026.'],
@@ -68,6 +70,9 @@ describe('templates de notificação do Resend', () => {
   })
 
   it('extrai valores e formata o dinheiro', () => {
+    expect(resolveNotificationTemplate('Assinatura ativada',
+      'Seu Plano Prata está ativo em período de teste até 08/10/2026. O catálogo e os recursos do plano já estão liberados; a primeira cobrança de R$ 34,90 será feita no cartão ao fim do teste.')?.variables)
+      .toEqual({ PLAN_NAME: 'Plano Prata', AMOUNT: 'R$ 34,90', NEXT_BILLING_DATE: '08/10/2026' })
     expect(resolveNotificationTemplate('Pagamento confirmado',
       'Recebemos o pagamento de R$ 49,90 do Plano Ouro (fatura #123). Seu plano está garantido até 10/11/2026.')?.variables)
       .toEqual({ AMOUNT: 'R$ 49,90', PLAN_NAME: 'Plano Ouro', INVOICE_ID: '123', NEXT_BILLING_DATE: '10/11/2026' })
@@ -83,8 +88,6 @@ describe('templates de notificação do Resend', () => {
     expect(resolveNotificationTemplate('Música rejeitada', 'A obra "Canção" foi rejeitada pela moderação.')).toBeNull()
     expect(resolveNotificationTemplate('Termo de liberação emitido',
       'O termo LIB-1 da obra "Canção" foi emitido. O e-mail do intérprete é inválido: corrija o contato.')).toBeNull()
-    expect(resolveNotificationTemplate('Assinatura ativada',
-      'Seu Plano Ouro está ativo em período de teste até 10/11/2026.')).toBeNull()
     expect(resolveNotificationTemplate('Aviso desconhecido', 'Qualquer coisa')).toBeNull()
   })
 

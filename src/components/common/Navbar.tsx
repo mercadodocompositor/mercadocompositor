@@ -12,15 +12,10 @@ export const Navbar: React.FC = () => {
 
   const handleNavClick = (id: string) => {
     setMobileMenuOpen(false);
-    if (window.location.pathname !== '/') {
-      navigate('/');
-      setTimeout(() => {
-        const el = document.getElementById(id);
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+    if (window.location.pathname !== '/' || window.location.hash !== `#${id}`) {
+      navigate(`/#${id}`);
     } else {
-      const el = document.getElementById(id);
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     }
   };
 

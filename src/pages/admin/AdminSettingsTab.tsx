@@ -449,15 +449,13 @@ export const AdminSettingsTab: React.FC = () => {
 
   const performFinalizeLgpd = async () => {
     if (!activeLgpdRequest) return;
-    const ok = await finalizeAccountDeletion(activeLgpdRequest.id, lgpdAdminNote);
-    if (ok) {
-      toast.success(
-        'Exclusão Concluída',
-        'Dados pessoais eliminados, perfil pseudonimizado, obras despublicadas e credenciais invalidadas.'
-      );
+    const result = await finalizeAccountDeletion(activeLgpdRequest.id, lgpdAdminNote);
+    if (result.success) {
+      if (result.cleanupPending) toast.warning('Conta encerrada; limpeza pendente', 'A limpeza complementar falhou. Verifique a notificação administrativa e os logs da função de exclusão.');
+      else toast.success('Exclusão concluída', 'Acesso encerrado, cadastro removido, obras despublicadas e perfil pseudonimizado.');
       setActiveLgpdRequest(null);
     } else {
-      toast.error('Erro', 'Não foi possível concluir a exclusão. Nenhum dado foi alterado.');
+      toast.error('Exclusão não concluída', 'Verifique o erro apresentado. A assinatura Stripe pode já ter sido cancelada.');
     }
   };
 
@@ -1275,7 +1273,7 @@ export const AdminSettingsTab: React.FC = () => {
           {/* LGPD ACTION MODAL */}
           {activeLgpdRequest && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-4 shadow-2xl animate-scaleUp">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-4 shadow-2xl animate-scaleUp max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
                 <h3 className="text-base font-bold text-white">
                   Confirmar alteração de status para "{targetStatus}"
                 </h3>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ArrowRight, ArrowUpDown, BadgeCheck, ChevronDown, Crown, Disc3, MapPin, Music2, Search, Sparkles, X } from 'lucide-react';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
@@ -37,6 +37,7 @@ const Tags: React.FC<{ genres: string[] }> = ({ genres }) => <div className="fle
 </div>;
 
 export const ComposersPage: React.FC = () => {
+  const { hash } = useLocation();
   const [composers, setComposers] = useState<FeaturedComposer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -87,7 +88,13 @@ export const ComposersPage: React.FC = () => {
   const featuredComposers = useMemo(() => composers.filter(comp => comp.featured), [composers]);
   const hasActiveFilters = Boolean(search.trim()) || genre !== 'Todos' || stateFilter !== 'Todos';
   const showFeaturedSection = !loading && !hasActiveFilters && featuredComposers.length > 0;
-  const gridComposers = showFeaturedSection ? filteredComposers.filter(comp => !comp.featured) : filteredComposers;
+  useEffect(() => {
+    if (hash === '#selecao-em-destaque' && !loading) {
+      document.getElementById(showFeaturedSection ? 'selecao-em-destaque' : 'catalogo-compositores')?.scrollIntoView();
+    }
+  }, [hash, loading, showFeaturedSection]);
+  // "Todos os compositores" inclui também quem aparece na seleção em destaque.
+  const gridComposers = filteredComposers;
 
   return <div className="flex min-h-screen flex-col bg-[#06101f] font-sans text-slate-100 selection:bg-amber-400 selection:text-slate-950">
     <Navbar />
@@ -113,7 +120,7 @@ export const ComposersPage: React.FC = () => {
         </div>
       </section>
 
-      {showFeaturedSection && <section className="border-b border-slate-800 bg-[#081426]" aria-labelledby="featured-title">
+      {showFeaturedSection && <section id="selecao-em-destaque" className="scroll-mt-24 border-b border-slate-800 bg-[#081426]" aria-labelledby="featured-title">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
           <div className="mb-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div>
             <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300"><Sparkles className="h-4 w-4" /> Curadoria da plataforma</div>

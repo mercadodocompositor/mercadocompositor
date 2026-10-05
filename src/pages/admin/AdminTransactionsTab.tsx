@@ -183,10 +183,11 @@ export const AdminTransactionsTab: React.FC = () => {
     const start = (currentPage - 1) * pageSize;
     return filteredAndSortedRequests.slice(start, start + pageSize);
   }, [filteredAndSortedRequests, currentPage, pageSize]);
+  const demoRequestIds = useMemo(() => new Set(releases.filter(release => release.isDemonstrative).map(release => release.requestId)), [releases]);
 
   // Financial Reconciliation Calculations
   const reconciliation = useMemo(() => {
-    const completedRequests = filteredAndSortedRequests.filter(r => Boolean(r.paymentReceivedAt));
+    const completedRequests = filteredAndSortedRequests.filter(r => Boolean(r.paymentReceivedAt) && !demoRequestIds.has(r.id));
 
     const totalGmv = completedRequests.reduce((acc, r) => acc + (r.agreedValue || 0), 0);
     const snapshotted = completedRequests.filter(r => r.platformFeeAmount !== undefined && r.composerNetAmount !== undefined);
@@ -202,7 +203,7 @@ export const AdminTransactionsTab: React.FC = () => {
       completedCount: completedRequests.length,
       snapshottedCount: snapshotted.length
     };
-  }, [filteredAndSortedRequests]);
+  }, [filteredAndSortedRequests, demoRequestIds]);
 
   // Export CSV with Split Details
   const requestExportCsv = () => {
@@ -242,6 +243,7 @@ export const AdminTransactionsTab: React.FC = () => {
       'Email',
       'WhatsApp',
       'Status',
+      'Simulacao',
       'Valor_Bruto_BRL',
       'Taxa_Plataforma_BRL',
       'Liquido_Previsto_Compositor_BRL',
@@ -255,7 +257,7 @@ export const AdminTransactionsTab: React.FC = () => {
       const netVal = r.composerNetAmount;
 
       return [
-        r.id, r.songTitle, r.buyerName, r.cpfCnpj, r.buyerEmail, r.buyerWhatsapp, r.status, grossVal.toFixed(2),
+        r.id, r.songTitle, r.buyerName, r.cpfCnpj, r.buyerEmail, r.buyerWhatsapp, r.status, demoRequestIds.has(r.id) ? 'Sim' : 'Nao', grossVal.toFixed(2),
         feeVal?.toFixed(2) ?? 'NÃO REGISTRADA', netVal?.toFixed(2) ?? 'NÃO REGISTRADO', r.purpose, r.paymentReceivedAt || ''
       ];
     });
@@ -349,7 +351,7 @@ export const AdminTransactionsTab: React.FC = () => {
             R$ {reconciliation.totalGmv.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </h3>
           <p className="text-[11px] text-slate-400">
-            {reconciliation.completedCount} autorizações quitadas
+            {reconciliation.completedCount} autorizações; simulações marcadas excluídas
           </p>
         </div>
 
@@ -458,7 +460,80 @@ export const AdminTransactionsTab: React.FC = () => {
 
       {/* Requests DataTable with Financial Split & LGPD Mask */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
-        <div className="overflow-x-auto touch-scroll">
+        {/* No celular cada proposta vira um cartão; a tabela de 8 colunas fica para telas médias em diante. */}
+        <div className="divide-y divide-slate-800/80 md:hidden">
+          {isInitialLoading ? (
+            <div className="flex flex-col items-center gap-3 p-8 text-center">
+              <LoaderCircle className="w-8 h-8 animate-spin text-amber-400" />
+              <span className="text-xs font-semibold text-slate-300">Carregando propostas e liberações financeiras...</span>
+            </div>
+          ) : paginatedRequests.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">
+              <Receipt className="w-10 h-10 mx-auto text-slate-600 mb-2" />
+              <p className="text-sm font-semibold text-slate-300">Nenhuma proposta encontrada para os filtros selecionados.</p>
+            </div>
+          ) : paginatedRequests.map(req => {
+            const grossVal = req.agreedValue || 0;
+            const feeVal = req.platformFeeAmount;
+            const netVal = req.composerNetAmount;
+            return (
+              <article key={req.id} className="space-y-3 py-4 first:pt-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <strong className="text-sm text-white line-clamp-2 break-words">“{req.songTitle}”</strong>
+                    {req.composerName && <span className="block truncate text-[11px] text-slate-500">Autor: {req.composerName}</span>}
+                  </div>
+                  <div className="shrink-0">{getStatusBadge(req.status)}</div>
+                </div>
+                {demoRequestIds.has(req.id) && <span className="inline-block rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">Simulação — fora dos indicadores</span>}
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                  <div className="min-w-0">
+                    <dt className="text-slate-500">Intérprete</dt>
+                    <dd className="truncate font-semibold text-slate-200">{req.buyerName}</dd>
+                    <dd className="text-slate-400"><AdminMaskedData value={req.buyerWhatsapp} type="phone" subjectName={req.buyerName} /></dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-slate-500">Finalidade</dt>
+                    <dd className="truncate text-slate-300">{req.purpose}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">Valor bruto</dt>
+                    <dd className="font-mono font-bold text-white">{grossVal > 0 ? `R$ ${grossVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Em aberto'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">{req.paymentReceivedAt ? 'Pagamento' : 'Proposta'}</dt>
+                    <dd className="font-mono text-slate-300">{(req.paymentReceivedAt || req.createdAt).split('T')[0]}</dd>
+                  </div>
+                  {grossVal > 0 && feeVal !== undefined && netVal !== undefined && (
+                    <div className="col-span-2 font-mono">
+                      <span className="text-amber-400">Taxa: R$ {feeVal.toFixed(2)} ({req.platformFeePercentage}%)</span>
+                      <span className="text-slate-600"> · </span>
+                      <span className="text-emerald-400">Líquido: R$ {netVal.toFixed(2)}</span>
+                    </div>
+                  )}
+                </dl>
+                <div className="flex gap-2">
+                  {req.releaseId && (
+                    <button
+                      onClick={() => handleOpenReleaseModal(req.releaseId!)}
+                      className="min-h-11 flex-1 rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-3 text-xs font-bold text-emerald-400"
+                    >
+                      Ver Termo
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedRequest(req)}
+                    className="min-h-11 flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 text-xs font-bold text-slate-200"
+                  >
+                    Ver detalhes
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto touch-scroll">
           <table className="w-full min-w-[800px] text-left text-xs text-slate-300">
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
@@ -531,6 +606,7 @@ export const AdminTransactionsTab: React.FC = () => {
                     <tr key={req.id} className="hover:bg-slate-800/40 transition">
                       <td className="p-4">
                         <strong className="text-white text-sm block">“{req.songTitle}”</strong>
+                        {demoRequestIds.has(req.id) && <span className="mt-1 inline-block rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">Simulação — fora dos indicadores</span>}
                         <span className="text-[11px] text-slate-400">ID: {req.id.slice(0, 8)}...</span>
                         {req.composerName && <span className="text-[11px] text-slate-500 block">Autor: {req.composerName}</span>}
                       </td>

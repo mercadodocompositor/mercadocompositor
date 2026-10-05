@@ -26,6 +26,15 @@ $username = strtolower(trim((string) ($_GET['u'] ?? '')));
 $songId = trim((string) ($_GET['musica'] ?? ''));
 $config = is_file(__DIR__ . '/og-config.php') ? require __DIR__ . '/og-config.php' : null;
 
+if ($username === 'mercado') {
+    http_response_code(404);
+    echo mc_apply_meta($html, [
+        'title' => 'Compositor não encontrado | Mercado do Compositor',
+        'robots' => 'noindex',
+    ]);
+    exit;
+}
+
 if (!preg_match('/^[a-z0-9-]{1,60}$/', $username) || !is_array($config)
     || empty($config['supabaseUrl']) || empty($config['anonKey'])) {
     echo $html;

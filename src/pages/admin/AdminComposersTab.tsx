@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { downloadCsv } from '../../lib/csvExport';
 import { useApp } from '../../context/AppContext';
 import { AdminComposer, SubscriptionStatus } from '../../types';
@@ -11,6 +12,7 @@ import { AdminPagination } from '../../components/admin/AdminPagination';
 import { AdminBulkBar } from '../../components/admin/AdminBulkBar';
 import { AdminDateRangeFilter, DateFilterPreset, filterByDatePreset } from '../../components/admin/AdminDateRangeFilter';
 import { useDebounce } from '../../hooks/useDebounce';
+import { isRemovedComposer } from '../../lib/adminComposerVisibility';
 import { 
   Users, 
   Search, 
@@ -38,17 +40,24 @@ import {
   CheckSquare, 
   Square,
   Lock,
-  Crown
+  Crown,
+  ChevronDown
 } from 'lucide-react';
 
 type SortField = 'stageName' | 'planName' | 'monthlyValue' | 'songCount' | 'totalPlays' | 'revenueGenerated' | 'subscriptionStatus';
 type SortOrder = 'asc' | 'desc';
+const STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  active: 'Ativo', pending: 'Pendente', suspended: 'Suspenso', cancelled: 'Cancelado'
+};
 
 export const AdminComposersTab: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { 
     adminComposers, 
     updateAdminComposerStatus, 
+    updateAdminComposerStatuses,
     toggleComposerVerified, 
+    verifyAdminComposers,
     toggleComposerFeatured,
     suspendAdminComposer,
     deleteOrphanAdminComposer,
@@ -83,6 +92,38 @@ export const AdminComposersTab: React.FC = () => {
   const [composerToSuspend, setComposerToSuspend] = useState<AdminComposer | null>(null);
   const [composerToDelete, setComposerToDelete] = useState<AdminComposer | null>(null);
   const [exportRequest, setExportRequest] = useState<boolean | null>(null);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{ composer: AdminComposer; status: SubscriptionStatus } | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  const manageableComposers = useMemo(
+    () => adminComposers.filter(composer => !isRemovedComposer(composer)),
+    [adminComposers]
+  );
+  const requestedComposerId = searchParams.get('composer');
+  useEffect(() => {
+    if (!requestedComposerId) return;
+    const requested = manageableComposers.find(composer => composer.id === requestedComposerId);
+    if (requested) setSelectedComposer(requested);
+  }, [requestedComposerId, manageableComposers]);
+  const closeComposerDetails = () => {
+    setSelectedComposer(null);
+    if (requestedComposerId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('composer');
+      setSearchParams(next, { replace: true });
+    }
+  };
+  const selectedComposers = useMemo(
+    () => manageableComposers.filter(composer => selectedComposerIds.includes(composer.id)),
+    [manageableComposers, selectedComposerIds]
+  );
+  const canActivate = (composer: AdminComposer) => Boolean(
+    composer.stripeSubscriptionId &&
+    ['active', 'trialing'].includes(composer.stripeSubscriptionStatus || '')
+  );
+  const canCancelLocally = (composer: AdminComposer) =>
+    (!composer.stripeSubscriptionId && !composer.stripeSubscriptionStatus) ||
+    ['canceled', 'incomplete_expired'].includes(composer.stripeSubscriptionStatus || '');
 
 
   const handleSort = (field: SortField) => {
@@ -93,11 +134,12 @@ export const AdminComposersTab: React.FC = () => {
       setSortOrder('desc');
     }
     setCurrentPage(1);
+    setSelectedComposerIds([]);
   };
 
   // Filter and Sort logic
   const filteredAndSortedComposers = useMemo(() => {
-    const result = adminComposers.filter(composer => {
+    const result = manageableComposers.filter(composer => {
       const matchesSearch = 
         composer.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         composer.stageName.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
@@ -126,7 +168,7 @@ export const AdminComposersTab: React.FC = () => {
     });
 
     return result;
-  }, [adminComposers, debouncedSearchTerm, statusFilter, datePreset, sortField, sortOrder]);
+  }, [manageableComposers, debouncedSearchTerm, statusFilter, datePreset, sortField, sortOrder]);
 
   // Paginated list
   const paginatedComposers = useMemo(() => {
@@ -155,35 +197,51 @@ export const AdminComposersTab: React.FC = () => {
 
   // Bulk Execution
   const handleBulkActivate = async () => {
-    const ids = [...selectedComposerIds];
-    const results=await Promise.all(ids.map(id=>updateAdminComposerStatus(id,'active')));
-    const saved=results.filter(Boolean).length;
-    if(saved)toast.success('Assinaturas Ativadas!', `${saved} compositores agora estão com status ativo.`);
-    if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} assinaturas mantiveram o status anterior.`);
-    setSelectedComposerIds(ids.filter((_, index) => !results[index]));
+    if (isUpdatingStatus) return;
+    const ids = selectedComposers.map(composer => composer.id);
+    if (selectedComposers.some(composer => !canActivate(composer))) {
+      toast.error('Ativação bloqueada', 'Todas as contas selecionadas precisam ter assinatura ativa ou em teste no Stripe.');
+      setBulkActionType(null);
+      return;
+    }
+    setIsUpdatingStatus(true);
+    const saved = await updateAdminComposerStatuses(ids, 'active');
+    setIsUpdatingStatus(false);
+    if (saved) {
+      toast.success('Assinaturas ativadas', `${ids.length} compositor(es) atualizado(s).`);
+      setSelectedComposerIds([]);
+    } else toast.error('Falha ao ativar', 'Nenhuma das assinaturas selecionadas foi alterada.');
     setBulkActionType(null);
   };
 
   const handleBulkSuspend = async () => {
-    const ids = [...selectedComposerIds];
-    const results=await Promise.all(ids.map(id=>updateAdminComposerStatus(id,'suspended')));
-    const saved=results.filter(Boolean).length;
-    if(saved)toast.warning('Assinaturas Suspensas', `${saved} compositores foram suspensos. A cobrança no Stripe continua: cancele-a no painel do Stripe se for o caso.`);
-    if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} assinaturas mantiveram o status anterior.`);
-    setSelectedComposerIds(ids.filter((_, index) => !results[index]));
+    if (isUpdatingStatus) return;
+    const ids = selectedComposers.map(composer => composer.id);
+    setIsUpdatingStatus(true);
+    const saved = await updateAdminComposerStatuses(ids, 'suspended');
+    setIsUpdatingStatus(false);
+    if (saved) {
+      toast.warning('Assinaturas suspensas', `${ids.length} compositor(es) atualizado(s). A cobrança no Stripe continua.`);
+      setSelectedComposerIds([]);
+    } else toast.error('Falha ao suspender', 'Nenhuma das assinaturas selecionadas foi alterada.');
     setBulkActionType(null);
   };
 
   const handleBulkVerify = async () => {
-    const targets=selectedComposerIds.filter(id => {
-      const comp = adminComposers.find(c => c.id === id);
-      return comp && !comp.isVerified;
-    });
-    const results=await Promise.all(targets.map(id=>toggleComposerVerified(id)));
-    const saved=results.filter(Boolean).length;
-    if(saved)toast.success('Selo Verificado em Lote!', `${saved} perfis foram verificados.`);
-    if(saved<results.length)toast.error('Falha parcial', `${results.length-saved} perfis mantiveram o estado anterior.`);
-    setSelectedComposerIds(targets.filter((_, index) => !results[index]));
+    if (isUpdatingStatus) return;
+    const targets = selectedComposers.filter(composer => !composer.isVerified).map(composer => composer.id);
+    if (targets.length === 0) {
+      toast.info('Nenhuma alteração', 'Todos os perfis selecionados já estão verificados.');
+      setBulkActionType(null);
+      return;
+    }
+    setIsUpdatingStatus(true);
+    const saved = await verifyAdminComposers(targets);
+    setIsUpdatingStatus(false);
+    if (saved) {
+      toast.success('Perfis verificados', `${targets.length} perfil(is) atualizado(s).`);
+      setSelectedComposerIds([]);
+    } else toast.error('Falha ao verificar', 'Nenhum perfil selecionado foi alterado.');
     setBulkActionType(null);
   };
 
@@ -204,10 +262,14 @@ export const AdminComposersTab: React.FC = () => {
 
   useEffect(() => {
     if (!selectedComposer) return;
-    const current = adminComposers.find(composer => composer.id === selectedComposer.id);
+    const current = manageableComposers.find(composer => composer.id === selectedComposer.id);
     if (!current) setSelectedComposer(null);
     else if (current !== selectedComposer) setSelectedComposer(current);
-  }, [adminComposers, selectedComposer?.id]);
+  }, [manageableComposers, selectedComposer?.id]);
+
+  useEffect(() => {
+    setSelectedComposerIds(prev => prev.filter(id => manageableComposers.some(composer => composer.id === id)));
+  }, [manageableComposers]);
 
   const handleCopyInviteLink = async () => {
     if (!invitePlan) {
@@ -252,10 +314,28 @@ export const AdminComposersTab: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (composer: AdminComposer, newStatus: SubscriptionStatus) => {
-    const saved=await updateAdminComposerStatus(composer.id, newStatus);
-    if(saved)toast.info('Status atualizado', `Assinatura de ${composer.stageName} alterada para "${newStatus.toUpperCase()}".`);
-    else toast.error('Falha ao atualizar', 'O status anterior foi mantido.');
+  const handleStatusChange = (composer: AdminComposer, newStatus: SubscriptionStatus) => {
+    if (newStatus === composer.subscriptionStatus) return;
+    if (newStatus === 'active' && !canActivate(composer)) {
+      toast.error('Ativação bloqueada', 'A assinatura precisa estar ativa ou em teste no Stripe.');
+      return;
+    }
+    if (newStatus === 'cancelled' && !canCancelLocally(composer)) {
+      toast.error('Cobrança ativa no Stripe', 'Cancele a cobrança no Stripe antes de cancelar o status local.');
+      return;
+    }
+    setPendingStatusChange({ composer, status: newStatus });
+  };
+
+  const confirmStatusChange = async () => {
+    if (!pendingStatusChange || isUpdatingStatus) return;
+    const { composer, status } = pendingStatusChange;
+    setIsUpdatingStatus(true);
+    const saved = await updateAdminComposerStatus(composer.id, status);
+    setIsUpdatingStatus(false);
+    setPendingStatusChange(null);
+    if (saved) toast.info('Status atualizado', `Assinatura de ${composer.stageName} alterada para ${STATUS_LABELS[status]}.`);
+    else toast.error('Falha ao atualizar', 'O status anterior foi mantido. Verifique o vínculo com o Stripe e tente novamente.');
   };
 
   const handleToggleVerified = async (composer: AdminComposer) => {
@@ -291,7 +371,7 @@ export const AdminComposersTab: React.FC = () => {
   };
 
   const getExportList = (onlySelected: boolean) => onlySelected
-    ? adminComposers.filter(c => selectedComposerIds.includes(c.id))
+    ? selectedComposers
     : filteredAndSortedComposers;
 
   const requestCsvExport = (onlySelected: boolean) => {
@@ -306,7 +386,7 @@ export const AdminComposersTab: React.FC = () => {
     if (exportRequest === null) return;
     const onlySelected = exportRequest;
     const listToExport = onlySelected
-      ? adminComposers.filter(c => selectedComposerIds.includes(c.id))
+      ? selectedComposers
       : filteredAndSortedComposers;
 
     if (listToExport.length === 0) {
@@ -340,7 +420,7 @@ export const AdminComposersTab: React.FC = () => {
       'Status_Assinatura',
       'Qtd_Musicas',
       'Audicoes_Totais',
-      'Receita_Liberacoes_BRL',
+              'Valor_Acordado_Liberacoes_BRL',
       'Verificado'
     ];
 
@@ -381,7 +461,7 @@ export const AdminComposersTab: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           <AdminDateRangeFilter
             activePreset={datePreset}
-            onPresetChange={preset => { setDatePreset(preset); setCurrentPage(1); }}
+            onPresetChange={preset => { setDatePreset(preset); setCurrentPage(1); setSelectedComposerIds([]); }}
           />
 
           <button
@@ -410,7 +490,7 @@ export const AdminComposersTab: React.FC = () => {
             type="text"
             placeholder="Buscar por nome, nome artístico, e-mail, cidade ou CPF..."
             value={searchTerm}
-            onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); setSelectedComposerIds([]); }}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition"
           />
         </div>
@@ -418,51 +498,119 @@ export const AdminComposersTab: React.FC = () => {
         {/* Status Pills */}
         <div className="flex items-center gap-2 overflow-x-auto touch-scroll pb-1 md:pb-0">
           <button
-            onClick={() => { setStatusFilter('all'); setCurrentPage(1); }}
+            onClick={() => { setStatusFilter('all'); setCurrentPage(1); setSelectedComposerIds([]); }}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'all'
                 ? 'bg-slate-800 text-white border border-slate-700 font-bold'
                 : 'text-slate-400 hover:text-white bg-slate-950'
             }`}
           >
-            Todos ({adminComposers.length})
+            Todos ({manageableComposers.length})
           </button>
           <button
-            onClick={() => { setStatusFilter('active'); setCurrentPage(1); }}
+            onClick={() => { setStatusFilter('active'); setCurrentPage(1); setSelectedComposerIds([]); }}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'active'
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
                 : 'text-slate-400 hover:text-emerald-400 bg-slate-950'
             }`}
           >
-            Ativos ({adminComposers.filter(c => c.subscriptionStatus === 'active').length})
+            Ativos ({manageableComposers.filter(c => c.subscriptionStatus === 'active').length})
           </button>
           <button
-            onClick={() => { setStatusFilter('pending'); setCurrentPage(1); }}
+            onClick={() => { setStatusFilter('pending'); setCurrentPage(1); setSelectedComposerIds([]); }}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'pending'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
                 : 'text-slate-400 hover:text-amber-400 bg-slate-950'
             }`}
           >
-            Pendentes ({adminComposers.filter(c => c.subscriptionStatus === 'pending').length})
+            Pendentes ({manageableComposers.filter(c => c.subscriptionStatus === 'pending').length})
           </button>
           <button
-            onClick={() => { setStatusFilter('suspended'); setCurrentPage(1); }}
+            onClick={() => { setStatusFilter('suspended'); setCurrentPage(1); setSelectedComposerIds([]); }}
             className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
               statusFilter === 'suspended'
                 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold'
                 : 'text-slate-400 hover:text-rose-400 bg-slate-950'
             }`}
           >
-            Suspensos ({adminComposers.filter(c => c.subscriptionStatus === 'suspended').length})
+            Suspensos ({manageableComposers.filter(c => c.subscriptionStatus === 'suspended').length})
+          </button>
+          <button
+            onClick={() => { setStatusFilter('cancelled'); setCurrentPage(1); setSelectedComposerIds([]); }}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+              statusFilter === 'cancelled'
+                ? 'bg-slate-700 text-white border border-slate-500 font-bold'
+                : 'text-slate-400 hover:text-white bg-slate-950'
+            }`}
+          >
+            Cancelados ({manageableComposers.filter(c => c.subscriptionStatus === 'cancelled').length})
           </button>
         </div>
       </div>
 
       {/* Composers DataTable with LGPD Masked Data */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
-        <div className="overflow-x-auto touch-scroll">
+        <div className="space-y-3 md:hidden">
+          {paginatedComposers.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleSelectAll}
+              className="min-h-11 rounded-xl border border-slate-700 px-4 text-xs font-semibold text-slate-200"
+            >
+              {isAllSelected ? 'Desmarcar página' : 'Selecionar página'}
+            </button>
+          )}
+          {paginatedComposers.length === 0 ? (
+            <p className="p-6 text-center text-sm text-slate-400">Nenhum compositor encontrado para os filtros selecionados.</p>
+          ) : paginatedComposers.map(composer => {
+            const isSelected = selectedComposerIds.includes(composer.id);
+            return (
+              <article key={composer.id} className="rounded-2xl border border-slate-700 bg-slate-950 p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleSelectComposer(composer.id)}
+                    aria-label={`${isSelected ? 'Desmarcar' : 'Selecionar'} ${composer.stageName || composer.name}`}
+                    aria-pressed={isSelected}
+                    className="min-h-11 min-w-11 rounded-lg border border-slate-700 text-amber-400 flex items-center justify-center"
+                  >
+                    {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-bold text-white">{composer.stageName || composer.name}</h3>
+                    <p className="truncate text-xs text-slate-400">{composer.planName || 'Sem plano'} · {composer.songCount} obras</p>
+                    <p className="text-xs text-slate-400">Valor do plano: R$ {composer.monthlyValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={composer.subscriptionStatus}
+                    onChange={e => handleStatusChange(composer, e.target.value as SubscriptionStatus)}
+                    disabled={isUpdatingStatus}
+                    aria-label={`Status da assinatura de ${composer.stageName || composer.name}`}
+                    className="admin-subscription-select min-h-11 min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-800 px-3 text-sm font-semibold text-white"
+                  >
+                    <option value="active" disabled={!canActivate(composer) && composer.subscriptionStatus !== 'active'}>Ativo</option>
+                    <option value="pending" disabled={canActivate(composer) && composer.subscriptionStatus !== 'pending'}>Pendente</option>
+                    <option value="suspended">Suspenso</option>
+                    <option value="cancelled" disabled={!canCancelLocally(composer) && composer.subscriptionStatus !== 'cancelled'}>Cancelado</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedComposer(composer)}
+                    className="min-h-11 rounded-xl border border-amber-500/40 px-4 text-xs font-semibold text-amber-300"
+                  >
+                    Ver ficha
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">Stripe: {composer.stripeSubscriptionStatus || 'sem assinatura vinculada'} · Valor acordado: R$ {composer.revenueGenerated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              </article>
+            );
+          })}
+        </div>
+        <div className="hidden overflow-x-auto touch-scroll md:block">
           <table className="w-full min-w-[760px] text-left text-xs text-slate-300">
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>
@@ -470,6 +618,7 @@ export const AdminComposersTab: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleToggleSelectAll}
+                    aria-label={isAllSelected ? 'Desmarcar todos da página' : 'Selecionar todos da página'}
                     className="text-slate-400 hover:text-white transition"
                     title={isAllSelected ? "Desmarcar todos" : "Selecionar todos da página"}
                   >
@@ -480,41 +629,46 @@ export const AdminComposersTab: React.FC = () => {
                     )}
                   </button>
                 </th>
-                <th 
-                  onClick={() => handleSort('stageName')}
-                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                  <th
+                    aria-sort={sortField === 'stageName' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    className="p-4 hover:text-white transition group select-none"
                 >
-                  <span>Compositor / Perfil</span>
-                  {renderSortIcon('stageName')}
+                    <button type="button" onClick={() => handleSort('stageName')} className="font-semibold">
+                      Compositor / Perfil {renderSortIcon('stageName')}
+                    </button>
                 </th>
                 <th className="p-4">Contato / Localização (LGPD)</th>
-                <th 
-                  onClick={() => handleSort('monthlyValue')}
-                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                  <th
+                    aria-sort={sortField === 'monthlyValue' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    className="p-4 hover:text-white transition group select-none"
                 >
-                  <span>Plano / Valor</span>
-                  {renderSortIcon('monthlyValue')}
+                    <button type="button" onClick={() => handleSort('monthlyValue')} className="font-semibold">
+                      Plano / Valor {renderSortIcon('monthlyValue')}
+                    </button>
                 </th>
-                <th 
-                  onClick={() => handleSort('subscriptionStatus')}
-                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                  <th
+                    aria-sort={sortField === 'subscriptionStatus' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    className="p-4 hover:text-white transition group select-none"
                 >
-                  <span>Status Assinatura</span>
-                  {renderSortIcon('subscriptionStatus')}
+                    <button type="button" onClick={() => handleSort('subscriptionStatus')} className="font-semibold">
+                      Status Assinatura {renderSortIcon('subscriptionStatus')}
+                    </button>
                 </th>
-                <th 
-                  onClick={() => handleSort('songCount')}
-                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                  <th
+                    aria-sort={sortField === 'songCount' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    className="p-4 hover:text-white transition group select-none"
                 >
-                  <span>Catálogo / Plays</span>
-                  {renderSortIcon('songCount')}
+                    <button type="button" onClick={() => handleSort('songCount')} className="font-semibold">
+                      Catálogo / Plays {renderSortIcon('songCount')}
+                    </button>
                 </th>
-                <th 
-                  onClick={() => handleSort('revenueGenerated')}
-                  className="p-4 cursor-pointer hover:text-white transition group select-none"
+                  <th
+                    aria-sort={sortField === 'revenueGenerated' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    className="p-4 hover:text-white transition group select-none"
                 >
-                  <span>Receita Gerada</span>
-                  {renderSortIcon('revenueGenerated')}
+                    <button type="button" onClick={() => handleSort('revenueGenerated')} className="font-semibold">
+                      Valor Acordado {renderSortIcon('revenueGenerated')}
+                    </button>
                 </th>
                 <th className="p-4 text-right">Ações</th>
               </tr>
@@ -542,6 +696,8 @@ export const AdminComposersTab: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleToggleSelectComposer(composer.id)}
+                          aria-label={`${isSelected ? 'Desmarcar' : 'Selecionar'} ${composer.stageName || composer.name}`}
+                          aria-pressed={isSelected}
                           className="text-slate-400 hover:text-white transition"
                         >
                           {isSelected ? (
@@ -607,29 +763,38 @@ export const AdminComposersTab: React.FC = () => {
                       <td className="p-4">
                         <strong className="text-white block">{composer.planName}</strong>
                         <span className="text-amber-400 font-mono font-bold text-[11px]">
-                          R$ {composer.monthlyValue.toFixed(2)}/mês
+                          Valor do plano: R$ {composer.monthlyValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês
                         </span>
                       </td>
 
                       {/* Status Dropdown */}
                       <td className="p-4">
+                        <div className="relative w-36">
                         <select
                           value={composer.subscriptionStatus}
                           onChange={e => handleStatusChange(composer, e.target.value as SubscriptionStatus)}
-                          aria-label="Status da assinatura"
-                          className={`text-[11px] font-bold uppercase rounded-lg px-2.5 py-1 border transition focus:outline-none cursor-pointer ${
+                          disabled={isUpdatingStatus}
+                          aria-label={`Status da assinatura de ${composer.stageName || composer.name}`}
+                          className={`admin-subscription-select min-h-11 w-full appearance-none rounded-xl pl-3 pr-9 text-sm font-semibold border transition-colors cursor-pointer hover:border-slate-400 ${
                             composer.subscriptionStatus === 'active'
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                               : composer.subscriptionStatus === 'pending'
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : composer.subscriptionStatus === 'suspended'
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : 'bg-slate-800 text-slate-300 border-slate-600'
                           }`}
                         >
-                          <option value="active">Ativo</option>
-                          <option value="pending">Pendente</option>
+                          <option value="active" disabled={!canActivate(composer) && composer.subscriptionStatus !== 'active'}>Ativo</option>
+                          <option value="pending" disabled={canActivate(composer) && composer.subscriptionStatus !== 'pending'}>Pendente</option>
                           <option value="suspended">Suspenso</option>
-                          <option value="cancelled">Cancelado</option>
+                          <option value="cancelled" disabled={!canCancelLocally(composer) && composer.subscriptionStatus !== 'cancelled'}>Cancelado</option>
                         </select>
+                        <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+                        </div>
+                        <span className="mt-1 block text-[10px] text-slate-400">
+                          Stripe: {composer.stripeSubscriptionStatus || 'sem assinatura vinculada'}
+                        </span>
                       </td>
 
                       {/* Songs & Plays */}
@@ -685,13 +850,13 @@ export const AdminComposersTab: React.FC = () => {
                         >
                           <XCircle className="w-4 h-4" />
                         </button>
-                        <button
+                        {composer.isOrphan && <button
                           onClick={() => setComposerToDelete(composer)}
                           className="p-2 rounded-xl bg-slate-900 hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-slate-800 transition"
                           title="Excluir cadastro residual"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>}
                       </td>
                     </tr>
                   );
@@ -706,14 +871,14 @@ export const AdminComposersTab: React.FC = () => {
           currentPage={currentPage}
           totalItems={filteredAndSortedComposers.length}
           pageSize={pageSize}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }}
+          onPageChange={page => { setCurrentPage(page); setSelectedComposerIds([]); }}
+          onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); setSelectedComposerIds([]); }}
         />
       </div>
 
       {/* FLOATING BULK ACTIONS BAR */}
       <AdminBulkBar
-        selectedCount={selectedComposerIds.length}
+        selectedCount={selectedComposers.length}
         onClearSelection={() => setSelectedComposerIds([])}
         itemLabel="compositores"
         actions={[
@@ -751,25 +916,29 @@ export const AdminComposersTab: React.FC = () => {
       {/* COMPOSER DETAILS SIDE DRAWER WITH LGPD MASKED DATA */}
       <AdminDrawer
         isOpen={!!selectedComposer}
-        onClose={() => setSelectedComposer(null)}
+        onClose={closeComposerDetails}
         title={selectedComposer?.stageName || 'Detalhes do Compositor'}
         subtitle={selectedComposer?.name}
         icon={<Users className="w-5 h-5" />}
         footer={
           selectedComposer && (
             <div className="flex items-center justify-between gap-3">
-              <a
-                href={`/compositor/${selectedComposer.username}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1.5"
-              >
-                <span>Abrir Vitrine Pública</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              {selectedComposer.subscriptionStatus === 'active' ? (
+                <a
+                  href={`/compositor/${selectedComposer.username}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1.5"
+                >
+                  <span>Abrir Vitrine Pública</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ) : (
+                <span className="text-xs text-slate-400">Vitrine indisponível: assinatura {STATUS_LABELS[selectedComposer.subscriptionStatus].toLowerCase()}</span>
+              )}
 
               <button
-                onClick={() => setSelectedComposer(null)}
+                onClick={closeComposerDetails}
                 className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition"
               >
                 Fechar Painel
@@ -874,15 +1043,19 @@ export const AdminComposersTab: React.FC = () => {
               </h5>
               <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                  <span className="text-slate-400">Plano Ativo:</span>
+                  <span className="text-slate-400">Plano cadastrado:</span>
                   <strong className="text-amber-400">{selectedComposer.planName}</strong>
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                  <span className="text-slate-400">Mensalidade:</span>
-                  <strong className="text-white font-mono">R$ {selectedComposer.monthlyValue.toFixed(2)} / mês</strong>
+                  <span className="text-slate-400">Valor do plano:</span>
+                  <strong className="text-white font-mono">R$ {selectedComposer.monthlyValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / mês</strong>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="text-slate-400">Assinatura Stripe:</span>
+                  <strong className="text-white">{selectedComposer.stripeSubscriptionStatus || 'Sem vínculo'}</strong>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Receita Total Transacionada:</span>
+                  <span className="text-slate-400">Valor acordado em liberações:</span>
                   <strong className="text-emerald-400 font-mono text-sm">
                     R$ {selectedComposer.revenueGenerated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </strong>
@@ -897,7 +1070,8 @@ export const AdminComposersTab: React.FC = () => {
             )}
 
             {/* Quick Actions inside Drawer */}
-            <div className="flex items-center gap-3 pt-2">
+            <p className="text-slate-400">Status da assinatura: <strong className="text-white">{STATUS_LABELS[selectedComposer.subscriptionStatus]}</strong></p>
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
                 onClick={() => handleToggleVerified(selectedComposer)}
                 className={`flex-1 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition ${
@@ -923,21 +1097,23 @@ export const AdminComposersTab: React.FC = () => {
                 <span>{selectedComposer.isFeatured ? 'Tirar do Destaque' : 'Destacar'}</span>
               </button>
 
-              <button
-                onClick={() => setComposerToSuspend(selectedComposer)}
-                className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition"
-              >
-                <XCircle className="w-4 h-4" />
-                <span>Suspender conta</span>
-              </button>
+              {selectedComposer.subscriptionStatus !== 'suspended' && selectedComposer.subscriptionStatus !== 'cancelled' && (
+                <button
+                  onClick={() => setComposerToSuspend(selectedComposer)}
+                  className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-rose-500/20 text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition"
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span>Suspender conta</span>
+                </button>
+              )}
 
-              <button
+              {selectedComposer.isOrphan && <button
                 onClick={() => setComposerToDelete(selectedComposer)}
                 className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-red-500/20 text-red-400 border border-slate-800 hover:border-red-500/30 text-xs font-semibold flex items-center gap-2 transition"
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Excluir registro</span>
-              </button>
+              </button>}
             </div>
           </div>
         )}
@@ -971,26 +1147,36 @@ export const AdminComposersTab: React.FC = () => {
         onCancel={() => setExportRequest(null)}
       />
 
-      {/* CONFIRM BULK ACTION DIALOG */}
-      <AdminConfirmDialog
+      {/* BULK ACTION REAUTHENTICATION */}
+      <AdminSecurityPinDialog
         isOpen={!!bulkActionType}
         title={
           bulkActionType === 'activate'
-            ? `Ativar ${selectedComposerIds.length} assinaturas?`
+            ? `Ativar ${selectedComposers.length} assinaturas?`
             : bulkActionType === 'suspend'
-            ? `Suspender ${selectedComposerIds.length} assinaturas?`
-            : `Conceder selo de verificação a ${selectedComposerIds.length} compositores?`
+            ? `Suspender ${selectedComposers.length} assinaturas?`
+            : `Conceder selo de verificação a ${selectedComposers.length} compositores?`
         }
-        description={`Esta alteração em lote será aplicada a todos os ${selectedComposerIds.length} compositores selecionados imediatamente.`}
-        confirmLabel="Confirmar Ação em Lote"
-        cancelLabel="Cancelar"
-        variant={bulkActionType === 'suspend' ? 'warning' : 'info'}
-        onConfirm={() => {
-          if (bulkActionType === 'activate') handleBulkActivate();
-          else if (bulkActionType === 'suspend') handleBulkSuspend();
-          else if (bulkActionType === 'verify') handleBulkVerify();
+        description={`A ação será aplicada a ${selectedComposers.length} compositor(es): ${selectedComposers.map(c => c.stageName || c.name).join(', ')}.${bulkActionType === 'suspend' ? ' A cobrança no Stripe continuará.' : ''}`}
+        actionLabel="Confirmar ação em lote"
+        onSuccess={() => {
+          if (bulkActionType === 'activate') void handleBulkActivate();
+          else if (bulkActionType === 'suspend') void handleBulkSuspend();
+          else if (bulkActionType === 'verify') void handleBulkVerify();
         }}
         onCancel={() => setBulkActionType(null)}
+      />
+
+      <AdminConfirmDialog
+        isOpen={pendingStatusChange !== null}
+        title={`Alterar status de ${pendingStatusChange?.composer.stageName || 'compositor'}?`}
+        description={`De ${pendingStatusChange ? STATUS_LABELS[pendingStatusChange.composer.subscriptionStatus] : ''} para ${pendingStatusChange ? STATUS_LABELS[pendingStatusChange.status] : ''}. ${pendingStatusChange?.status === 'active' ? 'A conta poderá voltar a aparecer no catálogo público.' : pendingStatusChange?.status === 'cancelled' ? 'Esta ação altera o status local. Confirme também o encerramento da cobrança no Stripe.' : pendingStatusChange?.status === 'suspended' ? 'A cobrança no Stripe continuará.' : ''}`}
+        confirmLabel="Alterar status"
+        cancelLabel="Voltar"
+        variant="warning"
+        isLoading={isUpdatingStatus}
+        onConfirm={() => void confirmStatusChange()}
+        onCancel={() => setPendingStatusChange(null)}
       />
 
       {/* ADD / INVITE COMPOSER MODAL */}

@@ -65,6 +65,15 @@ export const AdminLayout: React.FC = () => {
     logs: ['master', 'financial']
   };
 
+  const TAB_LABELS: Record<string, string> = {
+    overview: 'Visão Geral',
+    compositores: 'Compositores',
+    musicas: 'Músicas',
+    transacoes: 'Transações',
+    configuracoes: 'Configurações',
+    logs: 'Logs'
+  };
+
   const validTabs = ['overview', 'compositores', 'musicas', 'transacoes', 'configuracoes', 'logs'];
   // Tab mapping from path or internal state
   const getCurrentTab = () => {
@@ -132,8 +141,8 @@ export const AdminLayout: React.FC = () => {
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
           {/* Admin Top Header */}
-          <header className="bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30 px-4 sm:px-8 py-3.5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <header className="bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30 px-4 sm:px-8 py-3.5 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 onClick={() => setMobileMenuOpen(true)}
                 className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white"
@@ -142,16 +151,16 @@ export const AdminLayout: React.FC = () => {
                 <Menu className="w-5 h-5" />
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="text-xs font-bold text-amber-400 hidden sm:inline">Mercado do Compositor</span>
                 <span className="text-slate-400 hidden sm:inline">/</span>
-                <span className="text-xs font-semibold text-white capitalize">
-                  {currentTab === 'overview' ? 'Visão Geral Executiva' : currentTab}
+                <span className="truncate text-xs font-semibold text-white">
+                  {TAB_LABELS[currentTab] || 'Visão Geral'}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <div className="hidden sm:flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs text-slate-300">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="font-semibold text-[11px]">Painel Master Administrativo</span>
@@ -161,9 +170,11 @@ export const AdminLayout: React.FC = () => {
 
               <button
                 onClick={() => navigate('/dashboard')}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center gap-1.5 transition"
+                aria-label="Ver App do Compositor"
+                className="min-h-10 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center gap-1.5 transition"
               >
-                <span>Ver App do Compositor</span>
+                <span className="sm:hidden">App</span>
+                <span className="hidden sm:inline">Ver App do Compositor</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </button>
             </div>

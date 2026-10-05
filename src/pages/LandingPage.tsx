@@ -35,7 +35,7 @@ import {
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const { adminSongs, featuredSongIds, incrementPlayCount, subscriptionPlans } = useApp();
+  const { incrementPlayCount, subscriptionPlans } = useApp();
   const offeredPlans = listOfferedPlans(subscriptionPlans);
   const [featuredComposers, setFeaturedComposers] = useState<FeaturedComposer[]>([]);
   const [featuredSongs, setFeaturedSongs] = useState<Song[]>([]);
@@ -48,14 +48,14 @@ export const LandingPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // If context has active featured songs, use them; otherwise query database
-    const contextFeatured = adminSongs.filter(s => featuredSongIds.includes(s.id) && s.status === 'published');
-    if (contextFeatured.length > 0) {
-      setFeaturedSongs(contextFeatured.slice(0, 6));
-    } else {
-      getFeaturedSongs(6).then(setFeaturedSongs).catch(() => setFeaturedSongs([]));
-    }
-  }, [adminSongs, featuredSongIds]);
+    let mounted = true;
+    getFeaturedSongs(6).then(songs => {
+      if (mounted) setFeaturedSongs(songs);
+    }).catch(() => {
+      if (mounted) setFeaturedSongs([]);
+    });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => () => {
     audioElement?.pause();
@@ -113,7 +113,7 @@ export const LandingPage: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <button type="button" onClick={() => handlePlayPreview(featuredSongs[0])} aria-label={playingSongId === featuredSongs[0].id ? 'Pausar prévia' : 'Ouvir prévia'} className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-amber-400 hover:text-slate-950">{playingSongId === featuredSongs[0].id ? <Pause className="h-5 w-5 fill-current" /> : <Play className="ml-0.5 h-5 w-5 fill-current" />}</button>
                   <div className="min-w-0 flex-1"><strong className="block truncate font-serif text-lg text-white">{featuredSongs[0].title}</strong><span className="block truncate text-xs text-slate-400">{featuredSongs[0].authors}</span><div className="mt-3 flex h-5 items-end gap-1" aria-hidden="true">{[8,14,10,18,12,20,9,16,12,18,8,15,10,19,12,16,7,13].map((height, index) => <span key={index} className="w-1 rounded-full bg-amber-300/80" style={{ height }} />)}</div></div>
-                  <span className="text-xs text-slate-400">0:30</span>
+                  <span className="text-xs text-slate-400">1:25</span>
                 </div>
                 <div className="mt-4 flex items-center gap-2 border-t border-white/10 pt-3 text-[11px] font-semibold text-amber-300"><Lock className="h-3.5 w-3.5" /> Prévia protegida de até 85 segundos</div>
               </div>
@@ -396,138 +396,6 @@ export const LandingPage: React.FC = () => {
         </section>
 
 
-        {/* VITRINE DE MÚSICAS EM DESTAQUE */}
-        {featuredSongs.length > 0 && (
-          <section id="vitrine" className="scroll-mt-24 py-20 bg-[#070D1E] text-white border-t border-amber-500/20 relative overflow-hidden">
-            <div className="absolute top-0 right-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-
-              <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
-                <div>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold mb-2">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Vitrine de Obras em Destaque</span>
-                  </div>
-                  <h2 className="text-3xl sm:text-4xl font-serif italic text-white tracking-tight">
-                    Composições Selecionadas
-                  </h2>
-                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                    Ouça prévias exclusivas de 85 segundos e descubra grandes obras prontas para liberação.
-                  </p>
-                </div>
-
-                <Link
-                  to="/compositores"
-                  className="text-amber-400 hover:text-amber-300 font-semibold text-xs uppercase tracking-wider flex items-center gap-1 self-start md:self-auto"
-                >
-                  <span>Explorar Todo o Acervo</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
-
-              {/* Grid de Músicas em Destaque */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {featuredSongs.map(song => {
-                  const isPlaying = playingSongId === song.id;
-
-                  return (
-                    <div
-                      key={song.id}
-                      className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl hover:border-amber-500/40 transition group flex flex-col justify-between space-y-4 backdrop-blur-sm"
-                    >
-                      <div className="space-y-3">
-                        {/* Cover Image with Play Overlay */}
-                        <div className="relative rounded-2xl overflow-hidden h-44 bg-slate-950 border border-slate-800 group/cover">
-                          <img
-                            src={song.coverUrl}
-                            alt={song.title}
-                            className="w-full h-full object-cover group-hover/cover:scale-105 transition duration-500"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
-
-                          {/* Play / Pause button */}
-                          <button
-                            type="button"
-                            onClick={() => handlePlayPreview(song)}
-                            aria-label={isPlaying ? 'Pausar prévia' : 'Ouvir prévia'}
-                            className={`absolute inset-0 m-auto w-14 h-14 rounded-full flex items-center justify-center transition shadow-2xl ${
-                              isPlaying
-                                ? 'bg-amber-500 text-slate-950 shadow-amber-500/40 scale-105'
-                                : 'bg-slate-950/80 hover:bg-amber-500 text-white hover:text-slate-950 border border-amber-500/40 opacity-90 group-hover/cover:opacity-100'
-                            }`}
-                          >
-                            {isPlaying ? (
-                              <Pause className="w-6 h-6 fill-current" />
-                            ) : (
-                              <Play className="w-6 h-6 fill-current ml-1" />
-                            )}
-                          </button>
-
-                          {/* Tags on cover */}
-                          <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                            <span className="text-[10px] uppercase font-bold text-amber-300 bg-slate-950/80 border border-amber-500/30 px-2.5 py-0.5 rounded-full backdrop-blur-md">
-                              {song.genre}
-                            </span>
-                          </div>
-
-                          <div className="absolute top-3 right-3">
-                            <span className="text-[10px] font-semibold text-slate-300 bg-slate-950/80 px-2 py-0.5 rounded-full border border-slate-700 backdrop-blur-md flex items-center gap-1">
-                              <Headphones className="w-3 h-3 text-amber-400" />
-                              <span>Prévia 85s</span>
-                            </span>
-                          </div>
-
-                          {/* Sound wave animation while playing */}
-                          {isPlaying && (
-                            <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-amber-500/20 border border-amber-500/40 px-2 py-1 rounded-full backdrop-blur-md">
-                              <span className="w-1 h-3 bg-amber-400 rounded-full animate-pulse" />
-                              <span className="w-1 h-4 bg-amber-400 rounded-full animate-pulse delay-75" />
-                              <span className="w-1 h-2 bg-amber-400 rounded-full animate-pulse delay-150" />
-                              <span className="text-[10px] font-bold text-amber-300 ml-1">Tocando</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Song Details */}
-                        <div>
-                          <h3 className="font-serif italic font-bold text-white text-lg tracking-tight truncate group-hover:text-amber-300 transition-colors">
-                            “{song.title}”
-                          </h3>
-                          <p className="text-xs text-slate-400 truncate mt-0.5">
-                            Composição: <strong className="text-slate-200 font-medium">{song.authors}</strong>
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Card Footer with Value and Action */}
-                      <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
-                        <div>
-                          <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Liberação</span>
-                          <strong className="text-xs font-mono font-bold text-emerald-400">
-                            {song.valueType === 'suggested' && song.suggestedValue
-                              ? `R$ ${song.suggestedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                              : 'Sob Consulta'}
-                          </strong>
-                        </div>
-
-                        <Link
-                          to="/compositores"
-                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 flex items-center gap-1.5 transition"
-                        >
-                          <span>Tenho Interesse</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-            </div>
-          </section>
-        )}
-
-
         {/* COMPOSITORES EM DESTAQUE SECTION */}
         {featuredComposers.length > 0 && <section id="compositores-old" className="hidden scroll-mt-24 py-20 bg-[#0A1128] text-white border-t border-amber-500/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -674,10 +542,10 @@ export const LandingPage: React.FC = () => {
                       {highlight && <div className="absolute -top-4 right-3 rounded-full bg-[#eab74f] px-4 py-1.5 text-xs font-bold text-[#071426]">Mais completo</div>}
                       <div className="flex items-center gap-3">
                         <span className={`flex h-11 w-11 items-center justify-center rounded-full ${highlight ? 'bg-[#f1c45f] text-[#071426]' : 'bg-[#efe5d3] text-[#a66b17]'}`}><Music className="h-5 w-5" /></span>
-                        <div><h3 className="font-serif text-2xl font-semibold">{plan.name}</h3><p className={`mt-0.5 text-[9px] font-bold uppercase tracking-[0.14em] ${highlight ? 'text-slate-300' : 'text-slate-600'}`}>{eyebrow}</p></div>
+                        <div><h3 className="font-serif text-2xl font-semibold">{plan.name}</h3><p className={`mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${highlight ? 'text-slate-300' : 'text-slate-600'}`}>{eyebrow}</p></div>
                       </div>
                       <div className="mt-5 flex items-baseline gap-1"><span className="font-serif text-2xl">R$</span><span className="font-serif text-4xl font-semibold">{formatMoneyBR(plan.monthlyPrice)}</span><span className={highlight ? 'text-slate-300' : 'text-slate-600'}>/mês</span></div>
-                      <ul className={`mt-5 space-y-2.5 text-[10px] ${highlight ? 'text-slate-200' : 'text-[#172338]'}`}>
+                      <ul className={`mt-5 space-y-2.5 text-xs lg:text-[11px] ${highlight ? 'text-slate-200' : 'text-[#172338]'}`}>
                         {features.map(feature => <li key={feature} className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#bd7c19]" /><span>{feature}</span></li>)}
                       </ul>
                       <Link to={`/cadastro?plano=${encodeURIComponent(plan.name)}`} className="mt-auto block w-full rounded-lg bg-gradient-to-r from-[#bd7a17] to-[#e9b64f] py-3 text-center font-serif text-lg font-bold text-[#071426] transition hover:brightness-105">Começar agora</Link>

@@ -914,3 +914,16 @@ O responsável decidiu não tratar agora:
 - **M4, carga do painel:** o painel continua carregando todas as músicas, pedidos e termos de uma vez. Rever quando algum compositor tiver catálogo grande.
 - **M14, registros de acesso:** a Política afirma guarda por 6 meses, e o app não guarda. Risco jurídico aceito por ora.
 - **CSP ativa:** continua em "Report-Only".
+
+### Decisão: janela de aceite dos Termos removida (30/09/2026)
+
+A pedido do responsável, a janela obrigatória de aceite dos Termos (B3) foi retirada do painel; o componente `TermsAcceptanceGate` foi apagado. O aceite continua sendo registrado só no cadastro por e-mail e senha, pelo gatilho `handle_new_user_terms`. Contas criadas com o Google e aceites de versões novas (hoje `1.3`) ficam sem registro. **Risco jurídico aceito.**
+
+### Decisão: verificação em duas etapas removida do app (30/09/2026)
+
+A pedido do responsável, a verificação em duas etapas saiu do app:
+- `MfaChallengeGate` foi apagado e as rotas do painel e do admin não pedem mais o código;
+- a seção de 2FA saiu de Configurações e as funções de cadastro de fator, em `database.ts`, foram removidas;
+- `supabase/config.toml` passou a `enroll_enabled = false` e `verify_enabled = false`.
+
+O A1 deixa de existir: não há mais 2FA oferecido. O login é só por senha ou Google. Fatores eventualmente já cadastrados no Supabase Auth ficam sem efeito no app. Para desligar também no projeto, desative o TOTP em Authentication > Multi-Factor no painel do Supabase.

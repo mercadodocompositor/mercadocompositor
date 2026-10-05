@@ -6,8 +6,6 @@ import { GlobalErrorBoundary } from './components/common/GlobalErrorBoundary';
 import { MaintenanceBanner } from './components/common/MaintenanceBanner';
 import { SystemAnnouncementBanner } from './components/common/SystemAnnouncementBanner';
 import { ScrollToTop } from './components/common/ScrollToTop';
-import { TermsAcceptanceGate } from './components/common/TermsAcceptanceGate';
-import { MfaChallengeGate } from './components/common/MfaChallengeGate';
 
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -30,7 +28,7 @@ const ComposerRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   if (authLoading) return <PageLoader />;
 
   return isAuthenticated
-    ? <MfaChallengeGate><TermsAcceptanceGate>{children}</TermsAcceptanceGate></MfaChallengeGate>
+    ? children
     : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 };
 
@@ -40,7 +38,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   if (authLoading) return <PageLoader />;
 
   return isAdminAuthenticated
-    ? <MfaChallengeGate>{children}</MfaChallengeGate>
+    ? children
     : <Navigate to="/autenticacao?modo=admin" replace />;
 };
 

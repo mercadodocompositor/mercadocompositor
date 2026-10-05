@@ -72,7 +72,7 @@ function mc_sitemap_composers(string $supabaseUrl, string $anonKey): array
     $usernames = [];
     foreach ($data as $item) {
         $username = is_array($item) ? (string) ($item['username'] ?? '') : '';
-        if (preg_match('/^[a-z0-9-]{1,60}$/', $username)) {
+        if ($username !== 'mercado' && preg_match('/^[a-z0-9-]{1,60}$/', $username)) {
             $usernames[] = $username;
         }
     }

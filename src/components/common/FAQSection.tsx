@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   HelpCircle, 
   ChevronDown, 
@@ -13,7 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { APP_CONFIG } from '../../config/appConfig';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 interface FAQItem {
   id: string;
@@ -41,7 +41,7 @@ const FAQ_ITEMS: FAQItem[] = [
   {
     id: 'ecad-direitos',
     category: 'direitos',
-    question: 'Como entro em contato com os artistas?',
+    question: 'Como ficam meus direitos autorais e os pagamentos do ECAD?',
     answer: 'A liberação emitida pela plataforma concede autorização para fixação e gravação fonográfica da obra. Seus direitos autorais morais e patrimoniais de execução pública continuam 100% resguardados pela Lei Federal nº 9.610/98. Sempre que a música tocar em rádios, shows, televisão ou plataformas digitais, os direitos de execução pública continuam sendo recolhidos pelo ECAD através da sua sociedade autoral (UBC, ABRAMUS, etc.).',
     highlight: true
   },
@@ -78,8 +78,13 @@ const FAQ_ITEMS: FAQItem[] = [
 ];
 
 export const FAQSection: React.FC = () => {
+  const { hash } = useLocation();
   const [openId, setOpenId] = useState<string | null>('protecao-audio');
   const [selectedCategory, setSelectedCategory] = useState<'todos' | 'protecao' | 'direitos' | 'pagamentos' | 'plataforma'>('todos');
+
+  useEffect(() => {
+    if (hash === '#ecad-direitos') setOpenId('ecad-direitos');
+  }, [hash]);
 
   const filteredItems = FAQ_ITEMS.filter(item => {
     if (selectedCategory === 'todos') return true;
@@ -149,6 +154,7 @@ export const FAQSection: React.FC = () => {
             return (
               <div
                 key={item.id}
+                id={item.id}
                 className={`border-b border-slate-600/80 transition-all duration-300 last:border-b-0 ${
                   isOpen
                     ? 'bg-[#0d1b30]/95'

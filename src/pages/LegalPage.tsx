@@ -421,13 +421,13 @@ export const LegalPage: React.FC = () => {
             Para exercer quaisquer dos seus direitos de titular ou esclarecer dúvidas sobre esta Política de Privacidade, entre em contato diretamente com o nosso Encarregado de Proteção de Dados (DPO):
           </p>
           <div className="p-5 bg-slate-950 border border-slate-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 max-w-full items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
                 <Mail className="w-5 h-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <strong className="text-white text-sm block">Encarregado pelo Tratamento de Dados (DPO)</strong>
-                <a href={`mailto:${APP_CONFIG.company.dpoEmail}`} className="text-amber-400 hover:underline text-xs font-mono">
+                <a href={`mailto:${APP_CONFIG.company.dpoEmail}`} className="text-amber-400 hover:underline text-xs font-mono break-all">
                   {APP_CONFIG.company.dpoEmail}
                 </a>
               </div>

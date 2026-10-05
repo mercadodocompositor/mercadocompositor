@@ -167,6 +167,10 @@ export const AdminSongsTab: React.FC = () => {
         toast.warning('Áudio Necessário', 'A música precisa de um arquivo de áudio de prévia pública para ser ouvida na vitrine da Home.');
         return;
       }
+      if (!song.isAvailableForRelease) {
+        toast.warning('Obra indisponível', 'A música precisa estar disponível para liberação para aparecer na Home.');
+        return;
+      }
       if (featuredSongIds.length >= MAX_FEATURED_SONGS) {
         toast.warning(
           'Limite de Destaques Atingido',
@@ -178,7 +182,7 @@ export const AdminSongsTab: React.FC = () => {
 
     const saved = await toggleFeatureSong(song.id);
     if (!saved) {
-      toast.error('Falha ao atualizar', 'O estado anterior do destaque foi mantido.');
+      toast.error('Falha ao atualizar', 'Confira se a assinatura do compositor está ativa e se a obra está disponível para liberação.');
       return;
     }
     const willBeFeatured = !isCurrentlyFeatured;
@@ -553,7 +557,109 @@ export const AdminSongsTab: React.FC = () => {
           </div>
         )}
 
-        <div className="overflow-x-auto touch-scroll [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+        {/* No celular a tabela de 8 colunas vira cartões; a gaveta de detalhes concentra a moderação completa. */}
+        <div className="divide-y divide-slate-800/80 md:hidden">
+          {paginatedSongs.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">
+              <Music className="w-10 h-10 mx-auto text-slate-600 mb-2" />
+              <p className="text-sm font-semibold text-slate-300">Nenhuma música encontrada para os filtros selecionados.</p>
+            </div>
+          ) : paginatedSongs.map(song => {
+            const isPlaying = playingSongId === song.id;
+            const isFeatured = featuredSongIds.includes(song.id);
+            const isSelected = selectedSongIds.includes(song.id);
+            const hasAudio = Boolean(song.previewAudioUrl || song.audioUrl);
+            const price = formatSongPrice(song);
+            const featureDisabled = song.status !== 'published' || (!isFeatured && !song.previewAudioUrl);
+            const statusMeta = song.status === 'published'
+              ? { label: 'Publicada', className: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' }
+              : song.status === 'pending_approval'
+              ? { label: 'Em Análise', className: 'bg-sky-500/20 text-sky-300 border-sky-500/40' }
+              : song.status === 'rejected'
+              ? { label: 'Rejeitada', className: 'bg-rose-500/20 text-rose-300 border-rose-500/40' }
+              : { label: 'Rascunho', className: 'bg-amber-500/20 text-amber-300 border-amber-500/40' };
+
+            return (
+              <article key={song.id} className={`space-y-3 p-4 ${isSelected ? 'bg-amber-500/10' : ''}`}>
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleSelectSong(song.id)}
+                    aria-label={isSelected ? `Desmarcar ${song.title}` : `Selecionar ${song.title}`}
+                    className="-ml-2 flex h-11 w-9 shrink-0 items-center justify-center text-slate-400"
+                  >
+                    {isSelected ? <CheckSquare className="w-5 h-5 text-amber-400" /> : <Square className="w-5 h-5 text-slate-600" />}
+                  </button>
+                  <div className="relative shrink-0">
+                    <img src={song.coverUrl} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-700" />
+                    {hasAudio && (
+                      <button
+                        type="button"
+                        onClick={() => handlePlayToggle(song)}
+                        aria-label={isPlaying ? 'Pausar áudio' : 'Ouvir prévia'}
+                        className={`absolute inset-0 rounded-xl flex items-center justify-center bg-black/50 ${isPlaying ? 'ring-2 ring-amber-400' : ''}`}
+                      >
+                        {isPlaying ? <Pause className="w-5 h-5 fill-amber-400 text-amber-400" /> : <Play className="w-5 h-5 fill-white text-white ml-0.5" />}
+                      </button>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <strong className="text-sm text-white line-clamp-2 break-words">“{song.title}”</strong>
+                    <span className="block truncate text-[11px] text-slate-400">{song.authors}</span>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${statusMeta.className}`}>{statusMeta.label}</span>
+                      <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">{song.genre}</span>
+                      {!hasAudio && <span className="text-[10px] font-bold uppercase text-rose-300">Sem áudio</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-[11px] text-slate-400">
+                  <span><strong className="text-white">{song.playCount}</strong> audições</span>
+                  <span className={price.isFixed ? 'font-mono font-bold text-emerald-400' : 'italic'}>{price.isFixed ? price.formatted : 'Sob Consulta'}</span>
+                </div>
+                <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDrawer(song)}
+                    className="min-h-11 rounded-xl border border-slate-700 bg-slate-800 px-3 text-xs font-bold text-slate-200"
+                  >
+                    Detalhes
+                  </button>
+                  {song.status === 'published' ? (
+                    <button type="button" onClick={() => handleMoveToDraft(song)} disabled={pendingSongId === song.id} aria-label="Despublicar (mover para rascunho)" className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 disabled:opacity-50">
+                      <Clock className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => handleApproveSong(song)} disabled={pendingSongId === song.id} aria-label="Aprovar e publicar obra" className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 disabled:opacity-50">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {song.status === 'rejected' ? (
+                    <button type="button" onClick={() => handleMoveToDraft(song)} disabled={pendingSongId === song.id} aria-label="Mover para rascunho" className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 disabled:opacity-50">
+                      <Clock className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => { setRejectionReason(''); setSongToReject(song); }} disabled={pendingSongId === song.id} aria-label="Rejeitar obra com justificativa" className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-400 disabled:opacity-50">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleFeatureToggle(song)}
+                    disabled={featureDisabled}
+                    aria-label={isFeatured ? 'Remover dos destaques da Home' : 'Colocar em destaque na Home'}
+                    aria-pressed={isFeatured}
+                    className={`flex h-11 w-11 items-center justify-center rounded-xl border ${featureDisabled ? 'border-slate-800 bg-slate-900 text-slate-600 opacity-40' : isFeatured ? 'border-amber-400 bg-amber-500 text-slate-950' : 'border-slate-700 bg-slate-800 text-slate-400'}`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto touch-scroll [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
           <table className="w-full min-w-[840px] text-left text-xs text-slate-300">
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>

@@ -54,10 +54,10 @@ export const Footer: React.FC = () => {
           {/* Quick Links */}
           <div className="space-y-3">
             <h4 className="text-white font-semibold text-base">Plataforma</h4>
-            <ul className="space-y-2 text-slate-400">
+            <ul className="space-y-0.5 text-slate-400 [&_a]:inline-flex [&_a]:min-h-9 [&_a]:items-center">
               <li><Link to="/#como-funciona" className="hover:text-amber-400 transition">Como funciona</Link></li>
               <li><Link to="/#beneficios" className="hover:text-amber-400 transition">Benefícios</Link></li>
-              <li><Link to="/compositores" className="hover:text-amber-400 transition">Compositores em Destaque</Link></li>
+              <li><Link to="/compositores#selecao-em-destaque" className="hover:text-amber-400 transition">Compositores em Destaque</Link></li>
               <li><Link to="/#planos" className="hover:text-amber-400 transition">Planos e Preços</Link></li>
               <li><Link to="/cadastro" className="hover:text-amber-400 transition">Criar Conta</Link></li>
             </ul>
@@ -66,11 +66,11 @@ export const Footer: React.FC = () => {
           {/* Legal */}
           <div className="space-y-3">
             <h4 className="text-white font-semibold text-base">Institucional</h4>
-            <ul className="space-y-2 text-slate-400">
+            <ul className="space-y-0.5 text-slate-400 [&_a]:inline-flex [&_a]:min-h-9 [&_a]:items-center">
               <li><Link to="/validar-documento" className="text-amber-400/90 hover:text-amber-300 transition flex items-center gap-1.5 font-medium"><ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> Validar Liberação</Link></li>
               <li><Link to="/termos" className="hover:text-amber-400 transition flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-500" /> Termos de Uso</Link></li>
               <li><Link to="/privacidade" className="hover:text-amber-400 transition flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-slate-500" /> Política de Privacidade</Link></li>
-              <li><Link to="/#faq" className="hover:text-amber-400 transition">Direitos Autorais e ECAD</Link></li>
+              <li><Link to="/#ecad-direitos" className="hover:text-amber-400 transition">Direitos Autorais e ECAD</Link></li>
               <li><Link to="/#faq" className="hover:text-amber-400 transition">Dúvidas Frequentes (FAQ)</Link></li>
             </ul>
           </div>

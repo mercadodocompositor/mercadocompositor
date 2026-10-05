@@ -46,7 +46,7 @@ Deno.serve(async request => {
         email = { from: sender, to: [job.recipient], subject: job.subject, template: {
           id: releaseTemplateId, variables: escapeVariables(releaseTemplateVariables(release, actionUrl)),
         } }
-      } else if (useTemplates) {
+      } else if (useTemplates || job.subject === 'Assinatura ativada') {
         const resolved = resolveNotificationTemplate(job.subject, job.body)
         if (resolved) email = { from: sender, to: [job.recipient], subject: job.subject, template: {
           id: resolved.alias, variables: templateVariables(resolved.variables, actionUrl),

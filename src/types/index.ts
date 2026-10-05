@@ -213,6 +213,9 @@ export interface AdminComposer {
   cpf: string;
   cityState: string;
   subscriptionStatus: SubscriptionStatus;
+  stripeSubscriptionId?: string;
+  stripeSubscriptionStatus?: string;
+  isOrphan?: boolean;
   planName: string;
   monthlyValue: number;
   registeredAt: string;

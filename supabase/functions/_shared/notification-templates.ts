@@ -64,7 +64,13 @@ const RULES: Rule[] = [
     body: /^A obra "(.*)" voltou para a fila de análise\.$/s,
     vars: (_, b) => ({ SONG_TITLE: b![1] }),
   },
-  // Stripe (sem teste grátis e com data de cobrança).
+  // Stripe: teste grátis com primeira cobrança ao fim do período.
+  {
+    alias: 'compositor-assinatura-ativada', subject: /^Assinatura ativada$/,
+    body: /^Seu (.+?) está ativo em período de teste até (\d{2}\/\d{2}\/\d{4})\..*?a primeira cobrança de R\$ ([\d.,]+) será feita no cartão ao fim do teste\.$/s,
+    vars: (_, b) => ({ PLAN_NAME: b![1], AMOUNT: brl(b![3]), NEXT_BILLING_DATE: b![2] }),
+  },
+  // Stripe: assinatura iniciada sem teste grátis.
   {
     alias: 'compositor-assinatura-ativada', subject: /^Assinatura ativada$/,
     body: /^Sua assinatura do (.+) \(R\$ ([\d.,]+) por mês\) foi confirmada\..*a próxima cobrança será em (\d{2}\/\d{2}\/\d{4})\.$/s,

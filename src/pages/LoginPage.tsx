@@ -265,7 +265,7 @@ export const LoginPage: React.FC = () => {
 
     <main className="flex items-center justify-center px-5 py-12">
       <div className="w-full max-w-md space-y-6">
-        <div className="flex justify-between items-center"><Link to="/" className="text-xs text-slate-400 hover:text-white flex items-center gap-1"><ArrowLeft className="w-4 h-4" />Voltar</Link>{mode !== 'admin' && <button type="button" onClick={() => changeMode('admin')} className="text-xs text-slate-500 hover:text-amber-400">Área administrativa</button>}</div>
+        <div className="flex justify-between items-center"><Link to="/" className="min-h-10 text-xs text-slate-400 hover:text-white flex items-center gap-1"><ArrowLeft className="w-4 h-4" />Voltar</Link>{mode !== 'admin' && <button type="button" onClick={() => changeMode('admin')} className="min-h-10 text-xs text-slate-500 hover:text-amber-400">Área administrativa</button>}</div>
 
         <header>
           <p className="text-xs uppercase tracking-[.2em] font-bold text-amber-400">Autenticação segura</p>
@@ -414,7 +414,7 @@ export const LoginPage: React.FC = () => {
                     clearFieldError('acceptTerms');
                   }}
                   aria-invalid={!!fieldErrors.acceptTerms}
-                  className="mt-0.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500"
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-700 text-amber-500 accent-amber-500 focus:ring-amber-500"
                 />
                 <span>
                   Li e aceito os <Link to="/termos" className="text-amber-400 hover:underline">Termos de Uso</Link> e a <Link to="/privacidade" className="text-amber-400 hover:underline">Política de Privacidade</Link>.
@@ -430,7 +430,7 @@ export const LoginPage: React.FC = () => {
           )}
           <button disabled={loading || (mode === 'forgot' && recoveryCooldown > 0)} className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-bold text-sm flex justify-center items-center gap-2 transition cursor-pointer">{loading ? <LoaderCircle className="w-5 h-5 animate-spin" /> : <>{mode === 'login' ? 'Entrar' : mode === 'register' ? 'Criar conta' : mode === 'forgot' ? (recoveryCooldown > 0 ? `Aguarde ${recoveryCooldown}s` : 'Enviar link') : mode === 'admin' ? 'Entrar como administrador' : 'Salvar nova senha'}<ArrowRight className="w-4 h-4" /></>}</button>
         </form>
-        {mode === 'login' && <div className="flex justify-center gap-5 text-xs"><button onClick={() => changeMode('forgot')} className="text-amber-400 hover:text-amber-300">Esqueci minha senha</button><button onClick={resend} disabled={loading} className="text-slate-400 hover:text-white">Reenviar confirmação</button></div>}
+        {mode === 'login' && <div className="flex flex-wrap justify-center gap-x-5 text-xs"><button onClick={() => changeMode('forgot')} className="min-h-10 text-amber-400 hover:text-amber-300">Esqueci minha senha</button><button onClick={resend} disabled={loading} className="min-h-10 text-slate-400 hover:text-white">Reenviar confirmação</button></div>}
         {(mode === 'forgot' || mode === 'new-password' || mode === 'admin') && <button onClick={() => changeMode('login')} className="w-full text-center text-xs text-slate-400 hover:text-white">Voltar para o login</button>}
       </div>
     </main>
@@ -519,7 +519,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
         autoComplete={autoComplete}
         aria-invalid={!!error}
         aria-describedby={error ? `${id}-error` : undefined}
-        className={`w-full bg-slate-900 border rounded-xl pl-10 pr-11 py-3 text-sm text-white focus:outline-none transition ${
+        className={`w-full bg-slate-900 border rounded-xl pl-10 pr-12 py-3 text-sm text-white focus:outline-none transition ${
           error
             ? 'border-red-500 focus:border-red-400 bg-red-500/5 ring-1 ring-red-500/30'
             : 'border-slate-800 focus:border-amber-500'
@@ -529,7 +529,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
         type="button"
         onClick={() => setVisible(!visible)}
         aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'}
-        className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 transition"
+        className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 hover:text-slate-300 transition"
       >
         {visible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
       </button>

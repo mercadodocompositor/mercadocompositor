@@ -44,7 +44,15 @@ Deno.serve(async req=>{
       }
     }
     if(!customerId){
-      const created=await stripe('customers','POST',{...(user.email?{email:user.email}:{}),'metadata[user_id]':user.id})
+      const {data:profile,error:profileError}=await admin.from('profiles').select('stage_name,name,username').eq('user_id',user.id).maybeSingle()
+      if(profileError) throw profileError
+      const customerName=profile?.stage_name?.trim()||profile?.name?.trim()||profile?.username||''
+      const created=await stripe('customers','POST',{
+        ...(user.email?{email:user.email}:{}),
+        ...(customerName?{name:customerName}:{}),
+        'metadata[user_id]':user.id,
+        ...(profile?.username?{'metadata[username]':profile.username}:{}),
+      })
       // Só grava se ainda estiver vazio: duas requisições simultâneas não podem deixar dois clientes para o mesmo usuário.
       const {data:saved,error}=await admin.from('subscriptions').update({stripe_customer_id:created.id}).eq('user_id',user.id).is('stripe_customer_id',null).select('stripe_customer_id').maybeSingle()
       if(error) throw error

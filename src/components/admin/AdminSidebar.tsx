@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { APP_CONFIG } from '../../config/appConfig';
+import { isRemovedComposer } from '../../lib/adminComposerVisibility';
 import {
   LayoutDashboard,
   Users,
@@ -50,7 +51,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       id: 'compositores',
       label: 'Compositores & Planos',
       icon: Users,
-      badge: adminComposers.length.toString(),
+      badge: adminComposers.filter(composer => !isRemovedComposer(composer)).length.toString(),
       roles: ['master', 'financial']
     },
     {
@@ -69,7 +70,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     },
     {
       id: 'configuracoes',
-      label: 'Configurações SaaS',
+      label: 'Configurações',
       icon: Settings,
       badge: null,
       roles: ['master']

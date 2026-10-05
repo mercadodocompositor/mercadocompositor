@@ -372,7 +372,7 @@ export const MySongsTab: React.FC = () => {
   };
 
   const formatDate = (date: string) => {
-    const [year, month, day] = date.split('-');
+    const [year, month, day] = date.slice(0, 10).split('-');
     return year && month && day ? `${day}/${month}/${year}` : date;
   };
 
@@ -1126,8 +1126,8 @@ export const MySongsTab: React.FC = () => {
       ) : (
         /* TABLE VIEW */
         <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left text-xs text-slate-300">
+          <div className="overflow-x-auto touch-scroll [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+            <table className="w-full min-w-[720px] text-left text-xs text-slate-300">
               <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                 <tr>
                   <th className="p-4">Música</th>
@@ -1256,7 +1256,7 @@ export const MySongsTab: React.FC = () => {
 
       {songToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-song-title" aria-describedby="delete-song-description">
-          <div ref={deleteDialogRef} className="w-full max-w-md rounded-3xl border border-red-500/30 bg-slate-900 p-6 shadow-2xl">
+          <div ref={deleteDialogRef} className="w-full max-w-md rounded-3xl border border-red-500/30 bg-slate-900 p-5 sm:p-6 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto touch-scroll">
             <div className="flex items-start gap-3"><div className="rounded-xl bg-red-500/10 p-2 text-red-400"><AlertTriangle className="h-5 w-5" /></div><div><h2 id="delete-song-title" className="font-bold text-white">Excluir música definitivamente?</h2><p id="delete-song-description" className="mt-2 text-sm leading-relaxed text-slate-400">“{songToDelete.title}” será removida do catálogo. Essa ação não pode ser desfeita.</p></div></div>
             <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setSongToDelete(null)} disabled={pendingSongId === songToDelete.id} className="rounded-xl border border-slate-700 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50">Cancelar</button><button type="button" onClick={() => void confirmDeleteSong()} disabled={pendingSongId === songToDelete.id} className="flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-400 disabled:cursor-wait disabled:opacity-60">{pendingSongId === songToDelete.id && <LoaderCircle className="h-4 w-4 animate-spin" />}Excluir música</button></div>
           </div>

@@ -14,7 +14,7 @@ async function sendFarewell(recipient:string){
   // Enviado direto, sem passar pela fila: a fila guardaria o e-mail que acabou de ser eliminado.
   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${resendKey}`,'content-type':'application/json'},
     body:JSON.stringify({from:sender,to:[recipient],subject:'Sua conta foi excluída',
-      html:renderBrandedEmail({preheader:'Confirmação da exclusão da sua conta',eyebrow:'Privacidade e transparência',title:'Sua conta foi excluída',body:'Concluímos a exclusão da sua conta. Seus dados pessoais foram eliminados, suas obras saíram do catálogo e a assinatura foi cancelada.\n\nTermos de liberação já emitidos e o histórico financeiro são mantidos sem identificação pessoal, conforme as obrigações legais.',footer:'Esta é a última mensagem que você receberá do Mercado do Compositor.'})})})
+      html:renderBrandedEmail({preheader:'Confirmação da exclusão da sua conta',eyebrow:'Privacidade e transparência',title:'Sua conta foi excluída',body:'Seu acesso foi encerrado, seus dados de cadastro foram removidos, suas obras saíram do catálogo e a assinatura foi cancelada.\n\nTermos de liberação já emitidos e registros financeiros são preservados. Esses documentos podem conter seu nome, CPF e outros dados necessários ao registro da liberação.',footer:'Esta é a última mensagem que você receberá do Mercado do Compositor.'})})})
   if(!response.ok)console.error('[delete-my-account] e-mail de despedida',response.status,(await response.text()).slice(0,300))
 }
 
@@ -153,7 +153,26 @@ Deno.serve(async req=>{
   // A conta já foi eliminada: uma falha aqui não desfaz nada e fica no log para nova tentativa manual.
   let leftoversErased=true
   try{await eraseLeftovers(admin,stripe,targetId,targetEmail,sub?.stripe_customer_id||null)}
-  catch(cleanupError){leftoversErased=false;console.error('[delete-my-account] SOBRAS NÃO ELIMINADAS',{userId:targetId},cleanupError)}
+  catch(cleanupError){
+    leftoversErased=false
+    console.error('[delete-my-account] SOBRAS NÃO ELIMINADAS',{userId:targetId},cleanupError)
+    const {error:logError}=await admin.from('system_logs').insert({
+      category:'system',title:'Limpeza complementar de conta pendente',
+      description:`A exclusão da conta ${targetId} foi concluída, mas a limpeza complementar de arquivos, registros ou cliente Stripe falhou. Verifique os logs da Edge Function e conclua a limpeza.`,
+      actor:'sistema',status:'error'
+    })
+    if(logError)console.error('[delete-my-account] falha ao registrar limpeza pendente',logError)
+    const {data:admins,error:adminsError}=await admin.from('user_roles').select('user_id').eq('role','admin')
+    if(adminsError)console.error('[delete-my-account] falha ao buscar administradores',adminsError)
+    else if(admins?.length){
+      const {error:noticeError}=await admin.from('user_notifications').insert(admins.map(({user_id})=>({
+        user_id,title:'Limpeza de conta pendente',
+        message:`A conta ${targetId} foi excluída, mas a limpeza complementar falhou. Verifique os logs e os arquivos restantes.`,
+        type:'system',link:'/admin/configuracoes'
+      })))
+      if(noticeError)console.error('[delete-my-account] falha ao avisar administradores',noticeError)
+    }
+  }
 
   if(targetEmail)await sendFarewell(targetEmail).catch(mailError=>console.error('[delete-my-account] e-mail de despedida',mailError))
   return json({ok:true,archivedRequests:data?.archived_requests??0,leftoversErased})

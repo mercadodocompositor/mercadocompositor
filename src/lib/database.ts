@@ -125,7 +125,7 @@ const camelRelease = (r: any): ReleaseDocument => ({
   expiresAt: r.expires_at || undefined,
   documentCode: r.document_code || '',
   documentPath: r.document_path || '', documentHash: r.document_hash || '', templateVersion: r.template_version || undefined,
-  documentArchivedAt: r.document_archived_at, isDemonstrative: false,
+  documentArchivedAt: r.document_archived_at, isDemonstrative: Boolean(r.is_demo),
   sentToBuyerAt: r.sent_to_buyer_at || undefined
 });
 const camelRequest = (r: any): InterestRequest => ({
@@ -657,11 +657,13 @@ export async function getPublicComposer(username:string){
   if(!supabase)return null;
   const clean = username.trim().toLowerCase();
   if (!clean || clean.length > 60 || !/^[a-z0-9-]+$/.test(clean)) return null;
+  if (clean === 'mercado') return null;
   const {data,error}=await supabase.rpc('get_public_composer',{p_username:clean});
   if(error)throw error;
+  if (data?.profile?.username?.toLowerCase() === 'mercado') return null;
   return data as {profile:ComposerProfile;songs:Song[];subscriptionStatus:Subscription['status']}|null;
 }
-export async function getFeaturedComposers(limit = 6){if(!supabase)return[];const{data,error}=await supabase.rpc('get_featured_composers',{p_limit:limit});if(error)throw error;return(data||[]) as FeaturedComposer[];}
+export async function getFeaturedComposers(limit = 6){if(!supabase)return[];const{data,error}=await supabase.rpc('get_featured_composers',{p_limit:limit});if(error)throw error;return((data||[]) as FeaturedComposer[]).filter(comp => comp.username?.toLowerCase() !== 'mercado');}
 
 /**
  * Vitrine pública da home. Consultar `songs` direto devolvia [] para visitantes,
@@ -673,7 +675,7 @@ export async function getFeaturedSongs(limit = 6): Promise<Song[]> {
   const { data, error } = await supabase.rpc('get_featured_songs', { p_limit: limit });
   if (error) {
     captureException(error, { operation: 'getFeaturedSongs' });
-    return [];
+    throw error;
   }
   return Array.isArray(data) ? data.map(camelSong) : [];
 }
@@ -689,7 +691,7 @@ export async function getPublicComposers(options?: { search?: string; genre?: st
     p_search: search,
     p_genre: genre
   });
-  if (!error && Array.isArray(data)) return data as FeaturedComposer[];
+  if (!error && Array.isArray(data)) return (data as FeaturedComposer[]).filter(comp => comp.username?.toLowerCase() !== 'mercado');
   // Só a função ausente (implantação antiga) cai no catálogo reduzido; erro de
   // rede ou do banco sobe para a tela mostrar a falha em vez de "nenhum compositor".
   if (error && error.code !== 'PGRST202' && error.code !== '42883') throw error;
@@ -891,6 +893,9 @@ export async function loadAdminComposers():Promise<AdminComposer[]>{
     cpf:row.cpf||'',
     cityState:row.cityState||'',
     subscriptionStatus:row.subscriptionStatus||'pending',
+    stripeSubscriptionId:row.stripeSubscriptionId||undefined,
+    stripeSubscriptionStatus:row.stripeSubscriptionStatus||undefined,
+    isOrphan:Boolean(row.isOrphan),
     planName:row.planName||'',
     monthlyValue:Number(row.monthlyValue||0),
     registeredAt:row.registeredAt||'',
@@ -906,9 +911,15 @@ export async function loadAdminComposers():Promise<AdminComposer[]>{
 }
 export async function loadAdminSongs():Promise<Song[]>{
   if(!supabase)return[];
-  const {data,error}=await supabase.from('songs').select('id,composer_id,title,genre,subgenre,authors,date_composed,date_registered,lyrics,cover_url,registry_code,notes,status,is_available_for_release,value_type,suggested_value,play_count,interested_count,summary,preview_audio_url,is_featured,created_at,updated_at').order('created_at',{ascending:false}).limit(500);
-  if(error)throw error;
-  return(data||[]).map(camelSong).map(song=>({...song,audioUrl:song.previewAudioUrl}));
+  const rows:any[]=[];
+  const pageSize=500;
+  for(let offset=0;;offset+=pageSize){
+    const {data,error}=await supabase.from('songs').select('id,composer_id,title,genre,subgenre,authors,date_composed,date_registered,lyrics,cover_url,registry_code,notes,status,is_available_for_release,value_type,suggested_value,play_count,interested_count,summary,preview_audio_url,is_featured,created_at,updated_at').order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+pageSize-1);
+    if(error)throw error;
+    rows.push(...(data||[]));
+    if(!data||data.length<pageSize)break;
+  }
+  return rows.map(camelSong).map(song=>({...song,audioUrl:song.previewAudioUrl}));
 }
 export async function loadAdminRequests():Promise<InterestRequest[]>{
   if(!supabase)throw new Error('Supabase não configurado.');
@@ -972,8 +983,22 @@ export async function loadMySongsPage(userId:string,params:SongPageQuery):Promis
   const raw=statsData||{};
   return{songs,total:count||0,stats:{published:Number(raw.published||0),drafts:Number(raw.drafts||0),pending:Number(raw.pending||0),rejected:Number(raw.rejected||0),plays:Number(raw.plays||0),interests:Number(raw.interests||0),genres:Array.isArray(raw.genres)?raw.genres:[]}};
 }
-export async function adminSetSubscription(userId:string,status:SubscriptionStatus){if(!supabase)throw new Error('Supabase não configurado.');const{data,error}=await supabase.from('subscriptions').update({status,updated_at:new Date().toISOString()}).eq('user_id',userId).select('user_id').maybeSingle();if(error)throw error;if(!data)throw new Error('Assinatura não encontrada ou sem permissão para atualização.');}
+export async function adminSetSubscriptions(userIds:string[],status:SubscriptionStatus):Promise<void>{
+  if(!supabase)throw new Error('Supabase não configurado.');
+  if(userIds.length===0)return;
+  const{error}=await supabase.rpc('admin_set_composer_subscription_status',{p_user_ids:userIds,p_status:status});
+  if(error)throw error;
+}
+export async function adminSetSubscription(userId:string,status:SubscriptionStatus):Promise<void>{
+  return adminSetSubscriptions([userId],status);
+}
 export async function adminSetVerified(userId:string,value:boolean){if(!supabase)return;const{error}=await supabase.rpc('admin_set_profile_verified',{p_user_id:userId,p_is_verified:value});if(error)throw error;}
+export async function adminVerifyComposers(userIds:string[]):Promise<void>{
+  if(!supabase)throw new Error('Supabase não configurado.');
+  if(userIds.length===0)return;
+  const{error}=await supabase.rpc('admin_verify_composers',{p_user_ids:userIds});
+  if(error)throw error;
+}
 export async function adminSetComposerFeatured(userId:string,value:boolean){if(!supabase)return;const{error}=await supabase.rpc('admin_set_composer_featured',{p_user_id:userId,p_is_featured:value});if(error)throw error;}
 export async function loadPlatformSettings(): Promise<PlatformSettings> {
   if (!supabase) throw new Error('Supabase não configurado.');
@@ -1067,44 +1092,6 @@ export async function loadSettingsSecurityMetadata(): Promise<SettingsSecurityMe
 export async function revokeOtherSessions(): Promise<void> {
   if (!supabase) throw new Error('Supabase não configurado.');
   const { error } = await supabase.auth.signOut({ scope: 'others' });
-  if (error) throw error;
-}
-
-export interface MfaFactorSummary { id: string; friendlyName?: string; status: string }
-export async function listMfaFactors(): Promise<MfaFactorSummary[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase.auth.mfa.listFactors();
-  if (error) throw error;
-  return data.totp.map(factor => ({ id: factor.id, friendlyName: factor.friendly_name, status: factor.status }));
-}
-
-export async function beginMfaEnrollment(): Promise<{ factorId: string; qrCode: string; secret: string }> {
-  if (!supabase) throw new Error('Supabase não configurado.');
-  // Uma configuração abandonada no meio deixa um fator não verificado com o
-  // mesmo nome, e o Supabase recusa criar outro.
-  const { data: existing } = await supabase.auth.mfa.listFactors();
-  for (const factor of existing?.all || []) {
-    if (factor.factor_type === 'totp' && factor.status !== 'verified') await supabase.auth.mfa.unenroll({ factorId: factor.id });
-  }
-  const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Mercado do Compositor' });
-  if (error) throw error;
-  return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
-}
-
-/** Desativa a verificação em duas etapas. Exige a sessão já confirmada com o código (aal2). */
-export async function disableMfa(): Promise<void> {
-  if (!supabase) throw new Error('Supabase não configurado.');
-  const { data, error } = await supabase.auth.mfa.listFactors();
-  if (error) throw error;
-  for (const factor of data.totp) {
-    const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
-    if (unenrollError) throw unenrollError;
-  }
-}
-
-export async function verifyMfaEnrollment(factorId: string, code: string): Promise<void> {
-  if (!supabase) throw new Error('Supabase não configurado.');
-  const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
   if (error) throw error;
 }
 
@@ -1326,14 +1313,6 @@ export async function recordTermsAcceptance(version: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Versões de termos que o usuário já aceitou (a RLS só devolve as próprias linhas). */
-export async function loadMyTermsAcceptances(userId: string): Promise<string[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('terms_acceptances').select('terms_version').eq('user_id', userId);
-  if (error) throw error;
-  return (data || []).map((row: { terms_version: string }) => row.terms_version);
-}
-
 /**
  * O membro padrão existe apenas para o modo sem Supabase (desenvolvimento/testes).
  * Uma falha real de leitura propaga o erro: exibir um "Administrador Master"
@@ -1354,7 +1333,8 @@ export async function loadTeamRoles(): Promise<UserRoleItem[]> {
   try {
     const { data, error } = await supabase
       .from('user_roles')
-      .select('user_id, role, created_at');
+      .select('user_id, role, created_at')
+      .in('role', ['admin', 'moderator', 'financial']);
     if (error) throw error;
     if (!data || data.length === 0) return [];
 
@@ -1518,7 +1498,7 @@ export async function updateAccountDeletionRequestStatus(
  * Autoexclusão: cancela a assinatura no Stripe e conclui a eliminação pela Edge
  * Function delete-my-account.
  */
-export async function deleteMyAccount(): Promise<{ archivedRequests: number }> {
+export async function deleteMyAccount(): Promise<{ archivedRequests: number; leftoversErased: boolean }> {
   if (!supabase) throw new Error('Supabase não configurado.');
   const { data, error } = await supabase.functions.invoke('delete-my-account', { body: {} });
   if (error) {
@@ -1530,7 +1510,7 @@ export async function deleteMyAccount(): Promise<{ archivedRequests: number }> {
     captureException(error, { operation: 'deleteMyAccount', status: response?.status });
     throw new Error(detail || 'Não foi possível excluir sua conta. Tente novamente.');
   }
-  return { archivedRequests: Number(data?.archivedRequests || 0) };
+  return { archivedRequests: Number(data?.archivedRequests || 0), leftoversErased: data?.leftoversErased === true };
 }
 
 /**
@@ -1538,11 +1518,11 @@ export async function deleteMyAccount(): Promise<{ archivedRequests: number }> {
  * pseudonimiza o perfil, tira as obras do ar e invalida as credenciais. Exige
  * administrador com sessão reautenticada nos últimos 5 minutos.
  */
-export async function adminFinalizeAccountDeletion(requestId: string, adminNotes?: string): Promise<void> {
+export async function adminFinalizeAccountDeletion(requestId: string, adminNotes?: string): Promise<{ leftoversErased: boolean }> {
   if (!supabase) throw new Error('Supabase não configurado.');
   // Pela Edge Function: além da rotina do banco, ela cancela a assinatura no
   // Stripe e apaga os arquivos do Storage, que o SQL não alcança.
-  const { error } = await supabase.functions.invoke('delete-my-account', { body: { requestId, adminNotes: adminNotes || null } });
+  const { data, error } = await supabase.functions.invoke('delete-my-account', { body: { requestId, adminNotes: adminNotes || null } });
   if (error) {
     const response = (error as { context?: Response }).context;
     const detail = response && typeof response.json === 'function'
@@ -1551,6 +1531,7 @@ export async function adminFinalizeAccountDeletion(requestId: string, adminNotes
     captureException(error, { operation: 'adminFinalizeAccountDeletion', status: response?.status });
     throw new Error(detail || 'Não foi possível concluir a exclusão da conta. Tente novamente.');
   }
+  return { leftoversErased: data?.leftoversErased === true };
 }
 
 // ==========================================
