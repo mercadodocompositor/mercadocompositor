@@ -47,6 +47,18 @@ export function applyPageMeta(meta: PageMeta): () => void {
   };
 }
 
+/**
+ * Marca a página atual como `noindex` (login, 404, formulário de interesse) e
+ * devolve a função que remove a tag. O Googlebot executa JS e respeita a tag.
+ */
+export function applyNoIndex(): () => void {
+  const tag = document.createElement('meta');
+  tag.name = 'robots';
+  tag.content = 'noindex, follow';
+  document.head.appendChild(tag);
+  return () => tag.remove();
+}
+
 /** Resume um texto livre para meta description (~155 caracteres, sem cortar palavra). */
 export function summarizeForMeta(text: string, maxLength = 155): string {
   const clean = text.replace(/\s+/g, ' ').trim();

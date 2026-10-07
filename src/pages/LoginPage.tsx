@@ -6,6 +6,7 @@ import { GOOGLE_AUTH_ENABLED } from '../config/appConfig';
 import { authErrorMessage } from '../lib/apiErrors';
 import { formatMoneyBR, matchPlanParam } from '../lib/plans';
 import { RESERVED_USERNAMES } from '../lib/database';
+import { applyNoIndex } from '../lib/pageMeta';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'new-password' | 'admin';
 type Notice = { type: 'success' | 'error'; text: string } | null;
@@ -19,6 +20,7 @@ export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle, register, resetPassword, resendConfirmation, updatePassword, adminLogin, authError, isAuthenticated, authLoading, subscriptionPlans } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
+  useEffect(() => applyNoIndex(), []);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedMode = searchParams.get('modo') as string | null;
   const mode: AuthMode = requestedMode === 'cadastro' || requestedMode === 'register'

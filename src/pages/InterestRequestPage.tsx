@@ -10,6 +10,7 @@ import { getInterestRequestUrl, getSongUrlKey } from '../lib/urls';
 import { getRequestCode } from '../lib/identifiers';
 import { REQUEST_CONSENT_POLICY_VERSION, REQUEST_CONSENT_STATEMENT } from '../config/requestConsent';
 import { isValidCpfCnpj } from '../lib/brazilianDocuments';
+import { applyNoIndex } from '../lib/pageMeta';
 
 type FormData = {
   buyerName: string; buyerStageName: string; cpfCnpj: string; buyerEmail: string; buyerEmailConfirm: string;
@@ -86,6 +87,9 @@ export const InterestRequestPage: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   // Rascunho por aba: sobrevive a erro de rede e recarga, sem guardar o CPF.
   const draftKey = `interest-request-draft:${username}:${songRef}`;
+
+  // Formulário de proposta: sem valor nos buscadores (e o canonical do HTML é o da home).
+  useEffect(() => applyNoIndex(), []);
 
   useEffect(() => {
     try {

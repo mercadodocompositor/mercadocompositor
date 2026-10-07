@@ -9,11 +9,10 @@ Allow: /privacidade
 # Páginas privadas e administrativas que não devem ser indexadas por buscadores
 Disallow: /dashboard/
 Disallow: /admin/
-Disallow: /login
-Disallow: /autenticacao
-Disallow: /cadastro
-Disallow: /recuperar-senha
 Disallow: /entrega/
+# /login, /autenticacao, /cadastro e o formulário de interesse ficam liberados
+# para o robô ler a meta "noindex" deles: bloqueados aqui, o Google ainda podia
+# listar a URL (sem descrição), por não conseguir ver o noindex.
 
 # sitemap.php lista também os perfis públicos (o CDN da Hostinger serve o
 # sitemap.xml estático direto, sem passar pela regra do .htaccess).

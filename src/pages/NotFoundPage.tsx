@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Music2, ArrowLeft, Home } from 'lucide-react';
 import { APP_CONFIG } from '../config/appConfig';
+import { applyNoIndex } from '../lib/pageMeta';
 
 export const NotFoundPage: React.FC = () => {
+  useEffect(() => applyNoIndex(), []);
+
   return (
     <div className="min-h-screen bg-[#060B18] text-white flex flex-col justify-between font-sans selection:bg-amber-500 selection:text-white">
       

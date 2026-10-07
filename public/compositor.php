@@ -109,7 +109,87 @@ if ($song) {
     ];
 }
 
+$meta['jsonLd'] = mc_profile_json_ld($appUrl, $profileUrl, $profile, $songs, $stageName, $profileImage);
+
 echo mc_apply_meta($html, $meta);
+
+/**
+ * Dados estruturados (schema.org) do perfil: página, compositor, obras publicadas
+ * e trilha de navegação. Complementa o Organization/WebSite do index.html.
+ */
+function mc_profile_json_ld(string $appUrl, string $profileUrl, array $profile, array $songs, string $stageName, string $image): array
+{
+    $personId = $profileUrl . '#compositor';
+    $person = [
+        '@type' => 'Person',
+        '@id' => $personId,
+        'name' => $stageName,
+        'url' => $profileUrl,
+        'jobTitle' => 'Compositor',
+    ];
+    if ($image !== '') {
+        $person['image'] = $image;
+    }
+    $bio = mc_text($profile['bio'] ?? '');
+    if (mb_strlen($bio) >= 15 && !preg_match('/teste de biografia|lorem ipsum|^(teste|test)\b/i', $bio)) {
+        $person['description'] = mc_summarize($bio, 300);
+    }
+    $genres = array_values(array_filter(array_map('mc_text', (array) ($profile['genres'] ?? []))));
+    if ($genres) {
+        $person['knowsAbout'] = $genres;
+    }
+
+    $graph = [
+        [
+            '@type' => 'ProfilePage',
+            '@id' => $profileUrl,
+            'url' => $profileUrl,
+            'name' => $stageName . ' | Mercado do Compositor',
+            'inLanguage' => 'pt-BR',
+            'mainEntity' => ['@id' => $personId],
+            'isPartOf' => ['@id' => $appUrl . '/#website'],
+        ],
+        $person,
+        [
+            '@type' => 'BreadcrumbList',
+            'itemListElement' => [
+                ['@type' => 'ListItem', 'position' => 1, 'name' => 'Início', 'item' => $appUrl . '/'],
+                ['@type' => 'ListItem', 'position' => 2, 'name' => 'Compositores', 'item' => $appUrl . '/compositores'],
+                ['@type' => 'ListItem', 'position' => 3, 'name' => $stageName, 'item' => $profileUrl],
+            ],
+        ],
+    ];
+
+    $count = 0;
+    foreach ($songs as $song) {
+        $title = mc_text($song['title'] ?? '');
+        $id = (string) ($song['id'] ?? '');
+        if ($title === '' || $id === '' || ($song['status'] ?? '') !== 'published') {
+            continue;
+        }
+        $work = [
+            '@type' => 'MusicComposition',
+            'name' => $title,
+            'url' => $profileUrl . '?musica=' . rawurlencode($id),
+            'composer' => ['@id' => $personId],
+            'inLanguage' => 'pt-BR',
+        ];
+        $genre = mc_text($song['genre'] ?? '');
+        if ($genre !== '') {
+            $work['genre'] = $genre;
+        }
+        $cover = mc_first_image([$song['coverUrl'] ?? '']);
+        if ($cover !== '') {
+            $work['image'] = $cover;
+        }
+        $graph[] = $work;
+        if (++$count >= 50) {
+            break;
+        }
+    }
+
+    return ['@context' => 'https://schema.org', '@graph' => $graph];
+}
 
 /** Chama a RPC pública com timeout curto: a prévia nunca pode atrasar a abertura do perfil. */
 function mc_fetch_composer(string $supabaseUrl, string $anonKey, string $username): array
@@ -219,6 +299,20 @@ function mc_apply_meta(string $html, array $meta): string
         $html = preg_replace_callback($pattern, function () use ($attr, $key, $value, $e) {
             return '<meta ' . $attr . '="' . $key . '" content="' . $e($value) . '" />';
         }, $html, 1);
+    }
+
+    // Largura/altura/alt do index.html descrevem a og-image.jpg padrão, não a foto do perfil.
+    if (!empty($meta['image'])) {
+        $html = preg_replace('#\s*<meta\s+property="og:image:(width|height|alt)"\s+content="[^"]*"\s*/?>#i', '', $html);
+    }
+
+    if (!empty($meta['jsonLd'])) {
+        $json = json_encode($meta['jsonLd'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+        if ($json !== false) {
+            $html = preg_replace_callback('#</head>#i', function () use ($json) {
+                return '  <script type="application/ld+json">' . $json . "</script>\n  </head>";
+            }, $html, 1);
+        }
     }
 
     if (!empty($meta['url'])) {

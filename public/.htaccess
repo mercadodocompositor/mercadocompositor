@@ -21,10 +21,19 @@ RewriteRule ^sitemap\.xml$ sitemap.php [L]
 # og-config.php só existe para o compositor.php; não responde a acesso direto.
 RewriteRule ^og-config\.php$ - [F,L]
 
-# Entrega arquivos reais normalmente e encaminha rotas do React para o app.
+# Entrega arquivos reais normalmente e encaminha só as rotas conhecidas do React
+# (as de src/App.tsx) para o app. Ao criar rota nova no App.tsx, inclua-a aqui;
+# se esquecer, ela continua abrindo, mas responde 404 para os buscadores.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.html [L]
+RewriteRule ^(login|autenticacao|recuperar-senha|cadastro|compositores|termos|privacidade)/?$ index.html [L,NC]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(compositor|validar-documento|validar|entrega|dashboard|admin)(/.*)?$ index.html [L,NC]
+
+# Qualquer outro caminho: 404 real (sem "soft 404" no Google), mas com o mesmo
+# index.html, então a SPA abre e mostra a NotFoundPage.
+ErrorDocument 404 /index.html
 
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
