@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { APP_CONFIG } from '../../config/appConfig';
-import { Music2, Instagram, Youtube, Mail, Phone, ShieldCheck, FileText } from 'lucide-react';
+import { Music2, Instagram, Youtube, Mail, ShieldCheck, FileText } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -82,10 +82,6 @@ export const Footer: React.FC = () => {
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>{APP_CONFIG.contact.email}</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>{APP_CONFIG.contact.whatsapp} <span className="text-slate-500">(somente WhatsApp)</span></span>
               </li>
             </ul>
           </div>

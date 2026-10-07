@@ -12,3 +12,8 @@ mercado-do-compositor-*.zip
 /mercado-do-compositor-*/
 .env*
 !.env.example
+
+# Arquivos locais e temporários
+tmp/
+output/
+.claude/
